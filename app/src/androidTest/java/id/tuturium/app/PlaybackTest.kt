@@ -1,6 +1,11 @@
 package id.tuturium.app
 
+import android.app.Notification
+import android.app.NotificationManager
 import android.content.Intent
+import android.media.session.MediaController
+import android.media.session.MediaSession
+import androidx.core.os.BundleCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -16,7 +21,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PlaybackTest {
-    @Test fun localSpeechSurvivesHomeAndAcceptsMediaKeyPauseAndResume(): Unit = runBlocking {
+    @Test fun localSpeechSurvivesHomeAndRespondsToNotificationTransportControls(): Unit = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("tuturiumPlayback") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val library = Library.get(instrumentation.targetContext)
@@ -31,12 +36,24 @@ class PlaybackTest {
                     ReadingService.state.first { it.error != null || (it.bookId == book.id && it.playing) }
                 }
                 assertNull("Android TTS returned an error", started.error)
+                val notificationManager = instrumentation.targetContext.getSystemService(NotificationManager::class.java)
+                val token = withTimeout(10_000) {
+                    var found: MediaSession.Token? = null
+                    while (found == null) {
+                        found = notificationManager.activeNotifications.firstNotNullOfOrNull {
+                            BundleCompat.getParcelable(it.notification.extras, Notification.EXTRA_MEDIA_SESSION, MediaSession.Token::class.java)
+                        }
+                        if (found == null) delay(100)
+                    }
+                    checkNotNull(found)
+                }
+                val controls = MediaController(instrumentation.targetContext, token).transportControls
                 shell("input keyevent KEYCODE_HOME")
                 delay(1800)
-                assertTrue(ReadingService.state.value.playing)
-                shell("cmd media_session dispatch pause")
+                assertTrue("Playback stopped when the activity left the foreground", ReadingService.state.value.playing)
+                controls.pause()
                 withTimeout(15_000) { ReadingService.state.first { it.bookId == book.id && !it.playing } }
-                shell("cmd media_session dispatch play")
+                controls.play()
                 withTimeout(15_000) { ReadingService.state.first { it.bookId == book.id && it.playing } }
             }
         } finally {
