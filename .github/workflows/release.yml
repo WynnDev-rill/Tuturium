@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag
+        description: Optional existing release tag (leave empty to publish current main version)
         type: string
-        required: true
+        required: false
 
 permissions:
   contents: write
