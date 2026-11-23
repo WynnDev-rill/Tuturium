@@ -1,5 +1,6 @@
 package id.tuturium.app
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
@@ -8,7 +9,23 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.ClearCredentialStateRequest
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.lifecycleScope
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
+import kotlinx.coroutines.CancellationException
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,12 +44,133 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val model by lazy { ViewModelProvider(this)[TuturiumModel::class.java] }
+    private var pendingGoogleEmail: String? = null
+    private var signingIn = false
+    private var lastAuthorization = 0L
+
+    private val driveConsent = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            TuturiumCloud.message("Izin Google Drive dibatalkan. Data lokal tidak dihapus.")
+            return@registerForActivityResult
+        }
+        try {
+            val authorized = Identity.getAuthorizationClient(this)
+                .getAuthorizationResultFromIntent(result.data)
+            completeAuthorization(authorized.accessToken)
+        } catch (error: Exception) {
+            android.util.Log.e("TuturiumCloud", "Drive consent failed", error)
+            TuturiumCloud.message("Gagal memperoleh izin Drive: ${error.javaClass.simpleName}")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handle(intent)
-        setContent { Tuturium(model) }
+        setContent {
+            val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
+            if (cloud.connected) Tuturium(model)
+            else TuturiumCloudLoginScreen(cloud, onSignIn = ::startGoogleSignIn)
+        }
+    }
+
+    /** Credential Manager signs in the Google account; Drive consent is
+     * deliberately requested as a separate, least-privilege authorization. */
+    fun startGoogleSignIn() {
+        if (signingIn) return
+        signingIn = true
+        TuturiumCloud.message("Membuka akun Google…")
+        lifecycleScope.launch {
+            try {
+                val option = GetSignInWithGoogleOption.Builder(
+                    BuildConfig.GOOGLE_WEB_CLIENT_ID).build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(option).build()
+                val result = CredentialManager.create(this@MainActivity).getCredential(
+                    context = this@MainActivity, request = request
+                )
+                val credential = result.credential
+                require(credential is CustomCredential &&
+                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                    "Kredensial Google tidak dikenali."
+                }
+                val account = GoogleIdTokenCredential.createFrom(credential.data)
+                require(account.id.isNotBlank()) { "Alamat akun Google kosong." }
+                pendingGoogleEmail = account.id
+                requestDriveAuthorization()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.e("TuturiumCloud", "Google sign-in failed", error)
+                TuturiumCloud.message("Google Login gagal: ${error.localizedMessage ?: error.javaClass.simpleName}")
+            } finally {
+                signingIn = false
+            }
+        }
+    }
+
+    private fun requestDriveAuthorization() {
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/drive.appdata")))
+            .build()
+        Identity.getAuthorizationClient(this).authorize(request)
+            .addOnSuccessListener { authorized ->
+                if (authorized.hasResolution()) {
+                    val intent = authorized.pendingIntent
+                    if (intent == null) {
+                        TuturiumCloud.message("Google tidak menyediakan dialog izin Drive.")
+                    } else {
+                        driveConsent.launch(IntentSenderRequest.Builder(intent.intentSender).build())
+                    }
+                } else {
+                    completeAuthorization(authorized.accessToken)
+                }
+            }.addOnFailureListener { error ->
+                android.util.Log.e("TuturiumCloud", "Drive authorization failed", error)
+                TuturiumCloud.message("Izin Drive gagal: ${error.localizedMessage ?: "Coba lagi."}")
+            }
+    }
+
+    private fun completeAuthorization(accessToken: String?) {
+        if (accessToken.isNullOrBlank()) {
+            TuturiumCloud.message("Token Google Drive kosong. Coba masuk ulang.")
+            return
+        }
+        val account = pendingGoogleEmail ?: TuturiumCloud.state.value.email
+        if (account.isNullOrBlank()) {
+            TuturiumCloud.message("Akun Google tidak ditemukan. Coba masuk lagi.")
+            return
+        }
+        lastAuthorization = System.currentTimeMillis()
+        lifecycleScope.launch {
+            try {
+                TuturiumCloud.reconnectToken(applicationContext, account, accessToken)
+                model.refresh()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.e("TuturiumCloud", "Initial Drive sync failed", error)
+                TuturiumCloud.message(
+                    "Sinkronisasi belum berhasil: ${error.localizedMessage ?: error.javaClass.simpleName}. " +
+                    "Data lama tetap aman di perangkat.")
+            }
+        }
+    }
+
+    fun syncGoogleDrive() = TuturiumCloud.uploadSoon(applicationContext)
+
+    fun signOutGoogle() {
+        lifecycleScope.launch {
+            TuturiumCloud.syncNow(applicationContext)
+            TuturiumCloud.disconnect()
+            runCatching {
+                CredentialManager.create(this@MainActivity)
+                    .clearCredentialState(ClearCredentialStateRequest())
+            }.onFailure { android.util.Log.w("TuturiumCloud", "Clear Google session failed", it) }
+            pendingGoogleEmail = null
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -46,6 +184,16 @@ class MainActivity : ComponentActivity() {
         model.refresh()
         model.reloadVoicesIfOpened()
         model.returnFromInstallerSettings(this)
+        if (TuturiumCloud.state.value.connected &&
+            System.currentTimeMillis() - lastAuthorization > 45 * 60_000L) {
+            pendingGoogleEmail = TuturiumCloud.state.value.email
+            requestDriveAuthorization()
+        }
+    }
+
+    override fun onPause() {
+        if (TuturiumCloud.state.value.connected) TuturiumCloud.uploadSoon(applicationContext)
+        super.onPause()
     }
 
     private fun handle(intent: Intent) {
