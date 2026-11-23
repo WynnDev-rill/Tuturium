@@ -45,7 +45,7 @@ class LibraryV2FlowTest {
         compose.onNodeWithText("Akun tamu").assertIsDisplayed()
         compose.onNodeWithText("Masuk dengan Google").assertIsDisplayed()
         compose.onNodeWithText("Penyimpanan & Data").performClick()
-        compose.onNodeWithText("Salinan lokal selama migrasi").assertIsDisplayed()
+        compose.onNodeWithText("Penyimpanan lokal").assertIsDisplayed()
     }
 
     @Test fun guestAccountMenuIsAboveStatisticsAndCloudIsNotMandatory() {
@@ -63,7 +63,7 @@ class LibraryV2FlowTest {
     @Test fun storageDashboardExplainsLocalStorage() {
         compose.onNodeWithContentDescription("Profil tamu").performClick()
         compose.onNodeWithText("Penyimpanan & Data").performClick()
-        compose.onNodeWithText("Salinan lokal selama migrasi").assertIsDisplayed()
+        compose.onNodeWithText("Penyimpanan lokal").assertIsDisplayed()
         compose.onNodeWithText("File bacaan").assertIsDisplayed()
         compose.onNodeWithText("Database & progres").assertIsDisplayed()
     }
