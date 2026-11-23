@@ -1,13 +1,13 @@
-# Tuturium v1.3.1
+# Tuturium v1.3.2
 
-- Perbaikan penting pada layanan pemutar: pengecualian Google TTS dan audio focus tidak lagi menutup aplikasi; pesan error lebih jelas.
-- Google Speech Services (com.google.android.tts) menjadi sumber suara; hanya suara bahasa Indonesia **offline** yang benar-benar terpasang dan terdeteksi yang ditampilkan, tanpa contoh palsu atau model suara bahasa lain. Jika belum tersedia, Pustaka Suara menyediakan akses langsung ke pemasangan data suara Google.
-- Empat suara lokal dikenal dengan kode id-id-x-dfz-local, id-id-x-idc-local, id-id-x-idd-local, id-id-x-ide-local, namun hanya ditampilkan jika tersedia pada perangkat.
-- PDF yang diimpor mulai v1.3.1 menyimpan file sumber: mode PDF asli menjaga layout halaman, dan mode Teks & sorotan menjaga fitur pembacaan kata demi kata.
-- PDF yang diimpor pada versi sebelumnya tetap tersedia dalam mode teks; impor ulang diperlukan untuk menampilkan halaman aslinya.
-- Mode teks PDF memakai tipografi serif dengan pemisah halaman yang lebih halus; file PDF rusak menampilkan pesan error alih-alih loading tanpa akhir.
-- Perbaikan crash penting pada service audio, error suara Google, error layanan foreground, dan pengaturan fallback suara; regresi diuji dengan unit test dan emulator.
-- Tetap ARM64, compatible signing, dan menyimpan progres serta seluruh koleksi lama tanpa reset.
+- Mode pembaca PDF/Teks kini menggunakan sakelar ringkas yang mengikuti UI Tuturium. Mode Teks adalah tampilan awal yang nyaman untuk pembacaan dengan suara, sementara mode PDF menampilkan halaman asli dokumen jika tersedia.
+- Tampilan teks PDF tidak lagi memaksakan latar putih atau tulisan hitam pada tema gelap. Ukuran huruf lebih proporsional, jarak antarparagraf diperbaiki, label halaman lebih tenang, dan warna mengikuti tema aplikasi.
+- Saat pengguna menggulir menjauh dari bagian yang sedang dibaca, tombol kecil berisi kata suara aktif muncul untuk kembali ke posisi pembacaan. Auto-scroll berhenti sementara saat dokumen digulir manual.
+- Sorotan kalimat dan kata aktif mengikuti warna utama Tuturium. Ketukan pada kata kini mulai membaca tepat dari awal kata tersebut, bukan awal paragraf atau kalimat.
+- Perbaikan offset pembacaan Google TTS: memilih kata pada kalimat yang sama, memilih kata setelah tanda baca, dan berpindah dokumen menggunakan posisi yang benar.
+- Menambah lima pengujian unit penentuan kata; pengujian Android lainnya tetap dijalankan melalui GitHub Actions.
 
 ## Catatan
-Tuturium tidak menyertakan suara proprietari Speechify/NaturalReader. Google TTS offline tidak menggunakan API berbayar, tetapi ketersediaan paket suaranya mengikuti Android dan versi Google Speech Services. Tidak ada jaminan bahwa semua perangkat menyediakan jumlah suara yang sama.
+- TTS tetap Google Speech Services dengan suara Indonesia lokal; tidak menggunakan suara proprietari Speechify atau NaturalReader.
+- Mode PDF asli mempertahankan halaman dokumen sebagai gambar, sedangkan sorotan dan pemilihan kata berlaku di mode Teks. Sorotan per kata memerlukan callback rentang ucapan dari Google TTS; jika tidak didukung, sorotan kalimat tetap tersedia.
+- Dokumen yang diimpor sebelum penyimpanan PDF asli diperkenalkan mungkin memerlukan impor ulang untuk membuka mode PDF. Progres dan markah lama tidak dihapus.
