@@ -69,7 +69,7 @@ private fun PdfPageImage(source: File, index: Int) {
                             val width = pixelWidth
                             val height = (width.toFloat() / page.width * page.height)
                                 .toInt().coerceIn(1, 3500)
-                            val image = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+                            val image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                             try {
                                 image.eraseColor(android.graphics.Color.WHITE)
                                 page.render(image, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
