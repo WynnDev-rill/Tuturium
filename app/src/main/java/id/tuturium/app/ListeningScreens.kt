@@ -140,6 +140,7 @@ fun VoiceLibraryV2(model: TuturiumModel, onBack: () -> Unit) {
 
 @Composable
 fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
+    var pendingOnlineVoice by remember { mutableStateOf<VoiceChoice?>(null) }
     val realVoices = model.voices.filter { isIndonesian(it.language) }
         .distinctBy { it.name }.sortedWith(compareBy<VoiceChoice> { it.network }
             .thenByDescending { it.quality })
@@ -164,7 +165,8 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
         }
         items(realVoices.take(12), key = { it.name }) { voice ->
             Row(Modifier.fillMaxWidth().clickable {
-                model.changeSettings(model.settings.copy(voice = voice.name, pitch = 1f))
+                if (voice.network) pendingOnlineVoice = voice
+                else model.changeSettings(model.settings.copy(voice = voice.name, pitch = 1f))
             }.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                 IndonesianVoiceAvatar(Modifier.size(55.dp))
                 Spacer(Modifier.width(13.dp))
@@ -222,6 +224,20 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
                 color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
         }
     }
+    pendingOnlineVoice?.let { voice ->
+        AlertDialog(
+            onDismissRequest = { pendingOnlineVoice = null },
+            title = { Text("Gunakan suara online?") },
+            text = { Text("Saat memakai suara ini, teks dokumen yang dibacakan dapat " +
+                "dikirim ke penyedia mesin TTS Android. Memerlukan koneksi internet dan " +
+                "ketersediaannya ditentukan penyedia, bukan Tuturium.") },
+            confirmButton = { TextButton(onClick = {
+                model.changeSettings(model.settings.copy(voice = voice.name, pitch = 1f))
+                pendingOnlineVoice = null
+            }) { Text("Gunakan suara") } },
+            dismissButton = { TextButton(onClick = { pendingOnlineVoice = null }) { Text("Batal") } }
+        )
+    }
 }
 
 @Composable
@@ -261,8 +277,9 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, dismiss: () -> U
                 }, enabled = speed < 4f) { Icon(Icons.Rounded.Add, "Percepat") }
             }
             Slider(value = speed, onValueChange = {
-                model.changeSettings(model.settings.copy(speed = round(it * 10f) / 10f))
-            }, valueRange = 0.5f..4f, colors = SliderDefaults.colors(
+                model.changeSettings(model.settings.copy(speed = round(it * 10f) / 10f), persist = false)
+            }, onValueChangeFinished = { model.changeSettings(model.settings) },
+            valueRange = 0.5f..4f, colors = SliderDefaults.colors(
                 thumbColor = SpeechifyAccent, activeTrackColor = SpeechifyAccent))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf(0.8f, 1f, 1.2f, 2f, 3f, 4f).forEach { x ->
