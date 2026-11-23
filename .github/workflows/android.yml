@@ -1,7 +1,7 @@
 name: Android verification
 on:
   push:
-    branches: [main]
+    branches: [main, feat/speechify-reader-listening-1-3-0]
   pull_request:
   workflow_dispatch:
 
