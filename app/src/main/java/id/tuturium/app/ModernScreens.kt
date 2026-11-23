@@ -146,6 +146,12 @@ private fun DocumentArt(format: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit) {
+    val context = LocalContext.current
+    var folders by remember { mutableStateOf(FolderStore.names(context)) }
+    var createFolder by remember { mutableStateOf(false) }
+    var folderDraft by remember { mutableStateOf("") }
+    var selectedFolder by remember { mutableStateOf<String?>(null) }
+    var assignmentVersion by remember { mutableIntStateOf(0) }
     var search by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("Buku") }
@@ -153,9 +159,13 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
     var rename by remember { mutableStateOf<Book?>(null) }
     var remove by remember { mutableStateOf<Book?>(null) }
     var menu by remember { mutableStateOf(false) }
-    val visible = model.books.filter {
-        it.title.contains(search, ignoreCase = true) && (filter == "Buku" || filter == "Semua")
-    }.let { if (sortTitle) it.sortedBy { book -> book.title.lowercase(Locale.ROOT) } else it }
+    val visible = remember(model.books, search, filter, selectedFolder, assignmentVersion, sortTitle) {
+        model.books.filter {
+            it.title.contains(search, ignoreCase = true) &&
+                (filter == "Buku" || (filter == "Folder" && selectedFolder != null &&
+                    FolderStore.folderOf(context, it.id) == selectedFolder))
+        }.let { if (sortTitle) it.sortedBy { book -> book.title.lowercase(Locale.ROOT) } else it }
+    }
 
     LazyColumn(Modifier.fillMaxSize().background(Color.Black),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 24.dp),
@@ -164,7 +174,7 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Perpustakaan", modifier = Modifier.weight(1f),
                     color = Color.White, style = MaterialTheme.typography.headlineLarge)
-                IconButton(onClick = onFolder) { Icon(Icons.Rounded.CreateNewFolder, "Folder baru") }
+                IconButton(onClick = { createFolder = true }) { Icon(Icons.Rounded.CreateNewFolder, "Folder baru") }
                 IconButton(onClick = { searchOpen = !searchOpen }) { Icon(Icons.Rounded.Search, "Cari dokumen") }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreHoriz, "Opsi perpustakaan") }
@@ -184,7 +194,10 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
             Row(Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf("Buku", "Podcast", "Folder").forEach { name ->
-                    FilterChip(selected = filter == name, onClick = { filter = name },
+                    FilterChip(selected = filter == name, onClick = {
+                        filter = name
+                        if (name != "Folder") selectedFolder = null
+                    },
                         label = { Text(name) }, shape = RoundedCornerShape(30.dp),
                         colors = FilterChipDefaults.filterChipColors(
                             containerColor = Tile, selectedContainerColor = Color(0xFF303052),
@@ -202,11 +215,41 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
             Text("Podcast belum tersedia di Tuturium.", color = Muted,
                 modifier = Modifier.padding(top = 22.dp))
         }
-        if (filter == "Folder") item {
-            Text("Pengelompokan folder akan tersedia pada pembaruan berikutnya.",
-                color = Muted, modifier = Modifier.padding(top = 22.dp))
+        if (filter == "Folder" && selectedFolder == null) item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (folders.isEmpty()) Text("Belum ada folder. Buat folder untuk menyusun bacaan.", color = Muted)
+                folders.forEach { folder ->
+                    Surface(onClick = { selectedFolder = folder }, color = Tile,
+                        shape = RoundedCornerShape(18.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Folder, null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(folder, Modifier.weight(1f))
+                            Text("${model.books.count { FolderStore.folderOf(context, it.id) == folder }}",
+                                color = Muted)
+                            Icon(Icons.Rounded.ChevronRight, null, tint = Muted)
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { createFolder = true }) {
+                    Icon(Icons.Rounded.CreateNewFolder, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Folder baru")
+                }
+            }
         }
-        if (filter == "Buku") items(visible, key = { it.id }) { book ->
+        if (filter == "Folder" && selectedFolder != null) item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { selectedFolder = null }) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Daftar folder")
+                }
+                Text(selectedFolder.orEmpty(), style = MaterialTheme.typography.titleMedium)
+            }
+            if (visible.isEmpty()) Text("Belum ada dokumen di folder ini.", color = Muted)
+        }
+        if (filter == "Buku" || (filter == "Folder" && selectedFolder != null))
+            items(visible, key = { it.id }) { book ->
             Row(Modifier.fillMaxWidth().clickable { model.open(book.id) }.heightIn(min = 78.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 DocumentArt(book.format, Modifier.size(width = 73.dp, height = 86.dp))
@@ -224,12 +267,43 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
                     IconButton(onClick = { options = true }) { Icon(Icons.Rounded.MoreVert, "Opsi ${book.title}", tint = Muted) }
                     DropdownMenu(options, onDismissRequest = { options = false }) {
                         DropdownMenuItem(text = { Text("Ganti judul") }, onClick = { options = false; rename = book })
+                        folders.forEach { folder ->
+                            DropdownMenuItem(text = { Text("Pindah ke: $folder") }, onClick = {
+                                FolderStore.assign(context, book.id, folder)
+                                assignmentVersion++
+                                options = false
+                            })
+                        }
+                        if (FolderStore.folderOf(context, book.id) != null) {
+                            DropdownMenuItem(text = { Text("Keluarkan dari folder") }, onClick = {
+                                FolderStore.assign(context, book.id, null)
+                                assignmentVersion++
+                                options = false
+                            })
+                        }
                         DropdownMenuItem(text = { Text("Pindah ke sampah") }, onClick = { options = false; remove = book })
                     }
                 }
             }
         }
     }
+    if (createFolder) AlertDialog(
+        onDismissRequest = { createFolder = false },
+        title = { Text("Folder baru") },
+        text = { OutlinedTextField(folderDraft, { folderDraft = it.take(60) },
+            singleLine = true, label = { Text("Nama folder") }) },
+        confirmButton = { TextButton(onClick = {
+            if (FolderStore.add(context, folderDraft)) {
+                folders = FolderStore.names(context)
+                filter = "Folder"
+                selectedFolder = null
+                folderDraft = ""
+                createFolder = false
+            }
+        }, enabled = folderDraft.isNotBlank() &&
+            folders.none { it.equals(folderDraft.trim(), true) }) { Text("Buat") } },
+        dismissButton = { TextButton(onClick = { createFolder = false }) { Text("Batal") } }
+    )
     rename?.let { book ->
         var title by remember(book.id) { mutableStateOf(book.title) }
         AlertDialog(onDismissRequest = { rename = null }, title = { Text("Ganti judul") },
