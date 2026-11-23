@@ -39,7 +39,7 @@ class DriveArchiveTest {
         val archive = File.createTempFile("unsafe-tuturium-", ".zip", context.cacheDir)
         try {
             java.util.zip.ZipOutputStream(archive.outputStream()).use { zip ->
-                zip.putNextEntry(java.util.zip.ZipEntry("../settings.xml"))
+                zip.putNextEntry(java.util.zip.ZipEntry("settings.xml"))
                 zip.write("bad".toByteArray())
                 zip.closeEntry()
             }
