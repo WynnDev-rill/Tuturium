@@ -32,15 +32,17 @@ fun OriginalPdfPages(source: File) {
                 ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                     PdfRenderer(fd).use { it.pageCount }
                 }
-            }.getOrNull()
+            }.getOrElse { -1 }
         }
     }
     when (val total = count) {
         null -> Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-        0 -> Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
-            Text("Halaman PDF tidak tersedia.", color = Color.DarkGray)
+        0, -1 -> Box(Modifier.fillMaxSize().background(Color.White),
+            contentAlignment = Alignment.Center) {
+            Text("PDF asli tidak dapat dirender. Pilih mode Teks & sorotan.",
+                color = Color.DarkGray)
         }
         else -> LazyColumn(
             modifier = Modifier.fillMaxSize().background(Color(0xFFE7E7E7)),
@@ -60,7 +62,8 @@ private fun PdfPageImage(source: File, index: Int) {
     val density = LocalDensity.current
     val pixelWidth = with(density) { (configuration.screenWidthDp.dp.toPx() * 1.6f)
         .toInt().coerceIn(720, 1600) }
-    val bitmap by produceState<Bitmap?>(null, source.path, index, pixelWidth) {
+    val result by produceState<Pair<Bitmap?, Boolean>>(null to false,
+        source.path, index, pixelWidth) {
         value = withContext(Dispatchers.IO) {
             runCatching {
                 ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
@@ -81,9 +84,10 @@ private fun PdfPageImage(source: File, index: Int) {
                         }
                     }
                 }
-            }.getOrNull()
+            }.getOrNull() to true
         }
     }
+    val bitmap = result.first
     DisposableEffect(bitmap) {
         val image = bitmap
         onDispose { image?.takeUnless { it.isRecycled }?.recycle() }
@@ -94,7 +98,8 @@ private fun PdfPageImage(source: File, index: Int) {
             Image(shown.asImageBitmap(), "Halaman PDF ${index + 1}",
                 modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
         } else Box(Modifier.fillMaxWidth().height(450.dp), contentAlignment = Alignment.Center) {
-            Text("Memuat halaman ${index + 1}", fontSize = 14.sp, color = Color.Gray)
+            Text(if (result.second) "Halaman ${index + 1} gagal dirender."
+                else "Memuat halaman ${index + 1}", fontSize = 14.sp, color = Color.Gray)
         }
     }
 }
