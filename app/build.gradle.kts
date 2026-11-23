@@ -64,6 +64,7 @@ dependencies {
     implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("com.google.android.gms:play-services-auth:21.6.0")
+    implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("org.jsoup:jsoup:1.19.1")
     implementation("com.google.mlkit:text-recognition:16.0.1")
