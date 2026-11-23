@@ -186,6 +186,7 @@ fun Tuturium(model: TuturiumModel) {
                         onStorage = { model.refresh(); tab = "storage" },
                         onTrash = { model.refresh(); tab = "trash" },
                         onUpdate = { tab = "updates" },
+                        onCloudSignIn = { (context as? MainActivity)?.startGoogleSignIn() },
                         onCloudSync = { TuturiumCloud.uploadSoon(context.applicationContext) },
                         onCloudLogout = { (context as? MainActivity)?.signOutGoogle() })
                     "stats" -> ModernStatistics(model, { tab = "profile" })
