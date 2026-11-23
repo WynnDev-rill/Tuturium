@@ -545,6 +545,12 @@ private fun FolderEditorV2(value: String, onChange: (String) -> Unit, title: Str
                 modifier = Modifier.fillMaxWidth().focusRequester(requester),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { if (value.isNotBlank()) onSave(value) }))
+            LaunchedEffect(Unit) {
+                // The sheet's content enters composition after its animation begins.
+                // Focus only after the text field has attached to its FocusRequester.
+                withFrameNanos { }
+                requester.requestFocus()
+            }
             Button(onClick = { onSave(value) }, enabled = value.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Blue),
                 modifier = Modifier.fillMaxWidth().height(58.dp)) {
@@ -552,5 +558,4 @@ private fun FolderEditorV2(value: String, onChange: (String) -> Unit, title: Str
             }
         }
     }
-    LaunchedEffect(Unit) { requester.requestFocus() }
 }
