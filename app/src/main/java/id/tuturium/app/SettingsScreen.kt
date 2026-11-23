@@ -82,7 +82,7 @@ fun SettingsScreen(model: TuturiumModel) {
     }
 
     if (voicePicker) {
-        AlertDialog(onDismissRequest = { voicePicker = false }, title = { Text("Pilih suara offline") }, text = {
+        AlertDialog(onDismissRequest = { voicePicker = false }, title = { Text("Pilih suara Indonesia") }, text = {
             LazyColumn(Modifier.heightIn(max = 380.dp)) {
                 item {
                     VoiceOption("Otomatis · prioritaskan Indonesia", null, model.settings.voice == null) {

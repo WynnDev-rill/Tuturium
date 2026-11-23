@@ -73,6 +73,7 @@ internal fun isIndonesian(language: String) = language == "id" || language == "i
 
 /** Expose only actual Indonesian voices returned by Google Speech Services. */
 internal const val GOOGLE_TTS_ENGINE = "com.google.android.tts"
+internal const val GOOGLE_ID_AUTO = "id-ID-google-automatic"
 private val preferredGoogleVoiceIds = listOf(
     "id-id-x-dfz-local", "id-id-x-idc-local", "id-id-x-idd-local", "id-id-x-ide-local"
 )
@@ -87,12 +88,13 @@ fun googleIndonesianVoices(voices: List<VoiceChoice>): List<VoiceChoice> =
 
 fun indonesianVoiceLabel(voice: VoiceChoice, all: List<VoiceChoice>): String {
     val index = googleIndonesianVoices(all).indexOfFirst { it.name == voice.name }
-    return if (index >= 0) "Suara Indonesia ${index + 1}" else "Suara Indonesia"
+    return if (voice.name == GOOGLE_ID_AUTO) "Google Indonesia otomatis"
+        else if (index >= 0) "Suara Indonesia ${index + 1}" else "Suara Indonesia"
 }
 
 /** Old Android TTS engines can change voice IDs after updates. Never fall back to English. */
 fun resolveIndonesianVoice(voices: List<VoiceChoice>, selected: String?,
-    allowNetwork: Boolean = false): VoiceChoice? {
+    allowNetwork: Boolean = true): VoiceChoice? {
     val eligible = googleIndonesianVoices(voices).filter { allowNetwork || !it.network }
     return eligible.firstOrNull { it.name == selected } ?:
         eligible.firstOrNull { it.name.lowercase(Locale.ROOT) == "id-id-x-idd-local" } ?:

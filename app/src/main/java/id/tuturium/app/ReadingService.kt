@@ -68,7 +68,8 @@ data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Floa
 
 fun TextToSpeech.availableVoices(): List<Voice> =
     runCatching { voices.orEmpty() }.getOrDefault(emptySet())
-        .filter { voice -> TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in voice.features.orEmpty() }
+        .filter { voice -> voice.isNetworkConnectionRequired ||
+            TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in voice.features.orEmpty() }
         .sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality })
 
 fun TextToSpeech.offlineVoices(): List<Voice> = availableVoices()
@@ -76,6 +77,34 @@ fun TextToSpeech.offlineVoices(): List<Voice> = availableVoices()
 
 fun Voice.choice() = VoiceChoice(name, locale.toLanguageTag().substringBefore('-'),
     locale.getDisplayName(Locale.forLanguageTag("id")), quality, isNetworkConnectionRequired)
+
+/** Enumerate both local and network voices; offer Android's Indonesian-language
+ *  route when the Google engine exposes language support but no specific voice. */
+fun TextToSpeech.indonesianCandidates(): List<VoiceChoice> {
+    val available = googleIndonesianVoices(availableVoices().map { it.choice() })
+    val locale = Locale.forLanguageTag("id-ID")
+    val supportsIndonesian = runCatching {
+        isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE
+    }.getOrDefault(false)
+    return if (supportsIndonesian) available + VoiceChoice(
+        GOOGLE_ID_AUTO, "id", "Indonesia", 0, network = true
+    ) else available
+}
+
+/** Never silently synthesize with an English voice or a different TTS engine. */
+fun TextToSpeech.activateIndonesianVoice(choice: VoiceChoice): Boolean {
+    if (!isIndonesian(choice.language)) return false
+    if (choice.name == GOOGLE_ID_AUTO) {
+        val locale = Locale.forLanguageTag("id-ID")
+        val result = runCatching { setLanguage(locale) }.getOrDefault(TextToSpeech.ERROR)
+        return result >= TextToSpeech.LANG_AVAILABLE &&
+            runCatching { isIndonesian(language?.language.orEmpty()) }.getOrDefault(false)
+    }
+    val voice = availableVoices().firstOrNull {
+        it.name == choice.name && isIndonesian(it.locale.language)
+    } ?: return false
+    return runCatching { setVoice(voice) == TextToSpeech.SUCCESS }.getOrDefault(false)
+}
 
 class ReadingService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -298,17 +327,15 @@ class ReadingService : Service() {
         }
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
-        // Tuturium uses Google Speech Services only, and never silently falls
-        // back to an English/online voice when an old preference is stale.
-        val available = engine.offlineVoices().filter { isIndonesian(it.locale.language) }
-        val choice = resolveIndonesianVoice(available.map { it.choice() }, settings.voice)
-        val voice = available.firstOrNull { it.name == choice?.name }
-        if (voice == null) {
-            fail("Suara Indonesia Google TTS belum terpasang. Buka Pustaka Suara.")
+        // Both local and online Indonesian voices are supported. A failed
+        // network voice produces an error rather than silently switching to English.
+        val choice = resolveIndonesianVoice(engine.indonesianCandidates(), settings.voice)
+        if (choice == null) {
+            fail("Google TTS tidak menyediakan suara Indonesia. Periksa Pustaka Suara.")
             return
         }
-        if (runCatching { engine.setVoice(voice) }.getOrDefault(TextToSpeech.ERROR) != TextToSpeech.SUCCESS) {
-            fail("Data suara Indonesia belum siap. Buka Pustaka Suara untuk menginstalnya.")
+        if (!engine.activateIndonesianVoice(choice)) {
+            fail("Suara Indonesia tidak dapat dipakai. Periksa jaringan atau data Google TTS.")
             return
         }
         if (options.mixWithMusic) {
@@ -408,7 +435,7 @@ class ReadingService : Service() {
                 val message = when (code) {
                     TextToSpeech.ERROR_NOT_INSTALLED_YET -> "Suara Google TTS belum diunduh."
                     TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT ->
-                        "Suara jaringan tidak tersedia. Pilih suara offline Indonesia."
+                        "Suara Indonesia online tidak tersedia. Periksa koneksi atau pilih suara offline."
                     else -> "Google TTS gagal membacakan teks. Coba ganti suara di Pustaka Suara."
                 }
                 android.util.Log.e("TuturiumPlayback", "TTS error code $code")
