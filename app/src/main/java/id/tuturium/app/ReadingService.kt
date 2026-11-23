@@ -66,9 +66,10 @@ data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Floa
     }
 }
 
-fun TextToSpeech.availableVoices(): List<Voice> = voices.orEmpty()
-    .filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
-    .sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality })
+fun TextToSpeech.availableVoices(): List<Voice> =
+    runCatching { voices.orEmpty() }.getOrDefault(emptySet())
+        .filter { voice -> TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in voice.features.orEmpty() }
+        .sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality })
 
 fun TextToSpeech.offlineVoices(): List<Voice> = availableVoices()
     .filter { !it.isNetworkConnectionRequired }
@@ -172,20 +173,22 @@ class ReadingService : Service() {
             }, handler)
             isActive = true
         }
-        tts = TextToSpeech(this) { result ->
+        tts = TextToSpeech(this, { result ->
             handler.post {
                 handler.removeCallbacks(initTimeout)
-                ready = result == TextToSpeech.SUCCESS
+                ready = result == TextToSpeech.SUCCESS &&
+                    runCatching { tts?.engines.orEmpty().any { it.name == GOOGLE_TTS_ENGINE } }
+                        .getOrDefault(false)
                 initializationFailed = !ready
                 if (ready) {
                     tts?.setAudioAttributes(attributes)
                     tts?.setOnUtteranceProgressListener(listener)
                     if (current.loading && document != null) startCurrent()
                 } else if (current.loading) {
-                    fail("Mesin TTS Android belum tersedia.")
+                    fail("Google TTS belum tersedia. Buka Pustaka Suara untuk memasangnya.")
                 }
             }
-        }
+        }, GOOGLE_TTS_ENGINE)
         handler.postDelayed(initTimeout, 15_000)
     }
 
@@ -245,17 +248,28 @@ class ReadingService : Service() {
                 if (current.loading) startCurrent() else publish()
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Exception) {
-                if (ticket == request) fail("Dokumen tidak dapat dibuka.")
+            } catch (error: Exception) {
+                android.util.Log.e("TuturiumPlayback", "Document read failed", error)
+                if (ticket == request) fail("Dokumen gagal dibuka. Coba impor ulang jika berkas rusak.")
             }
         }
     }
 
+    /** Errors in a TTS engine must not crash the app or look like damaged PDF files. */
     private fun startCurrent() {
+        try {
+            startCurrentInternal()
+        } catch (error: Exception) {
+            android.util.Log.e("TuturiumPlayback", "Cannot start speech", error)
+            fail("Pemutaran gagal. Pilih suara Indonesia lain atau periksa Google TTS.")
+        }
+    }
+
+    private fun startCurrentInternal() {
         val pass = document?.passes?.getOrNull(current.index) ?: return
         if (!promote()) return
         if (initializationFailed) {
-            fail("Mesin TTS Android belum tersedia. Periksa setelan perangkat.")
+            fail("Google TTS belum siap. Buka Pustaka Suara dan periksa suara Indonesia.")
             return
         }
         if (!ready) {
@@ -283,18 +297,17 @@ class ReadingService : Service() {
         }
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
-        // Network TTS must only be activated after the user explicitly chose
-        // that voice in the library and accepted the privacy disclosure.
-        val available = if (settings.voice == null) engine.offlineVoices()
-            else engine.availableVoices()
-        val preferredLocale = if (options.matchLanguage) "id" else Locale.getDefault().language
-        val selected = if (!options.matchLanguage && settings.voice == null)
-            available.firstOrNull { it.locale.language == preferredLocale }?.choice()
-                ?: chooseVoice(available.map { it.choice() }, null, preferredLocale)
-        else chooseVoice(available.map { it.choice() }, settings.voice, preferredLocale)
-        val voice = available.firstOrNull { it.name == selected?.name }
-        if (voice == null || engine.setVoice(voice) != TextToSpeech.SUCCESS) {
-            fail("Belum ada suara TTS yang tersedia. Pilih suara lain di Pustaka Suara.")
+        // Tuturium uses Google Speech Services only, and never silently falls
+        // back to an English/online voice when an old preference is stale.
+        val available = engine.offlineVoices().filter { isIndonesian(it.locale.language) }
+        val choice = resolveIndonesianVoice(available.map { it.choice() }, settings.voice)
+        val voice = available.firstOrNull { it.name == choice?.name }
+        if (voice == null) {
+            fail("Suara Indonesia Google TTS belum terpasang. Buka Pustaka Suara.")
+            return
+        }
+        if (runCatching { engine.setVoice(voice) }.getOrDefault(TextToSpeech.ERROR) != TextToSpeech.SUCCESS) {
+            fail("Data suara Indonesia belum siap. Buka Pustaka Suara untuk menginstalnya.")
             return
         }
         if (options.mixWithMusic) {
@@ -379,8 +392,25 @@ class ReadingService : Service() {
 
         @Deprecated("Required by the Android listener")
         override fun onError(utteranceId: String?) {
-            handler.post {
-                if (utteranceId == activeUtterance) fail("Suara gagal diputar. Periksa data suara offline.")
+            reportSpeechError(utteranceId, TextToSpeech.ERROR)
+        }
+
+        override fun onError(utteranceId: String?, errorCode: Int) {
+            reportSpeechError(utteranceId, errorCode)
+        }
+    }
+
+    private fun reportSpeechError(id: String?, code: Int) {
+        handler.post {
+            if (id == activeUtterance) {
+                val message = when (code) {
+                    TextToSpeech.ERROR_NOT_INSTALLED_YET -> "Suara Google TTS belum diunduh."
+                    TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT ->
+                        "Suara jaringan tidak tersedia. Pilih suara offline Indonesia."
+                    else -> "Google TTS gagal membacakan teks. Coba ganti suara di Pustaka Suara."
+                }
+                android.util.Log.e("TuturiumPlayback", "TTS error code $code")
+                fail(message)
             }
         }
     }
@@ -527,8 +557,13 @@ class ReadingService : Service() {
         fun command(context: Context, action: String, book: String? = null, index: Int = -1, minutes: Int = 0) {
             val intent = Intent(context, ReadingService::class.java).setAction(action)
                 .putExtra("book", book).putExtra("index", index).putExtra("minutes", minutes)
-            if (action == PLAY) ContextCompat.startForegroundService(context, intent)
-            else context.startService(intent)
+            try {
+                if (action == PLAY) ContextCompat.startForegroundService(context, intent)
+                else context.startService(intent)
+            } catch (error: Exception) {
+                android.util.Log.e("TuturiumPlayback", "Cannot send $action to service", error)
+                // A missing or restricted background service must never crash the UI.
+            }
         }
     }
 }
