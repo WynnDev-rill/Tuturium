@@ -169,8 +169,8 @@ fun Tuturium(model: TuturiumModel) {
                         openBook = { model.open(it.id) },
                         onFile = openFile, onScan = scan, onLink = link,
                         onPaste = paste, onDictation = dictate, onAdd = { showAddSheet = true })
-                    "library" -> ModernLibrary(model, playback,
-                        onFolder = { model.status = "Folder akan tersedia pada pembaruan selanjutnya." })
+                    "library" -> LibraryV2(model, playback,
+                        onAdd = { showAddSheet = true })
                     "profile" -> ModernProfile(
                         onBack = { tab = "home" },
                         onStats = { tab = "stats" },
@@ -183,7 +183,7 @@ fun Tuturium(model: TuturiumModel) {
                         ModernDetailHeader("Kembali ke profil", { tab = "profile" })
                         SettingsScreen(model)
                     }
-                    "storage" -> ModernStorage(model, { tab = "profile" })
+                    "storage" -> StorageV2(model, { tab = "profile" })
                     "trash" -> ModernTrash(model, { tab = "profile" })
                     "updates" -> ModernUpdateMenu(model, { tab = "profile" })
                 }
