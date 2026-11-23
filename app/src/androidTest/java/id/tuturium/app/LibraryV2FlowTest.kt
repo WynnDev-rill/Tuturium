@@ -43,7 +43,9 @@ class LibraryV2FlowTest {
         compose.onNodeWithText("Beranda").assertIsDisplayed()
         compose.onNodeWithContentDescription("Profil tamu").performClick()
         compose.onNodeWithText("Akun tamu").assertIsDisplayed()
+        compose.onNodeWithText("Akun").performClick()
         compose.onNodeWithText("Masuk dengan Google").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Kembali").performClick()
         compose.onNodeWithText("Penyimpanan & Data").performClick()
         compose.onNodeWithText("Penyimpanan lokal").assertIsDisplayed()
     }
