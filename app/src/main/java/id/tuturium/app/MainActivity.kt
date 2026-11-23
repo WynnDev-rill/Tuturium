@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 TuturiumCloud.reconnectToken(applicationContext, account, accessToken)
+                model.reloadCloudPreferences()
                 model.refresh()
             } catch (error: CancellationException) {
                 throw error
@@ -280,6 +281,16 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var verifiedApk by mutableStateOf<File?>(null)
         private set
+
+    /** Refresh Compose settings after importing a snapshot from another device. */
+    fun reloadCloudPreferences() {
+        settings = ReadingSettings.read(app)
+        listeningOptions = ListeningOptions.read(app)
+        favoriteVoices = prefs.getStringSet("favorite_voices", emptySet()).orEmpty().toSet()
+        theme = prefs.getString("theme", "dark") ?: "dark"
+        fontSize = prefs.getFloat("font_size", 22f)
+        follow = prefs.getBoolean("follow", true)
+    }
 
     fun refresh() = viewModelScope.launch {
         val (active, deleted) = withContext(Dispatchers.IO) {
