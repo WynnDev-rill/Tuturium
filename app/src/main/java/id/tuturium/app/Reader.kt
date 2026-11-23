@@ -231,18 +231,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         "speed" -> SpeedControlSheet(model, playback) { panel = null }
         "queue" -> ReaderQueueSheet(model) { panel = null }
         "notes" -> ReaderNotesSheet(book, current) { panel = null }
-        "skip" -> {
-            @OptIn(ExperimentalMaterial3Api::class)
-            @Composable fun SkipOptions() {
-                ModalBottomSheet(onDismissRequest = { panel = null },
-                    containerColor = SpeechifyPanel) {
-                    Box(Modifier.fillMaxWidth().heightIn(max = 690.dp)) {
-                        ListeningSettingsV2(model) { panel = null }
-                    }
-                }
-            }
-            SkipOptions()
-        }
+        "skip" -> SkipOptionsSheet(model) { panel = null }
         "rename" -> {
             var newTitle by remember(book.id) { mutableStateOf(book.title) }
             AlertDialog(onDismissRequest = { panel = null },
