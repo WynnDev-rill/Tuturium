@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -116,7 +117,10 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
 
     fun refresh() = viewModelScope.launch {
-        val (active, deleted) = withContext(Dispatchers.IO) { library.books() to library.trashed() }
+        val (active, deleted) = withContext(Dispatchers.IO) {
+            library.fillMissingWordCounts()
+            library.books() to library.trashed()
+        }
         books = active
         deletedBooks = deleted
     }
@@ -199,7 +203,29 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
             if (ReadingService.state.value.bookId == book.id) ReadingService.command(app, ReadingService.STOP)
             if (reader?.id == book.id) closeReader()
             withContext(Dispatchers.IO) { library.delete(book.id) }
+            BookActions.remove(app, book.id)
             refresh()
+        }
+    }
+
+    fun shareBook(book: Book) = viewModelScope.launch {
+        safe("Gagal membagikan dokumen") {
+            // Export a readable text copy, never expose the private database file.
+            val export = withContext(Dispatchers.IO) {
+                val doc = library.document(book.id)
+                val dir = File(app.cacheDir, "shared").apply { mkdirs() }
+                File(dir, "Tuturium-${book.id}.txt").apply {
+                    writeText(doc.sections.joinToString("\n\n") { it.text }, Charsets.UTF_8)
+                }
+            }
+            val uri = FileProvider.getUriForFile(app, "${app.packageName}.updates", export)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, book.title)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            app.startActivity(Intent.createChooser(send, "Bagikan bacaan").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 
