@@ -49,6 +49,7 @@ data class Playback(
     val completed: Boolean = false,
     val range: IntRange? = null,
     val timerUntil: Long = 0,
+    val effectiveSpeed: Float = 1f,
     val error: String? = null
 )
 
@@ -88,6 +89,9 @@ class ReadingService : Service() {
     private var resumeOnFocus = false
     private var hasFocus = false
     private var foreground = false
+    private var activePrepared = PreparedSpeech("", IntArray(0))
+    private var preparedStart = 0
+    private var listenedWords = 0
     private var listeningStart = 0L
     private var listeningSpeed = 1f
     private var current = Playback()
@@ -200,6 +204,7 @@ class ReadingService : Service() {
             SEEK -> seek(intent.getIntExtra("index", 0))
             SETTINGS -> if (current.playing) {
                 speechOffset = current.range?.first ?: speechOffset
+                stopUtterance()
                 startCurrent()
             }
             TIMER -> setTimer(intent.getIntExtra("minutes", 0))
@@ -214,6 +219,7 @@ class ReadingService : Service() {
             return
         }
         stopUtterance()
+        listenedWords = 0
         document = null
         val ticket = ++request
         current = Playback(bookId = id, title = "Tuturium", loading = true, timerUntil = current.timerUntil)
@@ -254,28 +260,51 @@ class ReadingService : Service() {
         }
         val engine = tts ?: return
         val settings = ReadingSettings.read(this)
+        val options = ListeningOptions.read(this)
+        val prepared = prepareSpeech(pass.text, options)
+        val from = prepared.offsets.indexOfFirst { it >= speechOffset }
+        if (prepared.text.isEmpty() || (speechOffset > 0 && from < 0)) {
+            speechOffset = 0
+            if (current.index < current.total - 1) {
+                current = current.copy(index = current.index + 1, range = null)
+                persist(current.index)
+                handler.post { startCurrent() }
+            } else {
+                persist(current.total)
+                current = current.copy(index = 0, completed = true, range = null)
+                pause()
+            }
+            return
+        }
+        activePrepared = prepared
+        preparedStart = from.coerceAtLeast(0)
         val available = engine.offlineVoices()
-        val selected = chooseVoice(available.map { it.choice() }, settings.voice, Locale.getDefault().language)
+        val preferredLocale = if (options.matchLanguage) "id" else Locale.getDefault().language
+        val selected = chooseVoice(available.map { it.choice() }, settings.voice, preferredLocale)
         val voice = available.firstOrNull { it.name == selected?.name }
         if (voice == null || engine.setVoice(voice) != TextToSpeech.SUCCESS) {
             fail("Belum ada suara offline. Unduh data suara melalui setelan TTS Android.")
             return
         }
-        if (!hasFocus) {
+        if (options.mixWithMusic) {
+            if (hasFocus) audio.abandonAudioFocusRequest(focus)
+            hasFocus = false
+        } else if (!hasFocus) {
             hasFocus = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             if (!hasFocus) {
                 fail("Audio sedang digunakan aplikasi lain.")
                 return
             }
         }
-        engine.setSpeechRate(settings.speed)
+        val effective = rampedSpeed(settings.speed, listenedWords, options.autoRamp)
+        engine.setSpeechRate(effective)
         engine.setPitch(settings.pitch)
         val token = (++utterance).toString()
         activeUtterance = token
         lock.acquire(300_000)
-        val offset = speechOffset.coerceIn(0, pass.text.lastIndex)
-        current = current.copy(playing = true, loading = false, completed = false, range = null, error = null)
-        if (engine.speak(pass.text.substring(offset), TextToSpeech.QUEUE_FLUSH, null, token) == TextToSpeech.ERROR) {
+        current = current.copy(playing = true, loading = false, completed = false,
+            effectiveSpeed = effective, range = null, error = null)
+        if (engine.speak(prepared.text.substring(preparedStart), TextToSpeech.QUEUE_FLUSH, null, token) == TextToSpeech.ERROR) {
             fail("Suara gagal diputar. Coba pilih suara offline lainnya.")
         } else publish()
     }
@@ -297,7 +326,10 @@ class ReadingService : Service() {
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
             handler.post {
                 if (utteranceId == activeUtterance && start >= 0 && end > start) {
-                    current = current.copy(range = (speechOffset + start) until (speechOffset + end))
+                    val mappedStart = activePrepared.offsets.getOrNull(preparedStart + start)
+                    val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
+                    if (mappedStart != null && mappedEnd != null)
+                        current = current.copy(range = mappedStart..mappedEnd)
                 }
             }
         }
@@ -306,8 +338,9 @@ class ReadingService : Service() {
             handler.post {
                 if (utteranceId != activeUtterance || !current.playing) return@post
                 document?.passes?.getOrNull(current.index)?.let { pass ->
-                    ListeningStats.recordUtterance(this@ReadingService, pass.text,
-                        ReadingSettings.read(this@ReadingService).speed)
+                    ListeningStats.recordUtterance(this@ReadingService, activePrepared.text,
+                        current.effectiveSpeed)
+                    listenedWords += countDocumentWords(activePrepared.text)
                 }
                 if (current.index + 1 < current.total) {
                     speechOffset = 0
