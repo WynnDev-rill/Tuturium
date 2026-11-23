@@ -122,6 +122,7 @@ class ReadingService : Service() {
     private var cachedVoices: List<VoiceChoice> = emptyList()
     private var appliedVoiceName: String? = null
     private var startupStage = "persiapan"
+    private var normalSpeedRetryPass = -1
     private var document: ReadingDocument? = null
     private var request = 0
     private var utterance = 0
@@ -266,6 +267,9 @@ class ReadingService : Service() {
             return
         }
         stopUtterance()
+        normalSpeedRetryPass = -1
+        cachedVoices = emptyList()
+        appliedVoiceName = null
         speechOffset = offset.coerceAtLeast(0)
         listenedWords = 0
         document = null
@@ -385,7 +389,8 @@ class ReadingService : Service() {
             }
         }
         startupStage = "mengatur suara"
-        val requestedSpeed = rampedSpeed(settings.speed, listenedWords, options.autoRamp)
+        val requestedSpeed = if (normalSpeedRetryPass == current.index) 1f
+            else rampedSpeed(settings.speed, listenedWords, options.autoRamp)
         val usableSpeed = runCatching {
             if (engine.setSpeechRate(requestedSpeed) == TextToSpeech.SUCCESS) requestedSpeed
             else if (engine.setSpeechRate(1f) == TextToSpeech.SUCCESS) 1f else requestedSpeed
@@ -407,7 +412,9 @@ class ReadingService : Service() {
         }.onFailure { android.util.Log.e("TuturiumPlayback", "Google TTS speak exception", it) }
             .getOrDefault(TextToSpeech.ERROR)
         if (result == TextToSpeech.ERROR) {
-            fail("Google TTS menolak pembacaan. Periksa koneksi dan coba pratinjau suara lainnya.")
+            if (!retryAtNormalSpeed(TextToSpeech.ERROR)) {
+                fail("Google TTS menolak pembacaan. Periksa koneksi dan coba pratinjau suara lainnya.")
+            }
         } else {
             startupStage = "memperbarui pemutar"
             publish()
@@ -419,6 +426,7 @@ class ReadingService : Service() {
         val next = index.coerceIn(0, current.total - 1)
         val active = keepPlaying && (current.playing || current.loading)
         stopUtterance()
+        normalSpeedRetryPass = -1
         speechOffset = offset.coerceIn(0,
             (document?.passes?.getOrNull(next)?.text?.lastIndex ?: 0).coerceAtLeast(0))
         current = current.copy(index = next, completed = false, range = null, error = null)
@@ -453,12 +461,14 @@ class ReadingService : Service() {
                 runCatching { if (lock.isHeld) lock.release() }
                     .onFailure { android.util.Log.w("TuturiumPlayback", "Release wakelock failed", it) }
                 if (current.index + 1 < current.total) {
+                    normalSpeedRetryPass = -1
                     speechOffset = 0
                     current = current.copy(index = current.index + 1, range = null)
                     persist(current.index)
                     startCurrent()
                 } else {
                     persist(current.total)
+                    normalSpeedRetryPass = -1
                     speechOffset = 0
                     current = current.copy(index = 0, completed = true, range = null)
                     pause()
@@ -486,9 +496,27 @@ class ReadingService : Service() {
         }
     }
 
+    /** Retry only genuine synthesis errors: a successful 1× preview may not
+     * support the user's faster reader rate. Never loop on connectivity errors. */
+    private fun retryAtNormalSpeed(code: Int): Boolean {
+        val recoverable = code !in setOf(
+            TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT,
+            TextToSpeech.ERROR_NOT_INSTALLED_YET)
+        if (!shouldRetrySpeechAtNormalSpeed(current.effectiveSpeed,
+                normalSpeedRetryPass == current.index, recoverable)) return false
+        normalSpeedRetryPass = current.index
+        speechOffset = current.range?.first ?: speechOffset
+        android.util.Log.w("TuturiumPlayback", "Retrying pass at 1x after TTS error $code")
+        stopUtterance()
+        current = current.copy(playing = false, loading = true, range = null, error = null)
+        handler.post { if (current.loading) startCurrent() }
+        return true
+    }
+
     private fun reportSpeechError(id: String?, code: Int) {
         handler.post {
             if (id == activeUtterance) {
+                if (retryAtNormalSpeed(code)) return@post
                 val message = when (code) {
                     TextToSpeech.ERROR_NOT_INSTALLED_YET -> "Suara Google TTS belum diunduh."
                     TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT ->
