@@ -97,7 +97,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var voices by mutableStateOf<List<VoiceChoice>>(emptyList())
         private set
-    var voiceStatus by mutableStateOf("Memuat suara offline…")
+    var voiceStatus by mutableStateOf("Memuat pustaka suara…")
         private set
     var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
         private set
@@ -293,10 +293,10 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         voiceStatus = "Memuat suara offline…"
         voiceProbe = TextToSpeech(app) { result ->
             viewModelScope.launch(Dispatchers.Main) {
-                voices = if (result == TextToSpeech.SUCCESS) voiceProbe?.offlineVoices().orEmpty().map { it.choice() }
+                voices = if (result == TextToSpeech.SUCCESS) voiceProbe?.availableVoices().orEmpty().map { it.choice() }
                     .sortedWith(compareByDescending<VoiceChoice> { isIndonesian(it.language) }.thenBy { it.label }.thenBy { it.name })
                 else emptyList()
-                voiceStatus = if (voices.isEmpty()) "Belum ada suara offline yang terpasang." else ""
+                voiceStatus = if (voices.isEmpty()) "Belum ada suara TTS yang tersedia pada perangkat." else ""
             }
         }
     }
