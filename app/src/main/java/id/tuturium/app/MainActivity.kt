@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -75,6 +76,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     private var waitingForInstallerPermission = false
     private var voiceProbe: TextToSpeech? = null
     private var voiceLoadToken = 0
+    private var voiceReady = false
+    private var previewToken = 0
 
     var books by mutableStateOf<List<Book>>(emptyList())
         private set
@@ -100,6 +103,16 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     var voices by mutableStateOf<List<VoiceChoice>>(emptyList())
         private set
     var voiceStatus by mutableStateOf("Memuat pustaka suara…")
+        private set
+    var previewingVoice by mutableStateOf<String?>(null)
+        private set
+    var previewLoading by mutableStateOf(false)
+        private set
+    var previewError by mutableStateOf<String?>(null)
+        private set
+    var favoriteVoices by mutableStateOf(
+        prefs.getStringSet("favorite_voices", emptySet()).orEmpty().toSet()
+    )
         private set
     var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
         private set
@@ -308,26 +321,29 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun loadVoices() {
         val token = ++voiceLoadToken
+        stopVoicePreview()
+        voiceReady = false
         voiceProbe?.shutdown()
         voiceProbe = null
         voiceStatus = "Memuat suara Google Indonesia…"
-        // Pass the engine package explicitly: never enumerate default-engine voices.
+        // Always select the Google engine explicitly, never the device default.
         try {
             voiceProbe = TextToSpeech(app, { result ->
                 viewModelScope.launch(Dispatchers.Main) {
                     if (token != voiceLoadToken) return@launch
+                    val engine = voiceProbe
                     val googleReady = result == TextToSpeech.SUCCESS &&
-                        runCatching { voiceProbe?.engines.orEmpty().any {
+                        runCatching { engine?.engines.orEmpty().any {
                             it.name == GOOGLE_TTS_ENGINE
                         } }.getOrDefault(false)
-                    voices = if (googleReady) {
-                        googleIndonesianVoices(
-                            voiceProbe?.offlineVoices().orEmpty().map { it.choice() })
-                    } else emptyList()
+                    voiceReady = googleReady
+                    voices = if (googleReady && engine != null)
+                        engine.indonesianCandidates() else emptyList()
+                    if (googleReady) engine?.setOnUtteranceProgressListener(previewListener)
                     voiceStatus = when {
                         !googleReady -> "Google Speech Services belum tersedia."
                         voices.isEmpty() ->
-                            "Suara Indonesia belum diunduh. Pasang data suara Google untuk menggunakannya."
+                            "Google TTS tidak melaporkan suara bahasa Indonesia. Periksa jaringan atau pasang data suara."
                         else -> ""
                     }
                 }
@@ -335,8 +351,109 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         } catch (error: Exception) {
             android.util.Log.e("TuturiumVoice", "Google TTS cannot initialize", error)
             voices = emptyList()
+            voiceReady = false
             voiceStatus = "Google Speech Services tidak dapat dijalankan."
         }
+    }
+
+    private val previewListener = object : UtteranceProgressListener() {
+        override fun onStart(utteranceId: String?) {
+            updatePreview(utteranceId) { previewLoading = false }
+        }
+        override fun onDone(utteranceId: String?) {
+            updatePreview(utteranceId) {
+                previewingVoice = null
+                previewLoading = false
+            }
+        }
+        @Deprecated("Required on older Android")
+        override fun onError(utteranceId: String?) {
+            previewFailure(utteranceId, TextToSpeech.ERROR)
+        }
+        override fun onError(utteranceId: String?, errorCode: Int) {
+            previewFailure(utteranceId, errorCode)
+        }
+        override fun onStop(utteranceId: String?, interrupted: Boolean) {
+            updatePreview(utteranceId) {
+                previewingVoice = null
+                previewLoading = false
+            }
+        }
+    }
+
+    private fun updatePreview(id: String?, action: () -> Unit) {
+        if (id != "preview-$previewToken") return
+        viewModelScope.launch(Dispatchers.Main.immediate) {
+            if (id == "preview-$previewToken") action()
+        }
+    }
+
+    private fun previewFailure(id: String?, error: Int) {
+        updatePreview(id) {
+            previewingVoice = null
+            previewLoading = false
+            previewError = when (error) {
+                TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT ->
+                    "Pratinjau gagal: jaringan tidak tersedia."
+                TextToSpeech.ERROR_NOT_INSTALLED_YET ->
+                    "Paket suara ini belum siap. Unduh data suara Google atau coba suara lain."
+                else -> "Pratinjau suara gagal. Coba suara Indonesia lainnya."
+            }
+        }
+    }
+
+    fun stopVoicePreview() {
+        ++previewToken
+        previewingVoice = null
+        previewLoading = false
+        voiceProbe?.stop()
+    }
+
+    fun previewVoice(name: String) {
+        if (previewingVoice == name) {
+            stopVoicePreview()
+            return
+        }
+        stopVoicePreview()
+        previewError = null
+        val choice = voices.firstOrNull { it.name == name && isIndonesian(it.language) }
+        val engine = voiceProbe
+        if (choice == null || !voiceReady || engine == null) {
+            previewError = "Suara belum siap. Muat ulang pustaka suara."
+            return
+        }
+        if (!engine.activateIndonesianVoice(choice)) {
+            previewError = "Suara Indonesia tidak tersedia. Periksa koneksi atau paket Google TTS."
+            return
+        }
+        // Avoid mixing narrator audio with the selected voice's preview.
+        if (ReadingService.state.value.playing || ReadingService.state.value.loading) {
+            ReadingService.command(app, ReadingService.PAUSE)
+        }
+        val utteranceId = "preview-${++previewToken}"
+        previewingVoice = name
+        previewLoading = true
+        runCatching {
+            engine.setSpeechRate(1f)
+            engine.setPitch(1f)
+            engine.speak(
+                "Halo, ini pratinjau suara Indonesia dari Google. " +
+                    "Anda dapat memilih suara ini untuk mendengarkan buku di Tuturium.",
+                TextToSpeech.QUEUE_FLUSH, null, utteranceId
+            )
+        }.onSuccess { result ->
+            if (result == TextToSpeech.ERROR) previewFailure(utteranceId, TextToSpeech.ERROR)
+        }.onFailure {
+            android.util.Log.e("TuturiumVoice", "Preview failed", it)
+            previewFailure(utteranceId, TextToSpeech.ERROR)
+        }
+    }
+
+    fun toggleFavoriteVoice(name: String) {
+        if (voices.none { it.name == name }) return
+        favoriteVoices = if (name in favoriteVoices) favoriteVoices - name
+            else favoriteVoices + name
+        prefs.edit().putStringSet("favorite_voices", favoriteVoices.toSet()).apply()
     }
 
     fun installGoogleVoices() {
@@ -446,6 +563,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        stopVoicePreview()
         voiceProbe?.shutdown()
         super.onCleared()
     }
