@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Rule
@@ -20,12 +21,19 @@ class ReaderFlowTest {
 
     @After fun cleanup() {
         val library = Library.get(compose.activity)
-        library.books().filter { it.title == EXAMPLE }.forEach { library.delete(it.id) }
+        library.books().filter { it.title == EXAMPLE }.forEach {
+            library.delete(it.id)
+            library.deletePermanently(it.id)
+        }
     }
 
-    @Test fun createExampleNavigateBookmarkAndReturnToLibrary() {
-        compose.onNodeWithText("Pustaka saya").assertIsDisplayed()
-        compose.onNodeWithText("Buka contoh bacaan").performClick()
+    @Test fun createExampleNavigateBookmarkAndReturnToHome() {
+        compose.onNodeWithText("Lanjutkan").assertIsDisplayed()
+        compose.onNodeWithText("Tempel").performClick()
+        compose.onNodeWithText("Judul (opsional)").performTextInput(EXAMPLE)
+        compose.onNodeWithText("Teks bacaan").performTextInput(
+            "Kalimat pertama. Kalimat kedua. Kalimat ketiga. Kalimat keempat.")
+        compose.onNodeWithText("Simpan").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText(EXAMPLE).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Kalimat berikutnya").performClick()
         compose.onNodeWithText("2 / 4").assertIsDisplayed()
