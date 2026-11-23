@@ -166,7 +166,7 @@ class DocumentImporter(private val context: Context) {
         var total = 0L
         val sections = spine.mapIndexedNotNull { index, ref ->
             if (ref.attr("linear") == "no") return@mapIndexedNotNull null
-            val entry = items[ref.attr("id")] ?: error("Bagian EPUB tidak lengkap.")
+            val entry = items[ref.attr("idref")] ?: error("Bagian EPUB tidak lengkap.")
             if (entry.attr("media-type") !in setOf("application/xhtml+xml", "text/html")) {
                 return@mapIndexedNotNull null
             }
