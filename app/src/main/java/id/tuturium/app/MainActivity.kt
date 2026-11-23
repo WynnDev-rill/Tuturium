@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         model.refresh()
+        model.reloadVoicesIfOpened()
         model.returnFromInstallerSettings(this)
     }
 
@@ -73,6 +74,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     private var checked = false
     private var waitingForInstallerPermission = false
     private var voiceProbe: TextToSpeech? = null
+    private var voiceLoadToken = 0
 
     var books by mutableStateOf<List<Book>>(emptyList())
         private set
@@ -284,21 +286,64 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun play(book: Book, index: Int = -1) {
         val state = ReadingService.state.value
-        if (state.bookId == book.id && (state.playing || state.loading)) ReadingService.command(app, ReadingService.PAUSE)
+        val launched = if (state.bookId == book.id && (state.playing || state.loading))
+            ReadingService.command(app, ReadingService.PAUSE)
         else ReadingService.command(app, ReadingService.PLAY, book.id, index)
+        if (!launched) status = "Pemutar Android tidak dapat dimulai. Buka Tuturium dan coba lagi."
+    }
+
+    fun reloadVoicesIfOpened() {
+        if (voiceProbe != null) loadVoices()
     }
 
     fun loadVoices() {
+        val token = ++voiceLoadToken
         voiceProbe?.shutdown()
-        voiceStatus = "Memuat suara offline…"
-        voiceProbe = TextToSpeech(app) { result ->
-            viewModelScope.launch(Dispatchers.Main) {
-                voices = if (result == TextToSpeech.SUCCESS) voiceProbe?.availableVoices().orEmpty().map { it.choice() }
-                    .sortedWith(compareByDescending<VoiceChoice> { isIndonesian(it.language) }.thenBy { it.label }.thenBy { it.name })
-                else emptyList()
-                voiceStatus = if (voices.isEmpty()) "Belum ada suara TTS yang tersedia pada perangkat." else ""
-            }
+        voiceProbe = null
+        voiceStatus = "Memuat suara Google Indonesia…"
+        // Pass the engine package explicitly: never enumerate default-engine voices.
+        try {
+            voiceProbe = TextToSpeech(app, { result ->
+                viewModelScope.launch(Dispatchers.Main) {
+                    if (token != voiceLoadToken) return@launch
+                    val googleReady = result == TextToSpeech.SUCCESS &&
+                        runCatching { voiceProbe?.engines.orEmpty().any {
+                            it.name == GOOGLE_TTS_ENGINE
+                        } }.getOrDefault(false)
+                    voices = if (googleReady) {
+                        googleIndonesianVoices(
+                            voiceProbe?.offlineVoices().orEmpty().map { it.choice() })
+                    } else emptyList()
+                    voiceStatus = when {
+                        !googleReady -> "Google Speech Services belum tersedia."
+                        voices.isEmpty() ->
+                            "Suara Indonesia belum diunduh. Pasang data suara Google untuk menggunakannya."
+                        else -> ""
+                    }
+                }
+            }, GOOGLE_TTS_ENGINE)
+        } catch (error: Exception) {
+            android.util.Log.e("TuturiumVoice", "Google TTS cannot initialize", error)
+            voices = emptyList()
+            voiceStatus = "Google Speech Services tidak dapat dijalankan."
         }
+    }
+
+    fun installGoogleVoices() {
+        val intent = Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).apply {
+            setPackage(GOOGLE_TTS_ENGINE)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { app.startActivity(intent) }
+            .onFailure {
+                runCatching {
+                    app.startActivity(Intent(Intent.ACTION_VIEW,
+                        Uri.parse("market://details?id=$GOOGLE_TTS_ENGINE"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }.onFailure {
+                    status = "Google TTS belum tersedia di perangkat ini."
+                }
+            }
     }
 
     fun changeSettings(value: ReadingSettings, persist: Boolean = true) {

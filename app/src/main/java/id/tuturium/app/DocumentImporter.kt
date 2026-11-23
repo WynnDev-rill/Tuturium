@@ -65,7 +65,15 @@ class DocumentImporter(private val context: Context) {
             val readable = sections.map { it.copy(text = it.text.trim()) }.filter { it.text.isNotBlank() }
             require(readable.sumOf { it.text.length.toLong() } <= MAX_TEXT) { "Teks dokumen terlalu panjang." }
             ensureActive()
-            Library.get(context).add(title, format.uppercase(Locale.ROOT), ReadingDocument(readable))
+            val library = Library.get(context)
+            val book = library.add(title, format.uppercase(Locale.ROOT), ReadingDocument(readable))
+            if (format == "pdf") {
+                // Retain source pages for the faithful PDF reader; extraction is still used
+                // for TTS word-level highlighting. Already-imported books remain usable.
+                runCatching { library.saveOriginalPdf(book.id, file) }
+                    .onFailure { android.util.Log.w("TuturiumImport", "Cannot retain PDF layout", it) }
+            }
+            book
         } finally {
             file.delete()
         }

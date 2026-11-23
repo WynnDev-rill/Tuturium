@@ -66,6 +66,23 @@ class Library private constructor(context: Context) :
         }
     }
 
+    /** The original PDF is optional: imports predating 1.3.1 have text-only archives. */
+    fun originalPdf(id: String): File? = File(folder, "$id.pdf").takeIf { it.isFile }
+
+    fun saveOriginalPdf(id: String, source: File) {
+        require(book(id)?.format == "PDF") { "Dokumen ini bukan PDF." }
+        require(source.isFile && source.length() in 1L..(100L * 1024 * 1024))
+        val atomic = AtomicFile(File(folder, "$id.pdf"))
+        val stream = atomic.startWrite()
+        try {
+            source.inputStream().use { it.copyTo(stream, 65536) }
+            atomic.finishWrite(stream)
+        } catch (error: Exception) {
+            atomic.failWrite(stream)
+            throw error
+        }
+    }
+
     fun documentBytes(id: String): Long =
         File(folder, "$id.json").takeIf { it.isFile }?.length() ?: 0L
 
@@ -151,7 +168,10 @@ class Library private constructor(context: Context) :
     }
 
     fun deletePermanently(id: String) {
-        if (writableDatabase.delete("books", "id = ? AND deleted_at > 0", arrayOf(id)) != 0) documentFile(id).delete()
+        if (writableDatabase.delete("books", "id = ? AND deleted_at > 0", arrayOf(id)) != 0) {
+            documentFile(id).delete()
+            File(folder, "$id.pdf").delete()
+        }
     }
 
     fun bookmarks(id: String): List<Bookmark> = readableDatabase.query(
