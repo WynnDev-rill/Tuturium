@@ -11,7 +11,7 @@ class LibraryPresentationTest {
         assertEquals(0, estimateRemainingMinutes(1500, 100, 100, 1f))
     }
     @Test fun wordCountSkipsWhitespaceAndPunctuation() {
-        assertEquals(5, countDocumentWords("Halo, dunia!\nIni adalah sebuah tes."))
+        assertEquals(6, countDocumentWords("Halo, dunia!\nIni adalah sebuah tes."))
     }
     @Test fun sortingByAddedDateDiffersFromLatestRead() {
         val a = Book("a", "Zebra", "TXT", 5, 0, 300, 20, 100)
