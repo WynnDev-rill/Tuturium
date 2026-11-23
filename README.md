@@ -14,6 +14,20 @@ Unduh `Tuturium.apk` dari [GitHub Releases](https://github.com/WynnDev-rill/Tutu
 
 Isi yang dibaca merupakan teks yang diekstrak. EPUB tanpa DRM mengikuti urutan spine, DOCX mengambil isi utama, dan PDF ditampilkan sebagai teks per halaman. Untuk halaman PDF tanpa teks, model OCR lokal mengenali tulisan Latin. Kuota perangkat dan keterbacaan gambar memengaruhi OCR. Jumlah maksimum dokumen impor adalah 100 MB, hingga 1.500 halaman PDF atau bagian EPUB, dan hingga dua juta karakter hasil ekstraksi. Mesin TTS yang menyediakan rentang ucapan memungkinkan sorotan kata. Mesin lain menggunakan sorotan kalimat.
 
+## Aktivasi rilis otomatis (sekali saja)
+
+GitHub Actions memerlukan dua secret privat `TUTURIUM_KEYSTORE_BASE64` dan `TUTURIUM_STORE_PASSWORD`. Berkas `Tuturium-signing-key.zip` yang asli berisi kedua bahan tersebut; jangan unggah ke repository publik atau kirim nilainya melalui issue.
+
+Cara cepat melalui Termux atau terminal yang telah login dengan `gh auth login`:
+
+```bash
+bash scripts/setup-signing-secrets.sh /lokasi/Tuturium-signing-key.zip
+```
+
+Skrip mengunggah nilai sebagai GitHub Actions secrets secara privat, tidak mencetak atau menyimpan nilai dalam repo, kemudian memicu build bertanda tangan. Prasyarat: `gh`, `unzip`, dan `base64`. Alternatif: atur dua nilai tersebut melalui [Repository Actions secrets](https://github.com/WynnDev-rill/Tuturium/settings/secrets/actions), lalu pilih **Actions → Signed Android release → Run workflow** pada `main` tanpa mengisi tag.
+
+Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/WynnDev-rill/Tuturium/releases/latest) dan dapat diperiksa dari menu **Profil → Pembaruan aplikasi**. Versi baru harus memakai sertifikat yang sama agar bisa memperbarui instalasi yang sudah ada tanpa menghapus data.
+
 ## Build dan pengujian
 
 Gunakan JDK 17, Android SDK Platform 35, dan Build Tools 35.0.0. Atur `ANDROID_HOME` atau `sdk.dir` di `local.properties`.
