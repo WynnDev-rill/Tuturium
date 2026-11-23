@@ -111,6 +111,11 @@ internal object TuturiumCloud {
         pending = scope.launch { uploadNow(context.applicationContext) }
     }
 
+    suspend fun syncNow(context: Context) {
+        pending?.cancel()
+        withContext(Dispatchers.IO) { uploadNow(context.applicationContext) }
+    }
+
     private suspend fun uploadNow(context: Context) {
         mutex.withLock {
             val currentToken = token ?: return
