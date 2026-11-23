@@ -437,8 +437,10 @@ class ReadingService : Service() {
 
     private fun stopUtterance() {
         activeUtterance = null
-        tts?.stop()
-        if (lock.isHeld) lock.release()
+        runCatching { tts?.stop() }.onFailure {
+            android.util.Log.w("TuturiumPlayback", "TTS stop failed", it)
+        }
+        if (lock.isHeld) runCatching { lock.release() }
     }
 
     private fun setTimer(minutes: Int) {
@@ -450,7 +452,10 @@ class ReadingService : Service() {
 
     private fun fail(message: String) {
         current = current.copy(error = message)
-        pause()
+        runCatching { pause() }.onFailure {
+            android.util.Log.e("TuturiumPlayback", "Failed to pause after playback error", it)
+            current = current.copy(playing = false, loading = false, error = message)
+        }
     }
 
     private fun finish() {
@@ -467,8 +472,10 @@ class ReadingService : Service() {
             ServiceCompat.startForeground(this, NOTIFICATION, notification(), type)
             foreground = true
             true
-        } catch (_: IllegalStateException) {
-            current = current.copy(playing = false, loading = false, error = "Buka Tuturium untuk memulai pemutaran.")
+        } catch (error: Exception) {
+            android.util.Log.e("TuturiumPlayback", "Could not start foreground media service", error)
+            current = current.copy(playing = false, loading = false,
+                error = "Pemutar audio diblokir Android. Buka Tuturium dan coba lagi.")
             getSystemService(NotificationManager::class.java).cancel(NOTIFICATION)
             stopSelf()
             false
