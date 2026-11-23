@@ -13,7 +13,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import org.junit.After
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,11 +20,6 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ReaderFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
-
-    @Before fun useLocalUiForInstrumentationOnly() {
-        TuturiumCloud.debugEnableForTests()
-        compose.waitForIdle()
-    }
 
     @After fun cleanup() {
         val library = Library.get(compose.activity)
