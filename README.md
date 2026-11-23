@@ -28,6 +28,12 @@ Skrip mengunggah nilai sebagai GitHub Actions secrets secara privat, tidak mence
 
 Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/WynnDev-rill/Tuturium/releases/latest) dan dapat diperiksa dari menu **Profil → Pembaruan aplikasi**. Versi baru harus memakai sertifikat yang sama agar bisa memperbarui instalasi yang sudah ada tanpa menghapus data.
 
+## Pembaruan 1.1.1
+
+- Menggunakan **Comic Neue** (SIL OFL 1.1) untuk tampilan yang mendekati tulisan tangan pada referensi tanpa huruf sambung. Berkas font dan lisensinya disertakan secara lokal di `res/font` dan `docs/licenses/ComicNeue-OFL.txt`.
+- Navigasi bawah sekarang menghormati area aman tombol navigasi sistem Android.
+- APK **release** dioptimalkan untuk perangkat **ARM64** saja dan memakai R8/resource shrinking. Berbeda dari APK debug universal untuk pengujian emulator. Tidak ada perubahan pada kualitas model OCR atau mesin TTS; perangkat dengan arsitektur x86 atau 32-bit tidak didukung oleh APK release personal ini.
+
 ## Build dan pengujian
 
 Gunakan JDK 17, Android SDK Platform 35, dan Build Tools 35.0.0. Atur `ANDROID_HOME` atau `sdk.dir` di `local.properties`.
