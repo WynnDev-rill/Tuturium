@@ -106,7 +106,8 @@ internal class DriveAppDataClient(private val token: String) {
                     } else {
                         checkResponse(request)
                         val completed = JSONObject(request.inputStream.bufferedReader().use { it.readText() })
-                        val id = completed.optString("id").ifBlank { existing?.id }
+                        val id = completed.optString("id").takeIf { it.isNotBlank() }
+                            ?: existing?.id
                             ?: throw IOException("Google Drive tidak mengembalikan file ID.")
                         val md5 = completed.optString("md5Checksum").ifBlank { null }
                         if (md5 != null && md5 != checksum(source))
