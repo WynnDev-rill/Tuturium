@@ -25,7 +25,7 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
     val elapsedSeconds = (wholeSeconds * progress).toInt()
     Surface(color = Color.Black,
         shape = RoundedCornerShape(topStart = 23.dp, topEnd = 23.dp)) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding()
+        Column(Modifier.fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
             LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) },
