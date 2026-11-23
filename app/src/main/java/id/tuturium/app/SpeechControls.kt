@@ -140,3 +140,8 @@ fun prepareSpeech(source: String, settings: ListeningOptions): PreparedSpeech {
     return PreparedSpeech(result.substring(first, last + 1),
         indices.subList(first, last + 1).toIntArray())
 }
+
+/** A voice that works in the 1× preview may reject a custom speaking rate.
+ *  Only retry recoverable synthesis failures once; never loop on network errors. */
+fun shouldRetrySpeechAtNormalSpeed(speed: Float, retried: Boolean, recoverable: Boolean): Boolean =
+    recoverable && !retried && kotlin.math.abs(speed - 1f) > 0.01f
