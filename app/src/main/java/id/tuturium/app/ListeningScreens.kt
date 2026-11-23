@@ -141,22 +141,24 @@ fun VoiceLibraryV2(model: TuturiumModel, onBack: () -> Unit) {
 @Composable
 fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
     val realVoices = model.voices.filter { isIndonesian(it.language) }
-        .distinctBy { it.name }
-    val primary = realVoices.firstOrNull() ?: model.voices.firstOrNull()
+        .distinctBy { it.name }.sortedWith(compareBy<VoiceChoice> { it.network }
+            .thenByDescending { it.quality })
+    val primary = realVoices.firstOrNull { !it.network }
+        ?: model.voices.firstOrNull { !it.network }
     LazyColumn(modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Text("Suara Indonesia tersedia", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
-            Text("Suara offline yang benar-benar tersedia di perangkat ini.",
+            Text("Suara dari mesin Android, offline maupun online jika disediakan.",
                 color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
         }
         if (realVoices.isEmpty()) item {
             Surface(color = Color(0xFF333333), shape = RoundedCornerShape(18.dp)) {
                 Text(model.voiceStatus.ifBlank {
-                    "Belum tersedia suara bahasa Indonesia yang terpasang. " +
-                    "Empat profil di bawah membutuhkan minimal satu suara Indonesia offline."
+                    "Belum tersedia suara Indonesia di mesin TTS perangkat. " +
+                    "Profil nada memerlukan minimal satu suara offline."
                 }, modifier = Modifier.padding(16.dp), color = SpeechifyMuted)
             }
         }
@@ -170,7 +172,8 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
                     Text(if (voice.name == model.settings.voice) "Terpilih" else voice.label,
                         style = MaterialTheme.typography.bodyLarge,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("ID · Offline", color = SpeechifyMuted,
+                    Text(if (voice.network) "ID · Online melalui mesin Android"
+                        else "ID · Offline", color = SpeechifyMuted,
                         style = MaterialTheme.typography.bodySmall)
                 }
                 if (voice.name == model.settings.voice) Icon(Icons.Rounded.CheckCircle,
@@ -182,8 +185,8 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(12.dp))
             Text("4 Profil Suara", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(5.dp))
-            Text("Empat variasi nada dari mesin suara yang sama; " +
-                "bukan empat model neural berbeda dan tidak membutuhkan internet.",
+            Text("Empat variasi nada dari satu suara offline, " +
+                "bukan empat model neural yang berbeda.",
                 color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
         }
         items(voiceStyles) { profile ->
