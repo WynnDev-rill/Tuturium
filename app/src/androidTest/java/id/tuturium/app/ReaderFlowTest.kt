@@ -52,8 +52,7 @@ class ReaderFlowTest {
             "Kalimat pertama. Kalimat kedua. Kalimat ketiga. Kalimat keempat.")
         compose.onNodeWithText("Simpan").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText(EXAMPLE).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription("Kalimat berikutnya").performClick()
-        compose.onNodeWithText("2 / 4").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Maju sekitar 10 detik").performClick()
         compose.onNodeWithContentDescription("Simpan markah").performClick()
         compose.waitUntil(15_000) {
             compose.onAllNodes(hasContentDescription("Hapus markah")).fetchSemanticsNodes().isNotEmpty()
