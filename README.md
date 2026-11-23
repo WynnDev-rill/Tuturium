@@ -28,6 +28,14 @@ Skrip mengunggah nilai sebagai GitHub Actions secrets secara privat, tidak mence
 
 Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/WynnDev-rill/Tuturium/releases/latest) dan dapat diperiksa dari menu **Profil → Pembaruan aplikasi**. Versi baru harus memakai sertifikat yang sama agar bisa memperbarui instalasi yang sudah ada tanpa menghapus data.
 
+## Pembaruan 1.3.4
+
+- Perbaikan reliabilitas tombol Play pembaca dan transisi antar-kalimat dengan suara Indonesia online.
+- Menangani audio focus, wakelock, dan notifikasi sebagai komponen terpisah dari TTS.
+- Jika Google TTS gagal pada kecepatan bacaan pilihan pengguna, coba ulang sekali pada 1× seperti pratinjau, tanpa mengubah suara.
+- Pustaka Suara lebih ringkas: penjelasan panjang serta tombol muat ulang di bawah daftar dihapus.
+- Tambahan pengujian Android yang membandingkan pratinjau dan layanan pembaca pada mesin Google Indonesia yang tersedia.
+
 ## Pembaruan 1.3.3
 
 - Menghilangkan pembatasan suara Google Indonesia hanya offline; seluruh suara Indonesia Google TTS yang tersedia, termasuk melalui jaringan, dapat dipilih.
