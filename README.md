@@ -1,6 +1,6 @@
 # Tuturium
 
-Pembaca dokumen Android native dengan pustaka lokal dan text-to-speech offline. Tuturium gratis, tanpa akun atau kuota baca.
+Pembaca dokumen Android native dengan pustaka lokal dan text-to-speech bahasa Indonesia melalui Google TTS (online maupun offline). Tuturium gratis, tanpa akun atau kuota baca.
 
 ## Pasang dan gunakan
 
@@ -8,7 +8,7 @@ Unduh `Tuturium.apk` dari [GitHub Releases](https://github.com/WynnDev-rill/Tutu
 
 - Impor PDF, EPUB, DOCX atau TXT dari pemilih dokumen, atau tambahkan teks dari clipboard dan menu Berbagi.
 - Buka dokumen di Pustaka untuk membaca, memutar, mencari teks, melompat ke bagian, atau menyimpan markah.
-- Atur suara, kecepatan, nada, ukuran teks, dan tema dari Setelan. Mode otomatis memilih suara Indonesia offline dan mendahulukan `local(idd)` atau varian lokal `idd` jika tersedia. Unduh paket suara Indonesia di setelan TTS Android jika belum terpasang.
+- Atur suara, kecepatan, nada, ukuran teks, dan tema dari Setelan. Pilih suara Google Indonesia online atau offline, dengarkan pratinjaunya, kemudian simpan sebagai suara aktif. Mode otomatis memprioritaskan suara Indonesia lokal jika tersedia. Pilihan online memerlukan internet, dan pilihan suara bergantung pada paket mesin Google TTS pada perangkat.
 - Lanjutkan audio ketika layar terkunci. Gunakan putar/jeda dan tombol lompat dari notifikasi media atau dari pembaca. Pengatur waktu tidur tersedia melalui menu pembaca.
 - Tuturium memeriksa rilis stabil di GitHub saat aplikasi dibuka dan menyediakan pemeriksaan manual di Setelan. Pengunduhan dan pemasangan dimulai dengan tindakan pengguna. Android meminta konfirmasi pemasangan.
 
@@ -27,6 +27,13 @@ bash scripts/setup-signing-secrets.sh /lokasi/Tuturium-signing-key.zip
 Skrip mengunggah nilai sebagai GitHub Actions secrets secara privat, tidak mencetak atau menyimpan nilai dalam repo, kemudian memicu build bertanda tangan. Prasyarat: `gh`, `unzip`, dan `base64`. Alternatif: atur dua nilai tersebut melalui [Repository Actions secrets](https://github.com/WynnDev-rill/Tuturium/settings/secrets/actions), lalu pilih **Actions → Signed Android release → Run workflow** pada `main` tanpa mengisi tag.
 
 Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/WynnDev-rill/Tuturium/releases/latest) dan dapat diperiksa dari menu **Profil → Pembaruan aplikasi**. Versi baru harus memakai sertifikat yang sama agar bisa memperbarui instalasi yang sudah ada tanpa menghapus data.
+
+## Pembaruan 1.3.3
+
+- Menghilangkan pembatasan suara Google Indonesia hanya offline; seluruh suara Indonesia Google TTS yang tersedia, termasuk melalui jaringan, dapat dipilih.
+- Jalur Google Indonesia otomatis tersedia bila mesin melaporkan dukungan bahasa Indonesia; tidak pernah diam-diam beralih ke bahasa lain.
+- Pustaka Suara memiliki detail suara bergaya Speechify dengan tombol pratinjau, status online/offline, favorit, pemilihan suara, serta pesan kesalahan TTS.
+- Pratinjau memanfaatkan Google TTS yang benar-benar terpasang, bukan demo atau audio palsu. Ketersediaan dan keberhasilan pemutaran jaringan tetap bergantung pada mesin serta koneksi perangkat.
 
 ## Pembaruan 1.3.2
 
