@@ -4,6 +4,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -13,6 +14,11 @@ import java.util.UUID
 class LibraryV2FlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val folderName = "Uji " + UUID.randomUUID().toString().take(8)
+
+    @Before fun useLocalUiForInstrumentationOnly() {
+        TuturiumCloud.debugEnableForTests()
+        compose.waitForIdle()
+    }
 
     @After fun cleanup() {
         FolderStore.remove(compose.activity, folderName)
@@ -42,7 +48,7 @@ class LibraryV2FlowTest {
     @Test fun storageDashboardExplainsLocalStorage() {
         compose.onNodeWithContentDescription("Profil tamu").performClick()
         compose.onNodeWithText("Penyimpanan & Data").performClick()
-        compose.onNodeWithText("Penyimpanan lokal").assertIsDisplayed()
+        compose.onNodeWithText("Salinan lokal selama migrasi").assertIsDisplayed()
         compose.onNodeWithText("File bacaan").assertIsDisplayed()
         compose.onNodeWithText("Database & progres").assertIsDisplayed()
     }
