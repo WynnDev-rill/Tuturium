@@ -284,6 +284,16 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Tap-to-read always speaks from the selected word, even inside the current sentence. */
+    fun playFromWord(book: Book, selection: WordSelection) {
+        if (reader?.id != book.id) return
+        val pass = content?.passes?.getOrNull(selection.passIndex) ?: return
+        val offset = selection.offset.coerceIn(0, pass.text.lastIndex.coerceAtLeast(0))
+        val started = ReadingService.command(app, ReadingService.PLAY,
+            book = book.id, index = selection.passIndex, offset = offset)
+        if (!started) status = "Pemutar Android tidak dapat dimulai. Coba lagi."
+    }
+
     fun play(book: Book, index: Int = -1) {
         val state = ReadingService.state.value
         val launched = if (state.bookId == book.id && (state.playing || state.loading))

@@ -12,7 +12,7 @@ Unduh `Tuturium.apk` dari [GitHub Releases](https://github.com/WynnDev-rill/Tutu
 - Lanjutkan audio ketika layar terkunci. Gunakan putar/jeda dan tombol lompat dari notifikasi media atau dari pembaca. Pengatur waktu tidur tersedia melalui menu pembaca.
 - Tuturium memeriksa rilis stabil di GitHub saat aplikasi dibuka dan menyediakan pemeriksaan manual di Setelan. Pengunduhan dan pemasangan dimulai dengan tindakan pengguna. Android meminta konfirmasi pemasangan.
 
-Isi yang dibaca merupakan teks yang diekstrak. EPUB tanpa DRM mengikuti urutan spine, DOCX mengambil isi utama, dan PDF ditampilkan sebagai teks per halaman. Untuk halaman PDF tanpa teks, model OCR lokal mengenali tulisan Latin. Kuota perangkat dan keterbacaan gambar memengaruhi OCR. Jumlah maksimum dokumen impor adalah 100 MB, hingga 1.500 halaman PDF atau bagian EPUB, dan hingga dua juta karakter hasil ekstraksi. Mesin TTS yang menyediakan rentang ucapan memungkinkan sorotan kata. Mesin lain menggunakan sorotan kalimat.
+Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine, DOCX mengambil isi utama, dan PDF menyediakan pilihan **PDF** (halaman asli jika berkasnya tersimpan) atau **Teks** (paragraf rapi dengan sorotan dan pemilihan kata yang langsung dibacakan). Tampilan Teks mengikuti tema gelap/terang aplikasi, dan tombol kata aktif memudahkan kembali ke posisi narasi setelah menggulir jauh. Untuk halaman PDF tanpa teks, model OCR lokal mengenali tulisan Latin. Kuota perangkat dan keterbacaan gambar memengaruhi OCR. Jumlah maksimum dokumen impor adalah 100 MB, hingga 1.500 halaman PDF atau bagian EPUB, dan hingga dua juta karakter hasil ekstraksi. Mesin TTS yang menyediakan rentang ucapan memungkinkan sorotan kata. Mesin lain menggunakan sorotan kalimat.
 
 ## Aktivasi rilis otomatis (sekali saja)
 
@@ -27,6 +27,14 @@ bash scripts/setup-signing-secrets.sh /lokasi/Tuturium-signing-key.zip
 Skrip mengunggah nilai sebagai GitHub Actions secrets secara privat, tidak mencetak atau menyimpan nilai dalam repo, kemudian memicu build bertanda tangan. Prasyarat: `gh`, `unzip`, dan `base64`. Alternatif: atur dua nilai tersebut melalui [Repository Actions secrets](https://github.com/WynnDev-rill/Tuturium/settings/secrets/actions), lalu pilih **Actions → Signed Android release → Run workflow** pada `main` tanpa mengisi tag.
 
 Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/WynnDev-rill/Tuturium/releases/latest) dan dapat diperiksa dari menu **Profil → Pembaruan aplikasi**. Versi baru harus memakai sertifikat yang sama agar bisa memperbarui instalasi yang sudah ada tanpa menghapus data.
+
+## Pembaruan 1.3.2
+
+- Menyederhanakan sakelar **PDF / Teks** dan menghilangkan latar putih paksa pada tampilan teks PDF.
+- Mengatur ulang tipografi, jarak paragraf, dan penanda halaman tanpa menghilangkan teks sumber.
+- Sorotan warna pada kalimat dan kata sedang dibacakan; ketuk kata mana saja untuk memulai Google TTS dari kata itu.
+- Saat menggulir jauh, ketuk chip kata aktif di bagian atas untuk kembali; pembacaan tidak memaksa scroll ketika menjelajah manual.
+- Halaman PDF asli tetap putih sesuai dokumen, tetapi latar dan kontrol di sekelilingnya mengikuti tema Tuturium.
 
 ## Pembaruan 1.1.1
 

@@ -1,9 +1,11 @@
 package id.tuturium.app
 
 import android.os.SystemClock
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -34,7 +36,8 @@ import androidx.compose.ui.unit.sp
 import java.util.Locale
 import kotlinx.coroutines.delay
 
-private data class ReaderRow(val heading: String?, val text: String, val passes: List<IndexedValue<Pass>>)
+private data class ReaderRow(val heading: String?, val text: String,
+    val passes: List<IndexedValue<Pass>>, val paragraphEnd: Boolean = false)
 
 @Composable
 fun Reader(model: TuturiumModel, book: Book, document: ReadingDocument, playback: Playback, showSettings: () -> Unit) {
@@ -50,7 +53,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     val pdfSource = remember(book.id) {
         if (book.format == "PDF") Library.get(context).originalPdf(book.id) else null
     }
-    var showPdf by rememberSaveable(book.id) { mutableStateOf(pdfSource != null) }
+    var showPdf by rememberSaveable(book.id) { mutableStateOf(false) }
     val active = playback.bookId == book.id && playback.total > 0
     val current = (if (active) playback.index else model.position).coerceIn(0, document.passes.lastIndex)
     val isPlaying = active && playback.playing
@@ -86,14 +89,14 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         val start = if (first == 0) 0 else phrases[first].value.offset
                         var last = first + 1
                         // Bound the size of a layout row while keeping each spoken phrase intact.
-                        while (last < phrases.size && phrases[last].value.offset + phrases[last].value.text.length - start <= 640) {
+                        while (last < phrases.size && phrases[last].value.offset + phrases[last].value.text.length - start <= 1280) {
                             last++
                         }
                         val end = phrases.getOrNull(last)?.value?.offset ?: text.length
                         val rowPasses = phrases.subList(first, last).map {
                             IndexedValue(it.index, it.value.copy(offset = it.value.offset - start))
                         }
-                        add(ReaderRow(null, text.substring(start, end), rowPasses))
+                        add(ReaderRow(null, text.substring(start, end), rowPasses, last == phrases.size))
                         first = last
                     }
                 }
@@ -109,8 +112,20 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         document.passes.withIndex().distinctBy { it.value.section }
     }
     val list = rememberLazyListState(initialFirstVisibleItemIndex = locations[current])
-    LaunchedEffect(current, model.follow, jump) {
-        if (jump == current || (model.follow && (isPlaying || current != 0))) {
+    var manualBrowsing by remember(book.id) { mutableStateOf(false) }
+    val dragging by list.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(dragging) {
+        if (dragging) manualBrowsing = true
+    }
+    val readingOffScreen by remember(list, locations, current) {
+        derivedStateOf {
+            list.layoutInfo.visibleItemsInfo.isNotEmpty() &&
+                list.layoutInfo.visibleItemsInfo.none { it.index == locations[current] }
+        }
+    }
+    LaunchedEffect(current, model.follow, jump, manualBrowsing, showPdf) {
+        if (!showPdf && (jump == current ||
+            (model.follow && !manualBrowsing && (isPlaying || current != 0)))) {
             val target = locations[current]
             val info = list.layoutInfo
             val visible = info.visibleItemsInfo.firstOrNull { it.index == target }
@@ -124,6 +139,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     fun seek(index: Int) {
         val target = index.coerceIn(0, document.passes.lastIndex)
         jump = target
+        manualBrowsing = false
         model.seek(target)
         panel = null
     }
@@ -140,49 +156,93 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             IconButton(onClick = { model.toggleBookmark(current) }) {
                 Icon(if (marked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                     if (marked) "Hapus markah" else "Simpan markah",
-                    tint = if (marked) Color(0xFFF23E3E) else Color.White)
+                    tint = if (marked) Color(0xFFF23E3E) else MaterialTheme.colorScheme.onBackground)
             }
             IconButton(onClick = { panel = "menu" }) {
                 Icon(Icons.Rounded.MoreHoriz, "Opsi pembaca", Modifier.size(27.dp))
             }
         }
-        if (book.format == "PDF") {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 7.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically) {
-                if (pdfSource != null) {
-                    FilterChip(showPdf, { showPdf = true },
-                        label = { Text("PDF asli") },
-                        leadingIcon = { Icon(Icons.Rounded.PictureAsPdf, null) })
-                    Spacer(Modifier.width(9.dp))
+        if (book.format == "PDF" && pdfSource != null) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 11.dp),
+                horizontalArrangement = Arrangement.Center) {
+                Surface(shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                    Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf(true to "PDF", false to "Teks").forEach { (pdf, label) ->
+                            val selected = showPdf == pdf
+                            Surface(onClick = {
+                                showPdf = pdf
+                                if (!pdf) {
+                                    manualBrowsing = false
+                                    jump = current
+                                }
+                            }, shape = RoundedCornerShape(20.dp),
+                                color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                    else Color.Transparent) {
+                                Text(label, modifier = Modifier.padding(horizontal = 22.dp, vertical = 9.dp),
+                                    fontSize = 14.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                 }
-                FilterChip(!showPdf || pdfSource == null, { showPdf = false },
-                    label = { Text("Teks & sorotan") },
-                    leadingIcon = { Icon(Icons.Rounded.Subject, null) })
+            }
+        }
+        // When the user browses away (or opens the original PDF), this returns to
+        // the exact passage the narrator is reading without interrupting audio.
+        if (active && (showPdf || (manualBrowsing && readingOffScreen))) {
+            val spokenText = document.passes.getOrNull(current)?.text.orEmpty()
+            val range = playback.range
+            val snippet = if (range != null && range.first in spokenText.indices) {
+                spokenText.substring(range.first, (range.last + 1).coerceAtMost(spokenText.length))
+            } else {
+                spokenText.trimStart().substringBefore(' ').take(28)
+            }
+            Row(Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                horizontalArrangement = Arrangement.Center) {
+                Surface(onClick = {
+                    showPdf = false
+                    manualBrowsing = false
+                    jump = current
+                }, shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer) {
+                    Row(Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.KeyboardArrowUp, null, Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Spacer(Modifier.width(6.dp))
+                        Text(snippet.take(30).ifBlank { "Kembali ke bacaan" },
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                }
             }
         }
         if (showPdf && pdfSource != null) {
             Box(Modifier.weight(1f)) { OriginalPdfPages(pdfSource) }
         } else {
         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth()
-            .background(if (book.format == "PDF") Color(0xFFF9F8F4)
-                else MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(horizontal = 23.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            .background(MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 17.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)) {
             itemsIndexed(rows) { _, row ->
                 if (row.heading != null) {
                     if (book.format == "PDF") {
-                        Text(row.heading, modifier = Modifier.padding(top = 8.dp, bottom = 5.dp),
-                            fontFamily = FontFamily.Serif, fontSize = 13.sp,
-                            color = Color(0xFF777777), fontWeight = FontWeight.Medium)
+                        Text(row.heading, modifier = Modifier.padding(top = 18.dp, bottom = 17.dp),
+                            fontFamily = FontFamily.SansSerif, fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium)
                     } else {
                         Text(row.heading, style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.primary)
                     }
                 } else {
                     val pass = row.passes.firstOrNull { it.index == current }?.value
-                    val sentenceColor = if (book.format == "PDF") Color(0xFFE6E8FE)
-                        else MaterialTheme.colorScheme.primaryContainer
+                    val sentenceColor = MaterialTheme.colorScheme.primaryContainer
                     val wordColor = MaterialTheme.colorScheme.primary
                     val wordInk = MaterialTheme.colorScheme.onPrimary
                     val spokenRange = playback.range.takeIf { active && pass != null }
@@ -205,26 +265,32 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     }
                     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
                     val bringIntoView = remember { BringIntoViewRequester() }
-                    LaunchedEffect(spokenRange, layout, model.follow, isPlaying) {
+                    LaunchedEffect(spokenRange, layout, model.follow, isPlaying, manualBrowsing) {
                         val word = spokenRange?.first?.plus(pass?.offset ?: 0)
                         val textLayout = layout
-                        if (model.follow && isPlaying && word != null && word in row.text.indices && textLayout != null) {
+                        if (model.follow && !manualBrowsing && isPlaying && word != null && word in row.text.indices && textLayout != null) {
                             bringIntoView.bringIntoView(textLayout.getBoundingBox(word))
                         }
                     }
-                    val latestSeek by rememberUpdatedState<(Int) -> Unit>({ seek(it) })
-                    Text(highlighted, modifier = Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoView).pointerInput(row) {
+                    val latestPlay by rememberUpdatedState<(WordSelection) -> Unit>({
+                        manualBrowsing = false
+                        jump = it.passIndex
+                        model.playFromWord(book, it)
+                    })
+                    val readableSize = (model.fontSize * 0.86f).coerceIn(16f, 29f)
+                    Text(highlighted, modifier = Modifier.fillMaxWidth()
+                        .padding(bottom = if (row.paragraphEnd) 17.dp else 0.dp)
+                        .bringIntoViewRequester(bringIntoView).pointerInput(row) {
                         detectTapGestures { point ->
                             val offset = layout?.getOffsetForPosition(point) ?: return@detectTapGestures
-                            row.passes.lastOrNull { it.value.offset <= offset }?.index?.let(latestSeek)
+                            selectSpokenWord(row.text, row.passes, offset)?.let(latestPlay)
                         }
                     }, onTextLayout = { layout = it },
-                        fontFamily = if (book.format == "PDF") FontFamily.Serif else ReaderFont,
-                        fontSize = (if (book.format == "PDF") model.fontSize * 0.85f else model.fontSize).sp,
-                        lineHeight = (model.fontSize * if (book.format == "PDF") 1.35f else 1.48f).sp,
-                        textAlign = if (book.format == "PDF") TextAlign.Justify else TextAlign.Start,
-                        color = if (book.format == "PDF") Color(0xFF222222)
-                            else MaterialTheme.colorScheme.onBackground)
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = readableSize.sp,
+                        lineHeight = (readableSize * 1.48f).sp,
+                        textAlign = TextAlign.Start,
+                        color = MaterialTheme.colorScheme.onBackground)
                 }
             }
         }

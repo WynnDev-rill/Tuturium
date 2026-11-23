@@ -39,6 +39,34 @@ fun splitSpeech(text: String, section: Int = 0, paragraph: Int = 0, limit: Int =
     return passes
 }
 
+
+/** A reader tap addresses a word within an existing TTS sentence/pass. */
+data class WordSelection(val passIndex: Int, val offset: Int)
+
+/** Maps a visual character tap to the start of the nearest readable word, not a paragraph. */
+fun selectSpokenWord(rowText: String, passes: List<IndexedValue<Pass>>,
+    tapOffset: Int): WordSelection? {
+    if (rowText.isEmpty() || passes.isEmpty()) return null
+    val location = tapOffset.coerceIn(0, rowText.lastIndex)
+    fun isWord(index: Int) = rowText[index].isLetterOrDigit()
+    val anchor = if (isWord(location)) location else {
+        val before = (location downTo 0).firstOrNull(::isWord)
+        val after = (location + 1..rowText.lastIndex).firstOrNull(::isWord)
+        when {
+            before == null -> after
+            after == null -> before
+            location - before <= after - location -> before
+            else -> after
+        } ?: return null
+    }
+    var start = anchor
+    while (start > 0 && isWord(start - 1)) start--
+    val pass = passes.firstOrNull {
+        start >= it.value.offset && start < it.value.offset + it.value.text.length
+    } ?: return null
+    return WordSelection(pass.index, start - pass.value.offset)
+}
+
 data class VoiceChoice(val name: String, val language: String, val label: String, val quality: Int, val network: Boolean = false)
 
 internal fun isIndonesian(language: String) = language == "id" || language == "in" || language == "ind"
