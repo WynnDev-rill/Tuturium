@@ -28,6 +28,21 @@ jobs:
           mkdir -p dist
           apk=$(find app/build/outputs/apk/release -maxdepth 1 -name '*unsigned.apk' -print -quit)
           test -n "$apk"
+          # The personal release targets arm64; all legacy OCR .so files must be absent.
+          unzip -Z1 "$apk" | grep -q '^lib/arm64-v8a/libmlkit_google_ocr_pipeline.so
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" dist/apksigner.jar
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -p 4 dist/Tuturium-unsigned.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tuturium-unsigned-release-bundle
+          path: dist/
+          if-no-files-found: error
+          retention-days: 2
+
+          if unzip -Z1 "$apk" | grep -Eq '^lib/(x86|x86_64|armeabi-v7a)/'; then
+            echo "::error::Unexpected non-arm64 OCR library in release APK"
+            exit 1
+          fi
           cp "$apk" dist/Tuturium-unsigned.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" dist/apksigner.jar
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -p 4 dist/Tuturium-unsigned.apk
