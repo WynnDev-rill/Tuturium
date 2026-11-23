@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -26,7 +27,10 @@ class PlaybackTest {
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { ReadingService.command(it, ReadingService.PLAY, book.id, 0) }
-                withTimeout(30_000) { ReadingService.state.first { it.bookId == book.id && it.playing } }
+                val started = withTimeout(30_000) {
+                    ReadingService.state.first { it.error != null || (it.bookId == book.id && it.playing) }
+                }
+                assertNull("Android TTS returned an error", started.error)
                 shell("input keyevent KEYCODE_HOME")
                 delay(1800)
                 assertTrue(ReadingService.state.value.playing)
