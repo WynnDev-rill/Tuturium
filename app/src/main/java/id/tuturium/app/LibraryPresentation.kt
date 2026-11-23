@@ -56,6 +56,11 @@ internal object BookActions {
         return first
     }
 
+    fun removeFromQueue(c: Context, id: String) {
+        prefs(c).edit().putString("queue",
+            queue(c).filterNot { it == id }.joinToString(",")).apply()
+    }
+
     fun remove(c: Context, id: String) {
         for (key in listOf("pins", "later")) {
             prefs(c).edit().putStringSet(key, ids(c, key) - id).apply()
