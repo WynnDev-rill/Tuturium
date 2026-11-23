@@ -16,6 +16,40 @@ internal object FolderStore {
         return prefs(context).edit().putStringSet("names", (names(context) + safe).toSet()).commit()
     }
 
+    fun isPinned(context: Context, name: String): Boolean =
+        name in prefs(context).getStringSet("pinned_folders", emptySet()).orEmpty()
+
+    fun togglePinned(context: Context, name: String) {
+        val pinned = prefs(context).getStringSet("pinned_folders", emptySet()).orEmpty().toMutableSet()
+        if (!pinned.add(name)) pinned.remove(name)
+        prefs(context).edit().putStringSet("pinned_folders", pinned).apply()
+    }
+
+    fun rename(context: Context, current: String, replacement: String): Boolean {
+        val safe = replacement.trim().take(60)
+        if (safe.isBlank() || current !in names(context) ||
+            names(context).any { it != current && it.equals(safe, true) }) return false
+        val p = prefs(context)
+        val existing = names(context)
+        val editor = p.edit()
+        editor.putStringSet("names", (existing - current + safe).toSet())
+        p.all.keys.filter { it.startsWith("book:") && p.getString(it, null) == current }
+            .forEach { editor.putString(it, safe) }
+        val pins = p.getStringSet("pinned_folders", emptySet()).orEmpty()
+        if (current in pins) editor.putStringSet("pinned_folders", pins - current + safe)
+        return editor.commit()
+    }
+
+    fun remove(context: Context, name: String) {
+        val p = prefs(context)
+        val editor = p.edit().putStringSet("names", (names(context) - name).toSet())
+        p.all.keys.filter { it.startsWith("book:") && p.getString(it, null) == name }
+            .forEach(editor::remove)
+        editor.putStringSet("pinned_folders",
+            p.getStringSet("pinned_folders", emptySet()).orEmpty() - name)
+        editor.apply()
+    }
+
     fun folderOf(context: Context, bookId: String): String? =
         prefs(context).getString("book:$bookId", null)
 

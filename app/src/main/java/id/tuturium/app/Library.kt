@@ -17,20 +17,23 @@ data class Book(
     val format: String,
     val count: Int,
     val position: Int,
-    val updated: Long
+    val updated: Long,
+    val words: Int = 0,
+    val created: Long = updated
 )
 
 data class Bookmark(val index: Int, val excerpt: String)
 
 class Library private constructor(context: Context) :
-    SQLiteOpenHelper(context, "library.db", null, 2) {
+    SQLiteOpenHelper(context, "library.db", null, 3) {
     private val folder = File(context.filesDir, "books").apply { mkdirs() }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL, format TEXT NOT NULL,
                 count INTEGER NOT NULL, position INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL,
-                deleted_at INTEGER NOT NULL DEFAULT 0)"""
+                deleted_at INTEGER NOT NULL DEFAULT 0, words INTEGER NOT NULL DEFAULT 0,
+                created INTEGER NOT NULL DEFAULT 0)"""
         )
         db.execSQL(
             """CREATE TABLE bookmarks (book TEXT REFERENCES books(id) ON DELETE CASCADE,
@@ -41,7 +44,30 @@ class Library private constructor(context: Context) :
     override fun onConfigure(db: SQLiteDatabase) = db.setForeignKeyConstraintsEnabled(true)
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) db.execSQL("ALTER TABLE books ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE books ADD COLUMN words INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE books ADD COLUMN created INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE books SET created = updated")
+        }
     }
+
+    /** Backfill imported books from 1.1.x once; do this on Dispatchers.IO, not the UI thread. */
+    fun fillMissingWordCounts() {
+        val missing = readableDatabase.query("books", arrayOf("id"), "words = 0",
+            null, null, null, null).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+        }
+        missing.forEach { id ->
+            runCatching {
+                val count = document(id).passes.sumOf { countDocumentWords(it.text) }.coerceAtLeast(1)
+                writableDatabase.update("books", ContentValues().apply { put("words", count) },
+                    "id = ?", arrayOf(id))
+            }
+        }
+    }
+
+    fun documentBytes(id: String): Long =
+        File(folder, "$id.json").takeIf { it.isFile }?.length() ?: 0L
 
     fun books(): List<Book> = readableDatabase.query(
         "books", null, "deleted_at = 0", null, null, null, "updated DESC, title COLLATE NOCASE"
@@ -65,7 +91,9 @@ class Library private constructor(context: Context) :
             file.failWrite(output)
             throw error
         }
-        val book = Book(id, title.take(200), format, document.passes.size, 0, System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        val words = document.passes.sumOf { countDocumentWords(it.text) }.coerceAtLeast(1)
+        val book = Book(id, title.take(200), format, document.passes.size, 0, now, words, now)
         try {
             writableDatabase.insertOrThrow("books", null, ContentValues().apply {
                 put("id", id)
@@ -73,6 +101,8 @@ class Library private constructor(context: Context) :
                 put("format", format)
                 put("count", book.count)
                 put("updated", book.updated)
+                put("created", book.created)
+                put("words", book.words)
             })
         } catch (error: Exception) {
             file.delete()
@@ -152,7 +182,8 @@ class Library private constructor(context: Context) :
     private fun Cursor.book() = Book(
         getString(getColumnIndexOrThrow("id")), getString(getColumnIndexOrThrow("title")),
         getString(getColumnIndexOrThrow("format")), getInt(getColumnIndexOrThrow("count")),
-        getInt(getColumnIndexOrThrow("position")), getLong(getColumnIndexOrThrow("updated"))
+        getInt(getColumnIndexOrThrow("position")), getLong(getColumnIndexOrThrow("updated")),
+        getInt(getColumnIndexOrThrow("words")), getLong(getColumnIndexOrThrow("created"))
     )
 
     companion object {

@@ -319,6 +319,16 @@ class ReadingService : Service() {
                     speechOffset = 0
                     current = current.copy(index = 0, completed = true, range = null)
                     pause()
+                    // Continue queued books only when the current book ends normally.
+                    val library = Library.get(this@ReadingService)
+                    var next: String? = null
+                    repeat(50) {
+                        if (next == null) {
+                            val candidate = BookActions.dequeue(this@ReadingService)
+                            if (candidate != null && library.book(candidate) != null) next = candidate
+                        }
+                    }
+                    next?.let { open(it, -1) }
                 }
             }
         }
