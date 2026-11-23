@@ -39,4 +39,12 @@ class SpeechControlTest {
         assertEquals(6, seekBySeconds(passes, 1, 10, 1f))
         assertEquals(1, seekBySeconds(passes, 6, -10, 1f))
     }
+    @Test fun voicePreviewSuccessAllowsOneSafeRetryAtNormalSpeed() {
+        assertTrue(shouldRetrySpeechAtNormalSpeed(2f, false, true))
+        assertTrue(shouldRetrySpeechAtNormalSpeed(0.8f, false, true))
+        assertFalse(shouldRetrySpeechAtNormalSpeed(1f, false, true))
+        assertFalse(shouldRetrySpeechAtNormalSpeed(2f, true, true))
+        assertFalse(shouldRetrySpeechAtNormalSpeed(2f, false, false))
+    }
+
 }
