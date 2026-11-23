@@ -44,10 +44,10 @@ fun ModernHome(model: TuturiumModel, openProfile: () -> Unit, openBook: (Book) -
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(Color.Black),
         contentPadding = PaddingValues(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(23.dp)
+        verticalArrangement = Arrangement.spacedBy(17.dp)
     ) {
         item {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 10.dp),
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 3.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Surface(onClick = openProfile, modifier = Modifier.size(44.dp),
                     shape = CircleShape, color = Tile) {
@@ -59,6 +59,7 @@ fun ModernHome(model: TuturiumModel, openProfile: () -> Unit, openBook: (Book) -
                 Image(painterResource(R.drawable.brand), "Logo Tuturium", Modifier.size(32.dp))
                 Spacer(Modifier.width(7.dp))
                 Text("Tuturium", style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.size(44.dp))
@@ -322,8 +323,11 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
 
 @Composable
 fun ModernNavigation(tab: String, onHome: () -> Unit, onLibrary: () -> Unit, onAdd: () -> Unit) {
-    Surface(color = Color.Black, shadowElevation = 0.dp) {
-        Row(Modifier.fillMaxWidth().height(78.dp).padding(horizontal = 12.dp, vertical = 4.dp),
+    // Scaffold does not apply window insets automatically to a custom bottomBar.
+    // Keep the entire navigation, including its labels, above Android's 3-button bar.
+    Surface(modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+        color = Color.Black, shadowElevation = 0.dp) {
+        Row(Modifier.fillMaxWidth().height(80.dp).padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceAround) {
             NavTab("Beranda", Icons.Rounded.Home, tab == "home", Modifier.weight(1f), onHome)
             NavTab("Perpustakaan", Icons.Rounded.Description, tab == "library", Modifier.weight(1f), onLibrary)
@@ -350,7 +354,7 @@ private fun NavTab(title: String, icon: androidx.compose.ui.graphics.vector.Imag
             contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
         }
-        Text(title, style = MaterialTheme.typography.labelSmall, color = Color.White, maxLines = 1)
+        Text(title, style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 1)
     }
 }
 
