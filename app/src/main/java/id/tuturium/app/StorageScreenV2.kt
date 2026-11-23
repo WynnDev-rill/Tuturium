@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +72,13 @@ fun StorageV2(model: TuturiumModel, onBack: () -> Unit) {
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Spacer(Modifier.width(48.dp))
         }
-        Text("Penyimpanan lokal", modifier = Modifier.padding(horizontal = 17.dp, vertical = 12.dp),
+        val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
+        Text("Google Drive · ${cloud.email ?: "Belum masuk"}",
+            modifier = Modifier.padding(horizontal = 17.dp, vertical = 12.dp),
+            style = MaterialTheme.typography.titleMedium)
+        Text(cloud.message, modifier = Modifier.padding(horizontal = 17.dp),
+            color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
+        Text("Salinan lokal selama migrasi", modifier = Modifier.padding(horizontal = 17.dp, vertical = 12.dp),
             style = MaterialTheme.typography.titleMedium)
         Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             shape = RoundedCornerShape(22.dp), color = Color(0xFF202020)) {
@@ -115,9 +122,9 @@ fun StorageV2(model: TuturiumModel, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(55.dp)) {
                     Text("Kosongkan cache ${humanSize(snapshot.cache)}")
                 }
-                Text("Buku, progres, dan folder tetap tersimpan di perangkat. " +
-                    "Pembersihan hanya menghapus unduhan APK dan salinan berbagi sementara. " +
-                    "Tidak ada cadangan cloud otomatis.",
+                Text("Buku dan pengaturan disinkronkan ke Google Drive. " +
+                    "Berkas lokal lama tetap disimpan sebagai pengaman migrasi " +
+                    "hingga pemulihan Drive diverifikasi di perangkat.",
                     color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
             }
         }
