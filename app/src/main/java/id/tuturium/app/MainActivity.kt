@@ -602,6 +602,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         favoriteVoices = if (name in favoriteVoices) favoriteVoices - name
             else favoriteVoices + name
         prefs.edit().putStringSet("favorite_voices", favoriteVoices.toSet()).apply()
+        TuturiumCloud.markDirty(app)
     }
 
     fun installGoogleVoices() {
@@ -623,28 +624,35 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun changeSettings(value: ReadingSettings, persist: Boolean = true) {
         settings = value.copy(speed = value.speed.coerceIn(0.5f, 4f))
-        if (persist) settings.save(app)
+        if (persist) {
+            settings.save(app)
+            TuturiumCloud.markDirty(app)
+        }
     }
 
     fun changeListeningOptions(value: ListeningOptions) {
         listeningOptions = value
         value.save(app)
+        TuturiumCloud.markDirty(app)
         if (follow != value.autoScroll) changeFollow(value.autoScroll)
     }
 
     fun changeTheme(value: String) {
         theme = value
         prefs.edit().putString("theme", value).apply()
+        TuturiumCloud.markDirty(app)
     }
 
     fun changeFont(value: Float) {
         fontSize = value
         prefs.edit().putFloat("font_size", value).apply()
+        TuturiumCloud.markDirty(app)
     }
 
     fun changeFollow(value: Boolean) {
         follow = value
         prefs.edit().putBoolean("follow", value).apply()
+        TuturiumCloud.markDirty(app)
     }
 
     fun checkUpdate(automatic: Boolean = false) {
