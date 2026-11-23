@@ -324,7 +324,8 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
     }
     activeFile?.let { book ->
         ModalBottomSheet(onDismissRequest = { activeFile = null }, containerColor = Panel) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 680.dp)
+                .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Description, null, Modifier.size(48.dp))
                     Spacer(Modifier.width(10.dp))
@@ -383,7 +384,8 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
         ModalBottomSheet(onDismissRequest = {
             moveFile = null; chooseTargetForSelection = false; choosingForFolder = false
         }, containerColor = Panel) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 680.dp)
+                .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp)) {
                 Text(if (choosingForFolder) "Tambahkan bacaan" else "Pindahkan ke folder",
                     style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
@@ -532,13 +534,15 @@ private fun SheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, t
 @Composable
 private fun FolderEditorV2(value: String, onChange: (String) -> Unit, title: String,
     onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    val requester = remember { FocusRequester() }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Panel) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
+        Column(Modifier.fillMaxWidth().imePadding()
+            .padding(horizontal = 24.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(value = value, onValueChange = { onChange(it.take(60)) },
                 label = { Text("Nama") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(requester),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { if (value.isNotBlank()) onSave(value) }))
             Button(onClick = { onSave(value) }, enabled = value.isNotBlank(),
@@ -548,4 +552,5 @@ private fun FolderEditorV2(value: String, onChange: (String) -> Unit, title: Str
             }
         }
     }
+    LaunchedEffect(Unit) { requester.requestFocus() }
 }
