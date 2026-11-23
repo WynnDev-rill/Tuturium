@@ -32,6 +32,7 @@ object ListeningStats {
             .putLong("$day.saved", p.getLong("$day.saved", 0L) +
                 (durationMs * (speed - 1f).coerceAtLeast(0f)).toLong())
             .apply()
+        TuturiumCloud.markDirty(context)
     }
 
     fun recordUtterance(context: Context, text: String, speed: Float) {
@@ -44,6 +45,7 @@ object ListeningStats {
             .putLong("$day.speedSum", p.getLong("$day.speedSum", 0L) + (speed * 1000).toLong())
             .putLong("$day.samples", p.getLong("$day.samples", 0L) + 1)
             .apply()
+        TuturiumCloud.markDirty(context)
     }
 
     fun read(context: Context): List<ListeningDay> {
