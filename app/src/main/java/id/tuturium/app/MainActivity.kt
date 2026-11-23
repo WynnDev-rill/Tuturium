@@ -93,6 +93,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     var textDraft by mutableStateOf("")
     var settings by mutableStateOf(ReadingSettings.read(app))
         private set
+    var listeningOptions by mutableStateOf(ListeningOptions.read(app))
+        private set
     var voices by mutableStateOf<List<VoiceChoice>>(emptyList())
         private set
     var voiceStatus by mutableStateOf("Memuat suara offline…")
@@ -300,8 +302,14 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun changeSettings(value: ReadingSettings, persist: Boolean = true) {
-        settings = value
-        if (persist) value.save(app)
+        settings = value.copy(speed = value.speed.coerceIn(0.5f, 4f))
+        if (persist) settings.save(app)
+    }
+
+    fun changeListeningOptions(value: ListeningOptions) {
+        listeningOptions = value
+        value.save(app)
+        if (follow != value.autoScroll) changeFollow(value.autoScroll)
     }
 
     fun changeTheme(value: String) {
