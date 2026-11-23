@@ -150,8 +150,11 @@ class Library private constructor(context: Context) :
 
     fun rename(id: String, title: String) {
         require(title.isNotBlank())
-        writableDatabase.update("books", ContentValues().apply { put("title", title.trim().take(200)) },
-            "id = ?", arrayOf(id))
+        writableDatabase.update("books", ContentValues().apply {
+            put("title", title.trim().take(200))
+            put("updated", System.currentTimeMillis())
+        }, "id = ?", arrayOf(id))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun trashed(): List<Book> = readableDatabase.query(
@@ -161,6 +164,7 @@ class Library private constructor(context: Context) :
     fun delete(id: String) {
         writableDatabase.update("books", ContentValues().apply {
             put("deleted_at", System.currentTimeMillis().coerceAtLeast(1L))
+            put("updated", System.currentTimeMillis())
         }, "id = ?", arrayOf(id))
         TuturiumCloud.markDirty(appContext)
     }
@@ -198,10 +202,14 @@ class Library private constructor(context: Context) :
                     put("excerpt", text.take(180))
                 })
             }
+            db.update("books", ContentValues().apply {
+                put("updated", System.currentTimeMillis())
+            }, "id = ?", arrayOf(id))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
+        TuturiumCloud.markDirty(appContext)
     }
 
 
