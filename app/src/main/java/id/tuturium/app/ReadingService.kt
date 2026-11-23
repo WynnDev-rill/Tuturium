@@ -116,6 +116,13 @@ class ReadingService : Service() {
     private var tts: TextToSpeech? = null
     private var ready = false
     private var initializationFailed = false
+    // A stable voice configuration is reused across consecutive sentences.
+    // Re-enumerating and re-selecting network voices on each onDone can disrupt
+    // a working Google TTS session mid-book.
+    private var cachedVoices: List<VoiceChoice> = emptyList()
+    private var appliedVoiceName: String? = null
+    private var startupStage = "persiapan"
+    private var normalSpeedRetryPass = -1
     private var document: ReadingDocument? = null
     private var request = 0
     private var utterance = 0
@@ -132,7 +139,10 @@ class ReadingService : Service() {
     private var current = Playback()
         set(value) {
             if (field.playing && !value.playing && listeningStart > 0L) {
-                ListeningStats.recordDuration(this, SystemClock.elapsedRealtime() - listeningStart, listeningSpeed)
+                runCatching {
+                    ListeningStats.recordDuration(this,
+                        SystemClock.elapsedRealtime() - listeningStart, listeningSpeed)
+                }.onFailure { android.util.Log.w("TuturiumPlayback", "Listening stats failed", it) }
                 listeningStart = 0L
             } else if (!field.playing && value.playing) {
                 listeningStart = SystemClock.elapsedRealtime()
@@ -210,7 +220,8 @@ class ReadingService : Service() {
                         .getOrDefault(false)
                 initializationFailed = !ready
                 if (ready) {
-                    tts?.setAudioAttributes(attributes)
+                    runCatching { tts?.setAudioAttributes(attributes) }
+                        .onFailure { android.util.Log.w("TuturiumPlayback", "TTS audio attributes unavailable", it) }
                     tts?.setOnUtteranceProgressListener(listener)
                     if (current.loading && document != null) startCurrent()
                 } else if (current.loading) {
@@ -256,6 +267,9 @@ class ReadingService : Service() {
             return
         }
         stopUtterance()
+        normalSpeedRetryPass = -1
+        cachedVoices = emptyList()
+        appliedVoiceName = null
         speechOffset = offset.coerceAtLeast(0)
         listenedWords = 0
         document = null
@@ -291,12 +305,15 @@ class ReadingService : Service() {
             startCurrentInternal()
         } catch (error: Exception) {
             android.util.Log.e("TuturiumPlayback", "Cannot start speech", error)
-            fail("Pemutaran gagal. Pilih suara Indonesia lain atau periksa Google TTS.")
+            fail("Pemutar gagal pada tahap $startupStage. Coba putar lagi; " +
+                "jika masih gagal, laporkan tahap ini.")
         }
     }
 
     private fun startCurrentInternal() {
+        startupStage = "menyiapkan dokumen"
         val pass = document?.passes?.getOrNull(current.index) ?: return
+        startupStage = "layanan audio"
         if (!promote()) return
         if (initializationFailed) {
             fail("Google TTS belum siap. Buka Pustaka Suara dan periksa suara Indonesia.")
@@ -307,9 +324,11 @@ class ReadingService : Service() {
             publish()
             return
         }
+        startupStage = "membaca pengaturan"
         val engine = tts ?: return
         val settings = ReadingSettings.read(this)
         val options = ListeningOptions.read(this)
+        startupStage = "menyiapkan teks"
         val prepared = prepareSpeech(pass.text, options)
         val from = prepared.offsets.indexOfFirst { it >= speechOffset }
         if (prepared.text.isEmpty() || (speechOffset > 0 && from < 0)) {
@@ -327,38 +346,79 @@ class ReadingService : Service() {
         }
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
-        // Both local and online Indonesian voices are supported. A failed
-        // network voice produces an error rather than silently switching to English.
-        val choice = resolveIndonesianVoice(engine.indonesianCandidates(), settings.voice)
+        startupStage = "memilih suara Indonesia"
+        if (cachedVoices.isEmpty() || (settings.voice != null &&
+                cachedVoices.none { it.name == settings.voice })) {
+            cachedVoices = engine.indonesianCandidates()
+        }
+        val choice = resolveIndonesianVoice(cachedVoices, settings.voice)
         if (choice == null) {
             fail("Google TTS tidak menyediakan suara Indonesia. Periksa Pustaka Suara.")
             return
         }
-        if (!engine.activateIndonesianVoice(choice)) {
-            fail("Suara Indonesia tidak dapat dipakai. Periksa jaringan atau data Google TTS.")
-            return
-        }
-        if (options.mixWithMusic) {
-            if (hasFocus) audio.abandonAudioFocusRequest(focus)
-            hasFocus = false
-        } else if (!hasFocus) {
-            hasFocus = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-            if (!hasFocus) {
-                fail("Audio sedang digunakan aplikasi lain.")
+        if (appliedVoiceName != choice.name) {
+            if (!engine.activateIndonesianVoice(choice)) {
+                fail("Suara Indonesia tidak dapat dipakai. Periksa jaringan atau data Google TTS.")
                 return
             }
+            appliedVoiceName = choice.name
         }
-        val effective = rampedSpeed(settings.speed, listenedWords, options.autoRamp)
-        engine.setSpeechRate(effective)
-        engine.setPitch(settings.pitch)
+        // Unlike preview, the reader owns audio focus, a media notification and
+        // a wakelock. An OEM exception in these optional components must not
+        // prevent the same successfully previewed voice from speaking.
+        startupStage = "fokus audio"
+        if (options.mixWithMusic) {
+            if (hasFocus) runCatching { audio.abandonAudioFocusRequest(focus) }
+                .onFailure { android.util.Log.w("TuturiumPlayback", "Abandon focus failed", it) }
+            hasFocus = false
+        } else if (!hasFocus) {
+            val focusResult = runCatching { audio.requestAudioFocus(focus) }
+                .onFailure { android.util.Log.w("TuturiumPlayback", "Audio focus request failed", it) }
+                .getOrNull()
+            when (focusResult) {
+                AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> hasFocus = true
+                AudioManager.AUDIOFOCUS_REQUEST_FAILED -> {
+                    fail("Audio sedang dipakai aplikasi lain. Coba tutup audio lain atau aktifkan Padukan dengan Musik.")
+                    return
+                }
+                null -> {
+                    // Some OEM audio services throw instead of returning a
+                    // result. Google TTS can still speak without owning focus.
+                    hasFocus = false
+                }
+            }
+        }
+        startupStage = "mengatur suara"
+        val requestedSpeed = if (normalSpeedRetryPass == current.index) 1f
+            else rampedSpeed(settings.speed, listenedWords, options.autoRamp)
+        val usableSpeed = runCatching {
+            if (engine.setSpeechRate(requestedSpeed) == TextToSpeech.SUCCESS) requestedSpeed
+            else if (engine.setSpeechRate(1f) == TextToSpeech.SUCCESS) 1f else requestedSpeed
+        }.onFailure { android.util.Log.w("TuturiumPlayback", "Set speech rate failed", it) }
+            .getOrDefault(1f)
+        runCatching { engine.setPitch(settings.pitch) }
+            .onFailure { android.util.Log.w("TuturiumPlayback", "Set TTS pitch failed", it) }
+        startupStage = "mengaktifkan pemutar"
         val token = (++utterance).toString()
         activeUtterance = token
-        lock.acquire(300_000)
+        runCatching { lock.acquire(300_000) }
+            .onFailure { android.util.Log.w("TuturiumPlayback", "WakeLock unavailable", it) }
         current = current.copy(playing = true, loading = false, completed = false,
-            effectiveSpeed = effective, range = null, error = null)
-        if (engine.speak(prepared.text.substring(preparedStart), TextToSpeech.QUEUE_FLUSH, null, token) == TextToSpeech.ERROR) {
-            fail("Suara gagal diputar. Coba pilih suara offline lainnya.")
-        } else publish()
+            effectiveSpeed = usableSpeed, range = null, error = null)
+        startupStage = "mengirim teks ke Google TTS"
+        val result = runCatching {
+            engine.speak(prepared.text.substring(preparedStart),
+                TextToSpeech.QUEUE_FLUSH, null, token)
+        }.onFailure { android.util.Log.e("TuturiumPlayback", "Google TTS speak exception", it) }
+            .getOrDefault(TextToSpeech.ERROR)
+        if (result == TextToSpeech.ERROR) {
+            if (!retryAtNormalSpeed(TextToSpeech.ERROR)) {
+                fail("Google TTS menolak pembacaan. Periksa koneksi dan coba pratinjau suara lainnya.")
+            }
+        } else {
+            startupStage = "memperbarui pemutar"
+            publish()
+        }
     }
 
     private fun seek(index: Int, keepPlaying: Boolean = true, offset: Int = 0) {
@@ -366,6 +426,7 @@ class ReadingService : Service() {
         val next = index.coerceIn(0, current.total - 1)
         val active = keepPlaying && (current.playing || current.loading)
         stopUtterance()
+        normalSpeedRetryPass = -1
         speechOffset = offset.coerceIn(0,
             (document?.passes?.getOrNull(next)?.text?.lastIndex ?: 0).coerceAtLeast(0))
         current = current.copy(index = next, completed = false, range = null, error = null)
@@ -390,18 +451,24 @@ class ReadingService : Service() {
         override fun onDone(utteranceId: String?) {
             handler.post {
                 if (utteranceId != activeUtterance || !current.playing) return@post
-                document?.passes?.getOrNull(current.index)?.let { pass ->
+                runCatching {
                     ListeningStats.recordUtterance(this@ReadingService, activePrepared.text,
                         current.effectiveSpeed)
-                    listenedWords += countDocumentWords(activePrepared.text)
+                }.onFailure {
+                    android.util.Log.w("TuturiumPlayback", "Listening statistics failed", it)
                 }
+                listenedWords += countDocumentWords(activePrepared.text)
+                runCatching { if (lock.isHeld) lock.release() }
+                    .onFailure { android.util.Log.w("TuturiumPlayback", "Release wakelock failed", it) }
                 if (current.index + 1 < current.total) {
+                    normalSpeedRetryPass = -1
                     speechOffset = 0
                     current = current.copy(index = current.index + 1, range = null)
                     persist(current.index)
                     startCurrent()
                 } else {
                     persist(current.total)
+                    normalSpeedRetryPass = -1
                     speechOffset = 0
                     current = current.copy(index = 0, completed = true, range = null)
                     pause()
@@ -429,9 +496,27 @@ class ReadingService : Service() {
         }
     }
 
+    /** Retry only genuine synthesis errors: a successful 1× preview may not
+     * support the user's faster reader rate. Never loop on connectivity errors. */
+    private fun retryAtNormalSpeed(code: Int): Boolean {
+        val recoverable = code !in setOf(
+            TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT,
+            TextToSpeech.ERROR_NOT_INSTALLED_YET)
+        if (!shouldRetrySpeechAtNormalSpeed(current.effectiveSpeed,
+                normalSpeedRetryPass == current.index, recoverable)) return false
+        normalSpeedRetryPass = current.index
+        speechOffset = current.range?.first ?: speechOffset
+        android.util.Log.w("TuturiumPlayback", "Retrying pass at 1x after TTS error $code")
+        stopUtterance()
+        current = current.copy(playing = false, loading = true, range = null, error = null)
+        handler.post { if (current.loading) startCurrent() }
+        return true
+    }
+
     private fun reportSpeechError(id: String?, code: Int) {
         handler.post {
             if (id == activeUtterance) {
+                if (retryAtNormalSpeed(code)) return@post
                 val message = when (code) {
                     TextToSpeech.ERROR_NOT_INSTALLED_YET -> "Suara Google TTS belum diunduh."
                     TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT ->
@@ -455,7 +540,8 @@ class ReadingService : Service() {
         stopUtterance()
         if (!keepFocus) {
             resumeOnFocus = false
-            if (hasFocus) audio.abandonAudioFocusRequest(focus)
+            if (hasFocus) runCatching { audio.abandonAudioFocusRequest(focus) }
+                .onFailure { android.util.Log.w("TuturiumPlayback", "Abandon focus failed", it) }
             hasFocus = false
         }
         current = current.copy(playing = false, loading = false)
@@ -469,7 +555,8 @@ class ReadingService : Service() {
         runCatching { tts?.stop() }.onFailure {
             android.util.Log.w("TuturiumPlayback", "TTS stop failed", it)
         }
-        if (lock.isHeld) runCatching { lock.release() }
+        runCatching { if (lock.isHeld) lock.release() }
+            .onFailure { android.util.Log.w("TuturiumPlayback", "Release wakelock failed", it) }
     }
 
     private fun setTimer(minutes: Int) {
@@ -515,6 +602,7 @@ class ReadingService : Service() {
     @SuppressLint("NotificationPermission")
     private fun publish() {
         if (current.bookId == null) return
+        runCatching {
         val state = when {
             current.loading -> PlaybackState.STATE_BUFFERING
             current.playing -> PlaybackState.STATE_PLAYING
@@ -528,6 +616,7 @@ class ReadingService : Service() {
                 PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_STOP
         ).setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, if (current.playing) 1f else 0f).build())
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
+        }.onFailure { android.util.Log.e("TuturiumPlayback", "Media notification failed", it) }
     }
 
     private fun openApp(): PendingIntent = PendingIntent.getActivity(
@@ -564,7 +653,7 @@ class ReadingService : Service() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         stopUtterance()
-        if (hasFocus) audio.abandonAudioFocusRequest(focus)
+        if (hasFocus) runCatching { audio.abandonAudioFocusRequest(focus) }
         unregisterReceiver(noisy)
         tts?.shutdown()
         session.release()

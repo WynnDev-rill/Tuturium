@@ -231,19 +231,6 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
         if (model.voiceStatus.isNotBlank() && voices.isNotEmpty()) item {
             Text(model.voiceStatus, style = MaterialTheme.typography.bodySmall, color = SpeechifyMuted)
         }
-        item {
-            Spacer(Modifier.height(14.dp))
-            Text("Suara online memerlukan internet. Daftar ini berasal dari mesin " +
-                "Google TTS pada perangkat, bukan daftar suara milik Speechify. " +
-                "Gunakan pratinjau untuk memeriksa apakah setiap suara dapat diputar.",
-                color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = model::loadVoices) {
-                Icon(Icons.Rounded.Refresh, null)
-                Spacer(Modifier.width(7.dp))
-                Text("Muat ulang suara")
-            }
-        }
     }
 }
 
