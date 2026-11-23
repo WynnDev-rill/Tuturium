@@ -96,6 +96,8 @@ class MainActivity : ComponentActivity() {
                 val account = GoogleIdTokenCredential.createFrom(credential.data)
                 require(account.id.isNotBlank()) { "Alamat akun Google kosong." }
                 pendingGoogleEmail = account.id
+                TuturiumCloud.setGoogleIdentity(
+                    account.displayName, account.profilePictureUri?.toString())
                 requestDriveAuthorization()
             } catch (error: CancellationException) {
                 throw error
