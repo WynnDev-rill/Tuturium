@@ -30,7 +30,7 @@ Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/Wynn
 
 ## Pembaruan 1.3.5 — Cloud-first Google Drive
 
-- Login dengan Google dan persetujuan izin `drive.appdata` khusus Tuturium; tidak memakai Supabase maupun server aplikasi pribadi.
+- Default tetap **akun tamu dengan penyimpanan lokal**; login Google opsional dari Profil. Setelah login dan persetujuan izin `drive.appdata`, pustaka tersinkronkan ke Drive pribadi tanpa Supabase.
 - Arsip Google Drive pribadi mencakup buku, PDF asli, progres, markah, folder, statistik, dan preferensi. Sinkronisasi otomatis tertunda dan bisa dipicu dari Profil.
 - Saat migrasi awal, data lokal lama **tidak dihapus** sampai sinkronisasi, checksum, dan pemulihan Google Drive telah diuji. Penyimpanan lokal masih dipakai sebagai cache kerja untuk memproses dokumen, sehingga rilis ini belum sepenuhnya bebas penyimpanan lokal permanen.
 - Pemutar TTS dapat melanjutkan dari teks asli jika filter persiapan teks melempar exception.
