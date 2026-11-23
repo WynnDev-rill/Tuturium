@@ -145,18 +145,6 @@ internal object TuturiumCloud {
         }
     }
 
-    /** Instrumentation-only login bypass for emulator UI regression tests.
-     * Never grants a Drive token and cannot run in release builds. */
-    fun debugEnableForTests() {
-        if (BuildConfig.DEBUG) mutable.value = TuturiumCloudState(
-            email = "instrumentation@localhost", connected = true,
-            message = "Mode uji antarmuka tanpa akun Google")
-    }
-
-    fun debugResetForTests() {
-        if (BuildConfig.DEBUG) mutable.value = TuturiumCloudState()
-    }
-
     /** Logout does not delete local pre-migration documents. */
     fun disconnect() {
         pending?.cancel()
