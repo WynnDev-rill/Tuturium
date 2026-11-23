@@ -39,6 +39,15 @@ class LibraryV2FlowTest {
         compose.onNodeWithText("Folder ini kosong. Impor atau pindahkan file ke sini.").assertIsDisplayed()
     }
 
+    @Test fun guestStartsWithoutGoogleAndSignInIsOptionalInProfile() {
+        compose.onNodeWithText("Beranda").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Profil tamu").performClick()
+        compose.onNodeWithText("Akun tamu").assertIsDisplayed()
+        compose.onNodeWithText("Masuk dengan Google").assertIsDisplayed()
+        compose.onNodeWithText("Penyimpanan & Data").performClick()
+        compose.onNodeWithText("Salinan lokal selama migrasi").assertIsDisplayed()
+    }
+
     @Test fun storageDashboardExplainsLocalStorage() {
         compose.onNodeWithContentDescription("Profil tamu").performClick()
         compose.onNodeWithText("Penyimpanan & Data").performClick()
