@@ -7,42 +7,53 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 
-internal val DisplayFont = FontFamily(Font(R.font.cormorant_garamond))
-internal val ReaderFont = FontFamily(Font(R.font.crimson_pro))
-internal val HeroInk = Color(0xFFF9F6FF)
-internal val HeroStart = Color(0xFF27235E)
-internal val HeroEnd = Color(0xFF453299)
+// A system-supplied casual handwriting family gives the interface the friendly
+// handwritten feel of the supplied reference without bundling a proprietary font.
+internal val DisplayFont = FontFamily.Cursive
+internal val ReaderFont = FontFamily.Cursive
+internal val HeroInk = Color.White
+internal val HeroStart = Color(0xFF202020)
+internal val HeroEnd = Color(0xFF292929)
 
 private val Light = lightColorScheme(
-    primary = Color(0xFF503CBC), onPrimary = Color.White,
-    primaryContainer = Color(0xFFE8E1FF), onPrimaryContainer = Color(0xFF281565),
-    secondary = Color(0xFF5B5276), secondaryContainer = Color(0xFFEAE3FF),
-    tertiary = Color(0xFF684487), background = Color(0xFFF8F7FC), onBackground = Color(0xFF1F1A33),
-    surface = Color(0xFFFFFBFF), onSurface = Color(0xFF1F1A33),
-    surfaceVariant = Color(0xFFECE7F4), onSurfaceVariant = Color(0xFF564E69),
-    surfaceContainer = Color(0xFFF0ECF7), outline = Color(0xFF776F87), outlineVariant = Color(0xFFDDD6E9)
+    primary = Color(0xFF4756D9), onPrimary = Color.White,
+    primaryContainer = Color(0xFFDFE2FF), onPrimaryContainer = Color(0xFF1B2479),
+    secondary = Color(0xFF52566A), secondaryContainer = Color(0xFFE7E8F2),
+    tertiary = Color(0xFF5261B8), background = Color(0xFFFAFAFA), onBackground = Color(0xFF111111),
+    surface = Color.White, onSurface = Color(0xFF111111),
+    surfaceVariant = Color(0xFFE9E9ED), onSurfaceVariant = Color(0xFF53535A),
+    surfaceContainer = Color(0xFFF0F0F2), outline = Color(0xFF73737D), outlineVariant = Color(0xFFDDDDDF)
 )
 private val Dark = darkColorScheme(
-    primary = Color(0xFFCCC0FF), onPrimary = Color(0xFF2D1A71),
-    primaryContainer = Color(0xFF3F2B8C), onPrimaryContainer = Color(0xFFF1E9FF),
-    secondary = Color(0xFFCCC1DF), secondaryContainer = Color(0xFF423852),
-    tertiary = Color(0xFFE1B9FF), background = Color(0xFF151222), onBackground = Color(0xFFF2EBFC),
-    surface = Color(0xFF1C182B), onSurface = Color(0xFFF2EBFC),
-    surfaceVariant = Color(0xFF393149), onSurfaceVariant = Color(0xFFCEC5DD),
-    surfaceContainer = Color(0xFF252034), outline = Color(0xFF9D93AD), outlineVariant = Color(0xFF4A415C)
+    primary = Color(0xFF6875FF), onPrimary = Color.White,
+    primaryContainer = Color(0xFF2B2E51), onPrimaryContainer = Color.White,
+    secondary = Color(0xFFCACAE1), secondaryContainer = Color(0xFF303039),
+    tertiary = Color(0xFF9BA5FF), background = Color.Black, onBackground = Color.White,
+    surface = Color(0xFF202020), onSurface = Color.White,
+    surfaceVariant = Color(0xFF303030), onSurfaceVariant = Color(0xFFB2B2B2),
+    surfaceContainer = Color(0xFF242424), outline = Color(0xFF8C8C8C),
+    outlineVariant = Color(0xFF3E3E3E)
 )
 private val base = Typography()
 private val typography = base.copy(
-    displayMedium = base.displayMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
-    displaySmall = base.displaySmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
-    headlineLarge = base.headlineLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
-    headlineMedium = base.headlineMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
-    titleLarge = base.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-    titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+    displayLarge = base.displayLarge.copy(fontFamily = DisplayFont),
+    displayMedium = base.displayMedium.copy(fontFamily = DisplayFont),
+    displaySmall = base.displaySmall.copy(fontFamily = DisplayFont),
+    headlineLarge = base.headlineLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+    headlineMedium = base.headlineMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+    headlineSmall = base.headlineSmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+    titleLarge = base.titleLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
+    titleMedium = base.titleMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
+    titleSmall = base.titleSmall.copy(fontFamily = DisplayFont),
+    bodyLarge = base.bodyLarge.copy(fontFamily = DisplayFont),
+    bodyMedium = base.bodyMedium.copy(fontFamily = DisplayFont),
+    bodySmall = base.bodySmall.copy(fontFamily = DisplayFont),
+    labelLarge = base.labelLarge.copy(fontFamily = DisplayFont),
+    labelMedium = base.labelMedium.copy(fontFamily = DisplayFont),
+    labelSmall = base.labelSmall.copy(fontFamily = DisplayFont)
 )
 
 @Composable
