@@ -116,13 +116,15 @@ fun ListeningSettingsV2(model: TuturiumModel, onBack: () -> Unit) {
     }
 }
 
-data class VoiceStyle(val title: String, val pitch: Float, val detail: String)
-private val voiceStyles = listOf(
-    VoiceStyle("Standar", 1f, "Nada asli"),
-    VoiceStyle("Hangat", 0.94f, "Sedikit lebih rendah"),
-    VoiceStyle("Dalam", 0.82f, "Nada rendah"),
-    VoiceStyle("Ceria", 1.15f, "Nada lebih tinggi")
-)
+private fun voiceSubtitle(voice: VoiceChoice): String {
+    val id = voice.name.lowercase(Locale.ROOT)
+    val type = when {
+        "dfz-local" in id || "idc-local" in id -> "Perempuan"
+        "idd-local" in id || "ide-local" in id -> "Laki-laki"
+        else -> "Suara Indonesia"
+    }
+    return "$type · Gratis · Offline"
+}
 
 @Composable
 fun VoiceLibraryV2(model: TuturiumModel, onBack: () -> Unit) {
@@ -130,9 +132,12 @@ fun VoiceLibraryV2(model: TuturiumModel, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(SpeechifyPanel)) {
         Row(Modifier.fillMaxWidth().padding(top = 16.dp, start = 7.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali") }
-            Text("Pustaka Suara", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            Icon(Icons.Rounded.WifiOff, "Mode offline", tint = SpeechifyMuted)
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali")
+            }
+            Text("Pustaka Suara", style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f))
+            Icon(Icons.Rounded.WifiOff, "Suara offline", tint = Color.White)
         }
         VoiceLibraryContent(model, modifier = Modifier.weight(1f))
     }
@@ -140,103 +145,90 @@ fun VoiceLibraryV2(model: TuturiumModel, onBack: () -> Unit) {
 
 @Composable
 fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
-    var pendingOnlineVoice by remember { mutableStateOf<VoiceChoice?>(null) }
-    val realVoices = model.voices.filter { isIndonesian(it.language) }
-        .distinctBy { it.name }.sortedWith(compareBy<VoiceChoice> { it.network }
-            .thenByDescending { it.quality })
-    val primary = realVoices.firstOrNull { !it.network }
-        ?: model.voices.firstOrNull { !it.network }
+    val voices = googleIndonesianVoices(model.voices).filterNot { it.network }
+    val selected = voices.firstOrNull { it.name == model.settings.voice } ?: voices.firstOrNull()
     LazyColumn(modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 18.dp),
+        contentPadding = PaddingValues(horizontal = 21.dp, vertical = 19.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
-            Text("Suara Indonesia tersedia", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            Text("Suara dari mesin Android, offline maupun online jika disediakan.",
-                color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
-        }
-        if (realVoices.isEmpty()) item {
-            Surface(color = Color(0xFF333333), shape = RoundedCornerShape(18.dp)) {
-                Text(model.voiceStatus.ifBlank {
-                    "Belum tersedia suara Indonesia di mesin TTS perangkat. " +
-                    "Profil nada memerlukan minimal satu suara offline."
-                }, modifier = Modifier.padding(16.dp), color = SpeechifyMuted)
-            }
-        }
-        items(realVoices.take(12), key = { it.name }) { voice ->
-            Row(Modifier.fillMaxWidth().clickable {
-                if (voice.network) pendingOnlineVoice = voice
-                else model.changeSettings(model.settings.copy(voice = voice.name, pitch = 1f))
-            }.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                IndonesianVoiceAvatar(Modifier.size(55.dp))
-                Spacer(Modifier.width(13.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(if (voice.name == model.settings.voice) "Terpilih" else voice.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(if (voice.network) "ID · Online melalui mesin Android"
-                        else "ID · Offline", color = SpeechifyMuted,
-                        style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf("Indonesia", "Gratis", "Offline").forEach { name ->
+                    Surface(color = Color(0xFF313151), shape = RoundedCornerShape(27.dp)) {
+                        Text(name, Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            color = Color.White, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                if (voice.name == model.settings.voice) Icon(Icons.Rounded.CheckCircle,
-                    "Dipilih", tint = SpeechifyAccent)
-                else Icon(Icons.Rounded.ChevronRight, null, tint = SpeechifyMuted)
+            }
+            Spacer(Modifier.height(27.dp))
+            Text("Pintasan", style = MaterialTheme.typography.titleLarge)
+        }
+        if (selected != null) item {
+            Column(Modifier.clickable {
+                model.changeSettings(model.settings.copy(voice = selected.name, pitch = 1f))
+            }, horizontalAlignment = Alignment.CenterHorizontally) {
+                Box {
+                    IndonesianVoiceAvatar(Modifier.size(79.dp))
+                    Icon(Icons.Rounded.CheckCircle, "Suara aktif",
+                        modifier = Modifier.align(Alignment.BottomEnd).size(25.dp),
+                        tint = SpeechifyAccent)
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(indonesianVoiceLabel(selected, voices),
+                    style = MaterialTheme.typography.bodyMedium)
+                Text("Narator", style = MaterialTheme.typography.labelSmall,
+                    color = SpeechifyMuted)
             }
         }
         item {
             Spacer(Modifier.height(12.dp))
-            Text("4 Profil Suara", style = MaterialTheme.typography.titleMedium)
+            Text("Indonesia", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(5.dp))
-            Text("Empat variasi nada dari satu suara offline, " +
-                "bukan empat model neural yang berbeda.",
-                color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
+            Text("Suara asli Google Speech Services untuk bahasa Indonesia",
+                style = MaterialTheme.typography.bodySmall, color = SpeechifyMuted)
         }
-        items(voiceStyles) { profile ->
-            val chosen = primary != null && (model.settings.voice == primary.name ||
-                (model.settings.voice == null && profile.pitch == 1f)) &&
-                kotlin.math.abs(model.settings.pitch - profile.pitch) < 0.02f
-            Row(Modifier.fillMaxWidth().clickable(enabled = primary != null) {
-                val voice = realVoices.firstOrNull { it.name == model.settings.voice } ?: primary
-                model.changeSettings(model.settings.copy(voice = voice?.name, pitch = profile.pitch))
-            }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(55.dp).clip(CircleShape).background(
-                    when (profile.title) {
-                        "Hangat" -> Color(0xFF5B4A46)
-                        "Dalam" -> Color(0xFF3D4D64)
-                        "Ceria" -> Color(0xFF636048)
-                        else -> Color(0xFF39435D)
-                    }), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.RecordVoiceOver, null, tint = Color.White)
+        if (voices.isEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(model.voiceStatus.ifBlank {
+                    "Suara Indonesia belum ditemukan pada perangkat."
+                }, color = SpeechifyMuted)
+                Button(onClick = model::installGoogleVoices,
+                    colors = ButtonDefaults.buttonColors(containerColor = SpeechifyAccent)) {
+                    Icon(Icons.Rounded.Download, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Pasang suara Google Indonesia")
                 }
-                Spacer(Modifier.width(13.dp))
+                OutlinedButton(onClick = model::loadVoices) {
+                    Icon(Icons.Rounded.Refresh, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Periksa suara lagi")
+                }
+            }
+        } else items(voices, key = { it.name }) { voice ->
+            val active = selected?.name == voice.name
+            Row(Modifier.fillMaxWidth().clickable {
+                model.changeSettings(model.settings.copy(voice = voice.name, pitch = 1f))
+            }.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                IndonesianVoiceAvatar(Modifier.size(61.dp))
+                Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(profile.title)
-                    Text(profile.detail, color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(indonesianVoiceLabel(voice, voices),
+                        style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Text(voiceSubtitle(voice), color = SpeechifyMuted,
+                        style = MaterialTheme.typography.bodySmall)
                 }
-                if (chosen) Icon(Icons.Rounded.CheckCircle, "Dipilih", tint = SpeechifyAccent)
+                if (active) Icon(Icons.Rounded.CheckCircle, "Terpilih",
+                    tint = SpeechifyAccent, modifier = Modifier.size(24.dp))
                 else Icon(Icons.Rounded.ChevronRight, null, tint = SpeechifyMuted)
             }
         }
         item {
-            Spacer(Modifier.height(18.dp))
-            Text("Suara neural online Speechify tidak tersedia sebagai API gratis tanpa batas " +
-                "untuk digunakan oleh aplikasi lain. Tuturium tidak memakai koneksi tidak resmi.",
+            Spacer(Modifier.height(10.dp))
+            Text("Pilihan yang muncul berasal dari paket suara Google TTS " +
+                "yang benar-benar terpasang. Jumlahnya dapat berbeda antarperangkat. " +
+                "Tidak ada biaya API dan suara lokal dapat digunakan tanpa internet.",
                 color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
         }
-    }
-    pendingOnlineVoice?.let { voice ->
-        AlertDialog(
-            onDismissRequest = { pendingOnlineVoice = null },
-            title = { Text("Gunakan suara online?") },
-            text = { Text("Saat memakai suara ini, teks dokumen yang dibacakan dapat " +
-                "dikirim ke penyedia mesin TTS Android. Memerlukan koneksi internet dan " +
-                "ketersediaannya ditentukan penyedia, bukan Tuturium.") },
-            confirmButton = { TextButton(onClick = {
-                model.changeSettings(model.settings.copy(voice = voice.name, pitch = 1f))
-                pendingOnlineVoice = null
-            }) { Text("Gunakan suara") } },
-            dismissButton = { TextButton(onClick = { pendingOnlineVoice = null }) { Text("Batal") } }
-        )
     }
 }
 
