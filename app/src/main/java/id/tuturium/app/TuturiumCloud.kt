@@ -74,9 +74,9 @@ internal object TuturiumCloud {
                 try {
                     DriveArchive(context).export(snapshot)
                     val uploaded = api.upload(snapshot, remote)
-                    require(uploaded.md5 == null ||
+                    require(uploaded.md5 != null &&
                         uploaded.md5 == DriveAppDataClient.checksum(snapshot)) {
-                        "Google Drive belum memverifikasi arsip."
+                        "Google Drive belum memverifikasi checksum arsip."
                     }
                 } finally { snapshot.delete() }
                 check(context.getSharedPreferences("tuturium_cloud", Context.MODE_PRIVATE).edit()
@@ -126,7 +126,11 @@ internal object TuturiumCloud {
                 DriveArchive(context).export(snapshot)
                 val api = DriveAppDataClient(currentToken)
                 val remote = api.findArchive()
-                api.upload(snapshot, remote)
+                val uploaded = api.upload(snapshot, remote)
+                require(uploaded.md5 != null &&
+                    uploaded.md5 == DriveAppDataClient.checksum(snapshot)) {
+                    "Google Drive belum memverifikasi checksum unggahan."
+                }
                 dirtySince = 0L
                 mutable.value = mutable.value.copy(busy = false,
                     message = "Tersinkronisasi ke Google Drive",
