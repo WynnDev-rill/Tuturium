@@ -362,7 +362,7 @@ private fun NavTab(title: String, icon: androidx.compose.ui.graphics.vector.Imag
 @Composable
 fun ModernProfile(onBack: () -> Unit, onStats: () -> Unit, onSettings: () -> Unit,
     onVoices: () -> Unit, onStorage: () -> Unit, onTrash: () -> Unit, onUpdate: () -> Unit,
-    onCloudSync: () -> Unit, onCloudLogout: () -> Unit) {
+    onCloudSignIn: () -> Unit, onCloudSync: () -> Unit, onCloudLogout: () -> Unit) {
     val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
     LazyColumn(Modifier.fillMaxSize().background(Color.Black),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
@@ -378,9 +378,10 @@ fun ModernProfile(onBack: () -> Unit, onStats: () -> Unit, onSettings: () -> Uni
                     Icon(Icons.Rounded.Person, null, Modifier.size(64.dp), tint = Color.White)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(cloud.email ?: "Google Drive",
+                Text(if (cloud.connected) cloud.email ?: "Akun Google" else "Akun tamu",
                     style = MaterialTheme.typography.titleMedium, color = Color.White)
-                Text(cloud.message, color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(if (cloud.connected) cloud.message else "Penyimpanan lokal · tanpa login wajib",
+                    color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
@@ -394,10 +395,22 @@ fun ModernProfile(onBack: () -> Unit, onStats: () -> Unit, onSettings: () -> Uni
             Surface(shape = RoundedCornerShape(22.dp), color = Tile,
                 modifier = Modifier.fillMaxWidth()) {
                 Column {
-                    ProfileEntry(Icons.Rounded.CloudDone, "Sinkronkan Google Drive",
-                        onCloudSync, if (cloud.busy) "Sedang menyinkronkan…" else cloud.message)
-                    ProfileEntry(Icons.Rounded.Logout, "Keluar akun Google", onCloudLogout,
-                        "Buku lama tetap disimpan sampai pemulihan Drive terverifikasi")
+                    if (cloud.connected) {
+                        ProfileEntry(Icons.Rounded.CloudDone, "Sinkronkan Google Drive",
+                            onCloudSync, if (cloud.busy) "Sedang menyinkronkan…" else cloud.message)
+                        ProfileEntry(Icons.Rounded.Logout, "Keluar akun Google", onCloudLogout,
+                            "Kembali ke akun tamu · data lokal tidak dihapus")
+                    } else {
+                        ProfileEntry(Icons.Rounded.AccountCircle, "Masuk dengan Google",
+                            onCloudSignIn, if (cloud.busy) "Menghubungkan akun…" else
+                                "Opsional · simpan dan pulihkan data lewat Drive")
+                        if (cloud.message != TuturiumCloudState().message &&
+                            !cloud.busy) {
+                            Text(cloud.message, Modifier.padding(start = 19.dp, end = 19.dp,
+                                bottom = 13.dp), color = Muted,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             }
         }
