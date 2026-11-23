@@ -1,9 +1,8 @@
-# Tuturium v1.1.0
+# Tuturium v1.1.1
 
-- Beranda baru dengan daftar Lanjutkan dan enam cara menambahkan bahan bacaan.
-- Tema hitam, navigasi Beranda/Perpustakaan/+, serta profil tamu tanpa login.
-- Perpustakaan dengan pencarian, urutan judul, progres, dan menu dokumen.
-- Statistik mendengarkan dan jumlah kata yang direkam secara lokal.
-- Dokumen yang dihapus masuk ke sampah dan bisa dipulihkan atau dihapus permanen.
-- Menu pembaruan aplikasi dari profil, memakai pemeriksaan APK dan sertifikat yang sama.
-- Pindai lewat kamera, dikte Android, dan impor teks web melalui tautan HTTPS.
+- Ganti font sambung bawaan Android dengan Comic Neue, font tulisan tangan yang lebih dekat dengan referensi Speechify; disimpan lokal dan tersedia offline.
+- Perbaiki posisi tab dan label navigasi agar tidak bertabrakan dengan navigasi sistem Android, termasuk mode tiga tombol.
+- Rapikan jarak header dan bagian Lanjutkan di beranda.
+- Perkecil APK rilis lewat penghapusan pustaka OCR untuk arsitektur selain ARM64 dan optimasi R8, tanpa mengganti model OCR/TTS.
+- Pustaka, progres bacaan, sampah, pengaturan, dan pembaruan tetap kompatibel dengan Tuturium 1.1.0.
+- Rilis 1.1.1 ditujukan untuk perangkat ARM64 (Android 64-bit).

@@ -12,8 +12,8 @@ android {
         applicationId = "id.tuturium.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10100
-        versionName = "1.1.0"
+        versionCode = 10101
+        versionName = "1.1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
@@ -25,7 +25,18 @@ android {
         }
     }
     buildTypes {
-        release { signingConfig = signingConfigs.findByName("production") }
+        release {
+            // This personal release targets 64-bit ARM devices; the debug APK remains
+            // universal for emulator coverage. OCR quality/models stay unchanged.
+            ndk { abiFilters.add("arm64-v8a") }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.findByName("production")
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {

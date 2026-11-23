@@ -7,13 +7,17 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 
-// A system-supplied casual handwriting family gives the interface the friendly
-// handwritten feel of the supplied reference without bundling a proprietary font.
-internal val DisplayFont = FontFamily.Cursive
-internal val ReaderFont = FontFamily.Cursive
+// Comic Neue (SIL OFL 1.1): separated handwritten glyphs, unlike Android's joined Cursive.
+// Bundled locally so the interface stays consistent when the device is offline.
+internal val DisplayFont = FontFamily(
+    Font(R.font.comic_neue_italic, weight = FontWeight.Normal),
+    Font(R.font.comic_neue_bold_italic, weight = FontWeight.Bold)
+)
+internal val ReaderFont = FontFamily(Font(R.font.comic_neue_regular))
 internal val HeroInk = Color.White
 internal val HeroStart = Color(0xFF202020)
 internal val HeroEnd = Color(0xFF292929)

@@ -119,6 +119,10 @@ fun Tuturium(model: TuturiumModel) {
     val dark = model.theme == "dark" || (model.theme == "system" && isSystemInDarkTheme())
     SideEffect {
         (context as? Activity)?.window?.let { window ->
+            // Avoid Android's grey contrast scrim blending into the black bottom bar.
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                window.isNavigationBarContrastEnforced = false
+            }
             WindowCompat.getInsetsController(window, window.decorView).apply {
                 isAppearanceLightStatusBars = !dark
                 isAppearanceLightNavigationBars = !dark

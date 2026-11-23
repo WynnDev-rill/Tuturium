@@ -9,7 +9,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
@@ -25,6 +27,21 @@ class ReaderFlowTest {
             library.delete(it.id)
             library.deletePermanently(it.id)
         }
+    }
+
+    @Test fun bottomNavigationClearsSystemButtons() {
+        compose.onNodeWithText("Beranda").assertIsDisplayed()
+        compose.onNodeWithText("Perpustakaan").assertIsDisplayed()
+        val decor = compose.activity.window.decorView
+        val insets = WindowInsetsCompat.toWindowInsetsCompat(
+            requireNotNull(decor.rootWindowInsets), decor
+        ).getInsets(WindowInsetsCompat.Type.navigationBars())
+        val bottom = compose.onNodeWithText("Beranda").fetchSemanticsNode().boundsInWindow.bottom
+        assertTrue("Bottom bar label overlaps Android system navigation: bottom=$bottom, inset=${insets.bottom}",
+            bottom <= decor.height - insets.bottom + 2)
+        compose.onNodeWithText("Perpustakaan").performClick()
+        compose.onNodeWithText("Beranda").performClick()
+        compose.onNodeWithText("Lanjutkan").assertIsDisplayed()
     }
 
     @Test fun createExampleNavigateBookmarkAndReturnToHome() {
