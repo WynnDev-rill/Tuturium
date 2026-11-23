@@ -28,6 +28,10 @@ Skrip mengunggah nilai sebagai GitHub Actions secrets secara privat, tidak mence
 
 Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/WynnDev-rill/Tuturium/releases/latest) dan dapat diperiksa dari menu **Profil → Pembaruan aplikasi**. Versi baru harus memakai sertifikat yang sama agar bisa memperbarui instalasi yang sudah ada tanpa menghapus data.
 
+## Akun Google dan pembaruan 1.3.6
+
+Di **Profil → Akun**, pilih **Masuk dengan Google**, lalu **Hubungkan Google Drive**. Tuturium tetap dapat membaca dan menyimpan buku sebagai tamu. Gunakan akun yang membuat proyek jika audience OAuth masih Personal. Lihat [audit OAuth dan pengujian perangkat](docs/google-oauth-audit.md).
+
 ## Pembaruan 1.3.5 — Cloud-first Google Drive
 
 - Default tetap **akun tamu dengan penyimpanan lokal**; login Google opsional dari Profil. Setelah login dan persetujuan izin `drive.appdata`, pustaka tersinkronkan ke Drive pribadi tanpa Supabase.

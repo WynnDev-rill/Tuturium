@@ -150,16 +150,29 @@ fun UpdateScreen(model: TuturiumModel, release: Release) {
                         Image(painterResource(R.drawable.brand), null, Modifier.size(62.dp))
                         Text("Pembaruan tersedia", style = MaterialTheme.typography.titleMedium)
                         Text(release.version, style = MaterialTheme.typography.displayMedium)
-                        Text("Dari ${BuildConfig.VERSION_NAME} ke ${release.version} • ${release.date} • " +
+                        Text(listOf(release.date.takeIf(String::isNotBlank),
                             String.format(Locale.forLanguageTag("id"), "%.1f MB", release.size / 1_000_000.0))
+                            .filterNotNull().joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            VersionBlock("Terpasang", BuildConfig.VERSION_NAME, Modifier.weight(1f))
+                            VersionBlock("Pembaruan", release.version, Modifier.weight(1f))
+                        }
                     }
                 }
             }
             if (release.notes.isNotBlank()) item {
-                SettingCard("Catatan rilis", { Text(release.notes) })
+                SettingCard("Perubahan utama", {
+                    release.notes.lineSequence().map { it.trim() }.filter { it.isNotBlank() }
+                        .forEach { line ->
+                            val text = line.removePrefix("- ").trimStart('#', ' ')
+                            Text(if (line.startsWith("- ")) "• $text" else text,
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
+                })
             }
             item {
-                SettingCard("Verifikasi APK", {
+                SettingCard("Pembaruan terlindungi", {
                     Text("Tuturium memeriksa checksum, versi, dan sertifikat APK sebelum membuka pemasang Android.")
                     model.updateStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 })
@@ -180,6 +193,16 @@ fun UpdateScreen(model: TuturiumModel, release: Release) {
                 }
                 TextButton({ model.showUpdate = false }) { Text("Nanti") }
             }
+        }
+    }
+}
+
+@Composable
+private fun VersionBlock(label: String, version: String, modifier: Modifier) {
+    Surface(modifier, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(version, style = MaterialTheme.typography.titleMedium)
         }
     }
 }

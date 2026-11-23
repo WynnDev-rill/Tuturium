@@ -12,8 +12,8 @@ android {
         applicationId = "id.tuturium.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10305
-        versionName = "1.3.5"
+        versionCode = 10306
+        versionName = "1.3.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Client IDs are public identifiers, not OAuth client secrets.
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID",

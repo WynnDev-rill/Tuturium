@@ -254,8 +254,10 @@ fun Tuturium(model: TuturiumModel) {
 private fun ModernUpdateMenu(model: TuturiumModel, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ModernDetailHeader("Pembaruan aplikasi", onBack)
+        val release = model.release
         Card(Modifier.fillMaxWidth().padding(16.dp), colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface)) {
+            containerColor = if (release == null) MaterialTheme.colorScheme.surface
+                else MaterialTheme.colorScheme.primaryContainer)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Image(painterResource(R.drawable.brand), null, Modifier.size(50.dp))
@@ -265,6 +267,10 @@ private fun ModernUpdateMenu(model: TuturiumModel, onBack: () -> Unit) {
                         Text("Versi ${BuildConfig.VERSION_NAME}")
                     }
                 }
+                if (release != null) {
+                    Text("Pembaruan tersedia", style = MaterialTheme.typography.titleMedium)
+                    Text("Tuturium ${release.version} siap diunduh.")
+                }
                 Text(model.updateStatus ?: "Periksa versi terbaru melalui GitHub Releases.")
                 Button(onClick = { model.checkUpdate() },
                     enabled = !model.checking && model.updateProgress == null) {
@@ -272,8 +278,8 @@ private fun ModernUpdateMenu(model: TuturiumModel, onBack: () -> Unit) {
                     Spacer(Modifier.width(8.dp))
                     Text(if (model.checking) "Memeriksa…" else "Periksa pembaruan")
                 }
-                if (model.release != null) {
-                    TextButton(onClick = { model.showUpdate = true }) { Text("Lihat pembaruan tersedia") }
+                if (release != null) {
+                    FilledTonalButton(onClick = { model.showUpdate = true }) { Text("Lihat dan unduh pembaruan") }
                 }
             }
         }

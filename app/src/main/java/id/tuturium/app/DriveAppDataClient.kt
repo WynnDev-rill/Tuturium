@@ -17,16 +17,23 @@ internal class DriveAppDataClient(private val token: String) {
 
     data class RemoteFile(val id: String, val md5: String?)
 
+    fun accountEmail(): String? = json("$API/about?fields=user(emailAddress)")
+        .optJSONObject("user")?.optString("emailAddress")?.takeIf(String::isNotBlank)
+
     fun findArchive(): RemoteFile? {
         val query = URLEncoder.encode("name = '$FILE_NAME' and trashed = false", "UTF-8")
         val url = "$API/files?spaces=appDataFolder&q=$query&fields=nextPageToken,files(id,name,md5Checksum)&pageSize=100"
-        val response = json(url)
-        val files = response.optJSONArray("files") ?: return null
-        for (i in 0 until files.length()) {
-            val file = files.getJSONObject(i)
-            if (file.optString("name") == FILE_NAME) return RemoteFile(
-                file.getString("id"), file.optString("md5Checksum").ifBlank { null })
-        }
+        var page = ""
+        do {
+            val response = json(url + "&orderBy=modifiedTime%20desc" +
+                if (page.isBlank()) "" else "&pageToken=" + URLEncoder.encode(page, "UTF-8"))
+            val files = response.optJSONArray("files")
+            if (files != null && files.length() > 0) {
+                val file = files.getJSONObject(0)
+                return RemoteFile(file.getString("id"), file.optString("md5Checksum").ifBlank { null })
+            }
+            page = response.optString("nextPageToken")
+        } while (page.isNotBlank())
         return null
     }
 
@@ -35,7 +42,17 @@ internal class DriveAppDataClient(private val token: String) {
         try {
             checkResponse(conn)
             destination.outputStream().buffered().use { out ->
-                conn.inputStream.use { it.copyTo(out, 65536) }
+                conn.inputStream.use { input ->
+                    val buffer = ByteArray(65536)
+                    var bytes = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        bytes += read
+                        if (bytes > DriveArchive.MAX_ARCHIVE_BYTES) throw CloudAccessException("Arsip Drive terlalu besar.")
+                        out.write(buffer, 0, read)
+                    }
+                }
             }
             if (remote.md5 != null && remote.md5 != checksum(destination))
                 throw IOException("Checksum arsip Google Drive tidak cocok.")
@@ -76,6 +93,7 @@ internal class DriveAppDataClient(private val token: String) {
         }
         val length = source.length()
         var offset = 0L
+        var stalls = 0
         RandomAccessFile(source, "r").use { file ->
             while (offset < length) {
                 val size = minOf(CHUNK_SIZE.toLong(), length - offset).toInt()
@@ -100,9 +118,10 @@ internal class DriveAppDataClient(private val token: String) {
                     }
                     val status = request.responseCode
                     if (status == 308) {
-                        val range = request.getHeaderField("Range")
-                        val confirmed = range?.substringAfterLast('-')?.toLongOrNull()
-                        offset = if (confirmed != null) confirmed + 1 else end + 1
+                        val next = nextDriveUploadOffset(request.getHeaderField("Range"), offset, end)
+                        if (next == offset && ++stalls == 3) throw CloudAccessException("Unggahan Drive terhenti. Coba lagi.")
+                        if (next > offset) stalls = 0
+                        offset = next
                     } else {
                         checkResponse(request)
                         val completed = JSONObject(request.inputStream.bufferedReader().use { it.readText() })
@@ -138,6 +157,7 @@ internal class DriveAppDataClient(private val token: String) {
             setRequestProperty("Authorization", "Bearer $token")
             setRequestProperty("Accept", "application/json")
             useCaches = false
+            instanceFollowRedirects = false
         }
 
     private fun checkResponse(conn: HttpURLConnection) {
@@ -145,7 +165,7 @@ internal class DriveAppDataClient(private val token: String) {
         if (status !in 200..299) {
             // Never log OAuth tokens or raw HTTP response bodies.
             Log.w("TuturiumCloud", "Drive API returned HTTP $status")
-            throw IOException(when (status) {
+            throw DriveHttpException(status, when (status) {
                 401 -> "Akses Google Drive kedaluwarsa. Hubungkan kembali akun."
                 403 -> "Izin Google Drive ditolak. Izinkan penyimpanan aplikasi."
                 429, 500, 502, 503, 504 -> "Google Drive sedang sibuk. Coba lagi."
@@ -173,4 +193,13 @@ internal class DriveAppDataClient(private val token: String) {
             return digest.digest().joinToString("") { "%02x".format(it) }
         }
     }
+}
+
+internal fun nextDriveUploadOffset(range: String?, offset: Long, end: Long): Long {
+    if (range == null) return offset
+    val confirmed = Regex("^bytes=0-([0-9]+)$").matchEntire(range)?.groupValues?.get(1)?.toLongOrNull()
+    if (confirmed == null || confirmed > end || confirmed < offset - 1) {
+        throw CloudAccessException("Drive mengembalikan posisi unggahan yang tidak valid.")
+    }
+    return confirmed + 1
 }

@@ -1,7 +1,8 @@
 package id.tuturium.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,14 +58,14 @@ internal fun TuturiumAccountScreen(
     onSync: () -> Unit, onSignOut: () -> Unit
 ) {
     val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
-    val name = if (cloud.connected) {
+    val name = if (cloud.email != null) {
         cloud.displayName?.takeIf { it.isNotBlank() }
             ?: cloud.email?.substringBefore('@')
             ?: "Akun Google"
     } else "Akun tamu"
 
     Column(Modifier.fillMaxSize().background(Color.Black)
-        .padding(horizontal = 20.dp)) {
+        .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 28.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -77,7 +78,7 @@ internal fun TuturiumAccountScreen(
         }
         Column(Modifier.fillMaxWidth().padding(bottom = 30.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
-            GoogleAvatar(if (cloud.connected) cloud.photoUrl else null, 96.dp)
+            GoogleAvatar(cloud.photoUrl, 96.dp)
             Spacer(Modifier.height(14.dp))
             Text(name, style = MaterialTheme.typography.titleLarge, color = Color.White)
             Spacer(Modifier.height(4.dp))
@@ -94,7 +95,7 @@ internal fun TuturiumAccountScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
-        Button(onClick = if (cloud.connected) onSync else onSignIn,
+        Button(onClick = if (cloud.email != null) onSync else onSignIn,
             enabled = !cloud.busy,
             modifier = Modifier.fillMaxWidth().height(54.dp),
             shape = RoundedCornerShape(24.dp),
@@ -104,11 +105,15 @@ internal fun TuturiumAccountScreen(
                     color = Color.White, strokeWidth = 2.dp)
                 Spacer(Modifier.width(10.dp))
             }
-            Text(if (cloud.connected) "Sinkronkan Google Drive" else "Masuk dengan Google",
+            Text(when {
+                cloud.connected -> "Sinkronkan Google Drive"
+                cloud.email != null -> "Hubungkan Google Drive"
+                else -> "Masuk dengan Google"
+            },
                 color = Color.White)
         }
-        if (cloud.connected) {
-            TextButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) {
+        if (cloud.email != null) {
+            TextButton(onClick = onSignOut, enabled = !cloud.busy, modifier = Modifier.fillMaxWidth()) {
                 Text("Keluar akun", color = accountMuted)
             }
         }

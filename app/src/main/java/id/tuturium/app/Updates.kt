@@ -21,6 +21,8 @@ import org.json.JSONObject
 data class Release(val version: String, val notes: String, val date: String, val size: Long,
     val url: String, val checksum: String)
 
+internal class UpdateCheckException(message: String) : java.io.IOException(message)
+
 object Updates {
     private const val REPO = "WynnDev-rill/Tuturium"
     private const val APK = "Tuturium.apk"
@@ -29,8 +31,12 @@ object Updates {
     suspend fun latest(): Release? = withContext(Dispatchers.IO) {
         val connection = request("https://api.github.com/repos/$REPO/releases/latest")
         try {
-            if (connection.responseCode == 404) return@withContext null
-            check(connection.responseCode == 200) { "Pemeriksaan gagal (HTTP ${connection.responseCode})." }
+            when (val status = connection.responseCode) {
+                200 -> Unit
+                404 -> throw UpdateCheckException("GitHub belum memiliki rilis publik Tuturium.")
+                403, 429 -> throw UpdateCheckException("GitHub membatasi pemeriksaan sementara. Coba lagi nanti.")
+                else -> throw UpdateCheckException("GitHub tidak dapat memeriksa pembaruan (HTTP $status).")
+            }
             val response = connection.inputStream.bufferedReader().use { reader ->
                 val buffer = CharArray(8192)
                 val text = StringBuilder()
@@ -42,24 +48,32 @@ object Updates {
                 }
                 JSONObject(text.toString())
             }
-            val tag = response.getString("tag_name")
-            if (!isNewer(tag, BuildConfig.VERSION_NAME) || response.optBoolean("prerelease") ||
-                response.optBoolean("draft")) return@withContext null
-            val assets = response.getJSONArray("assets")
-            val asset = (0 until assets.length()).map(assets::getJSONObject)
-                .firstOrNull { it.optString("name") == APK && it.optString("state") == "uploaded" }
-                ?: error("Rilis tersedia, tetapi APK belum siap.")
-            val url = asset.getString("browser_download_url")
-            val checksum = asset.optString("digest")
-            val size = asset.getLong("size")
-            check(url == "https://github.com/$REPO/releases/download/$tag/$APK" && size in 1..MAX_APK &&
-                Regex("^sha256:[a-f0-9]{64}$").matches(checksum)) { "Metadata APK tidak dapat diverifikasi." }
-            Release(tag.removePrefix("v"), response.optString("body").trim().take(6000),
-                response.optString("published_at").take(10), size, url, checksum.removePrefix("sha256:"))
+            parseLatestRelease(response, BuildConfig.VERSION_NAME)
         } finally {
             connection.disconnect()
         }
     }
+
+    internal fun parseLatestRelease(response: JSONObject, installedVersion: String): Release? {
+        val tag = response.getString("tag_name")
+        if (!isNewer(tag, installedVersion) || response.optBoolean("prerelease") ||
+            response.optBoolean("draft")) return null
+        val assets = response.optJSONArray("assets")
+            ?: throw UpdateCheckException("Rilis tersedia, tetapi APK belum siap.")
+        val asset = (0 until assets.length()).map(assets::getJSONObject)
+            .firstOrNull { it.optString("name") == APK && it.optString("state") == "uploaded" }
+            ?: throw UpdateCheckException("Rilis tersedia, tetapi APK belum siap.")
+        val url = asset.getString("browser_download_url")
+        val checksum = asset.optString("digest")
+        val size = asset.getLong("size")
+        if (url != "https://github.com/$REPO/releases/download/$tag/$APK" || size !in 1..MAX_APK ||
+            !Regex("^sha256:[a-f0-9]{64}$").matches(checksum)) {
+            throw UpdateCheckException("Rilis tersedia, tetapi metadata APK belum dapat diverifikasi.")
+        }
+        return Release(tag.removePrefix("v"), response.optString("body").trim().take(6000),
+            response.optString("published_at").take(10), size, url, checksum.removePrefix("sha256:"))
+    }
+
 
     suspend fun download(context: Context, release: Release, onProgress: (Float) -> Unit): File =
         withContext(Dispatchers.IO) {

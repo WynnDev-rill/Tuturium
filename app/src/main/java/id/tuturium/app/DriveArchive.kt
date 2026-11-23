@@ -186,6 +186,6 @@ internal class DriveArchive(private val context: Context) {
     }
 
     companion object {
-        private const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
+        internal const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
     }
 }
