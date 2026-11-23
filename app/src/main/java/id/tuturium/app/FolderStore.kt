@@ -13,7 +13,9 @@ internal object FolderStore {
     fun add(context: Context, name: String): Boolean {
         val safe = name.trim().take(60)
         if (safe.isBlank() || names(context).any { it.equals(safe, true) }) return false
-        return prefs(context).edit().putStringSet("names", (names(context) + safe).toSet()).commit()
+        val saved = prefs(context).edit().putStringSet("names", (names(context) + safe).toSet()).commit()
+        if (saved) TuturiumCloud.markDirty(context)
+        return saved
     }
 
     fun isPinned(context: Context, name: String): Boolean =
@@ -23,6 +25,7 @@ internal object FolderStore {
         val pinned = prefs(context).getStringSet("pinned_folders", emptySet()).orEmpty().toMutableSet()
         if (!pinned.add(name)) pinned.remove(name)
         prefs(context).edit().putStringSet("pinned_folders", pinned).apply()
+        TuturiumCloud.markDirty(context)
     }
 
     fun rename(context: Context, current: String, replacement: String): Boolean {
@@ -37,7 +40,9 @@ internal object FolderStore {
             .forEach { editor.putString(it, safe) }
         val pins = p.getStringSet("pinned_folders", emptySet()).orEmpty()
         if (current in pins) editor.putStringSet("pinned_folders", pins - current + safe)
-        return editor.commit()
+        val saved = editor.commit()
+        if (saved) TuturiumCloud.markDirty(context)
+        return saved
     }
 
     fun remove(context: Context, name: String) {
@@ -48,6 +53,7 @@ internal object FolderStore {
         editor.putStringSet("pinned_folders",
             p.getStringSet("pinned_folders", emptySet()).orEmpty() - name)
         editor.apply()
+        TuturiumCloud.markDirty(context)
     }
 
     fun folderOf(context: Context, bookId: String): String? =
@@ -59,5 +65,6 @@ internal object FolderStore {
         if (folder == null) editor.remove("book:$bookId")
         else editor.putString("book:$bookId", folder)
         editor.apply()
+        TuturiumCloud.markDirty(context)
     }
 }
