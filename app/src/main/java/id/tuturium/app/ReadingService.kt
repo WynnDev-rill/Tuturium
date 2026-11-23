@@ -283,7 +283,10 @@ class ReadingService : Service() {
         }
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
-        val available = engine.availableVoices()
+        // Network TTS must only be activated after the user explicitly chose
+        // that voice in the library and accepted the privacy disclosure.
+        val available = if (settings.voice == null) engine.offlineVoices()
+            else engine.availableVoices()
         val preferredLocale = if (options.matchLanguage) "id" else Locale.getDefault().language
         val selected = if (!options.matchLanguage && settings.voice == null)
             available.firstOrNull { it.locale.language == preferredLocale }?.choice()
