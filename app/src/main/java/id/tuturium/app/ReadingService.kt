@@ -88,8 +88,20 @@ class ReadingService : Service() {
     private var resumeOnFocus = false
     private var hasFocus = false
     private var foreground = false
+    private var listeningStart = 0L
+    private var listeningSpeed = 1f
     private var current = Playback()
-        set(value) { field = value; mutable.value = value }
+        set(value) {
+            if (field.playing && !value.playing && listeningStart > 0L) {
+                ListeningStats.recordDuration(this, SystemClock.elapsedRealtime() - listeningStart, listeningSpeed)
+                listeningStart = 0L
+            } else if (!field.playing && value.playing) {
+                listeningStart = SystemClock.elapsedRealtime()
+                listeningSpeed = ReadingSettings.read(this).speed
+            }
+            field = value
+            mutable.value = value
+        }
     private val leaveForeground = Runnable {
         if (foreground && !current.playing && !current.loading) {
             stopForeground(STOP_FOREGROUND_DETACH)
@@ -293,6 +305,10 @@ class ReadingService : Service() {
         override fun onDone(utteranceId: String?) {
             handler.post {
                 if (utteranceId != activeUtterance || !current.playing) return@post
+                document?.passes?.getOrNull(current.index)?.let { pass ->
+                    ListeningStats.recordUtterance(this@ReadingService, pass.text,
+                        ReadingSettings.read(this@ReadingService).speed)
+                }
                 if (current.index + 1 < current.total) {
                     speechOffset = 0
                     current = current.copy(index = current.index + 1, range = null)

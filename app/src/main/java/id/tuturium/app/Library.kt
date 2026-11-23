@@ -23,13 +23,14 @@ data class Book(
 data class Bookmark(val index: Int, val excerpt: String)
 
 class Library private constructor(context: Context) :
-    SQLiteOpenHelper(context, "library.db", null, 1) {
+    SQLiteOpenHelper(context, "library.db", null, 2) {
     private val folder = File(context.filesDir, "books").apply { mkdirs() }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL, format TEXT NOT NULL,
-                count INTEGER NOT NULL, position INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL)"""
+                count INTEGER NOT NULL, position INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL,
+                deleted_at INTEGER NOT NULL DEFAULT 0)"""
         )
         db.execSQL(
             """CREATE TABLE bookmarks (book TEXT REFERENCES books(id) ON DELETE CASCADE,
@@ -38,14 +39,16 @@ class Library private constructor(context: Context) :
     }
 
     override fun onConfigure(db: SQLiteDatabase) = db.setForeignKeyConstraintsEnabled(true)
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) db.execSQL("ALTER TABLE books ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
+    }
 
     fun books(): List<Book> = readableDatabase.query(
-        "books", null, null, null, null, null, "updated DESC, title COLLATE NOCASE"
+        "books", null, "deleted_at = 0", null, null, null, "updated DESC, title COLLATE NOCASE"
     ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.book()) } }
 
     fun book(id: String): Book? = readableDatabase.query(
-        "books", null, "id = ?", arrayOf(id), null, null, null
+        "books", null, "id = ? AND deleted_at = 0", arrayOf(id), null, null, null
     ).use { if (it.moveToFirst()) it.book() else null }
 
     fun add(title: String, format: String, document: ReadingDocument): Book {
@@ -100,8 +103,25 @@ class Library private constructor(context: Context) :
             "id = ?", arrayOf(id))
     }
 
+    fun trashed(): List<Book> = readableDatabase.query(
+        "books", null, "deleted_at > 0", null, null, null, "deleted_at DESC"
+    ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.book()) } }
+
     fun delete(id: String) {
-        if (writableDatabase.delete("books", "id = ?", arrayOf(id)) != 0) documentFile(id).delete()
+        writableDatabase.update("books", ContentValues().apply {
+            put("deleted_at", System.currentTimeMillis().coerceAtLeast(1L))
+        }, "id = ?", arrayOf(id))
+    }
+
+    fun restore(id: String) {
+        writableDatabase.update("books", ContentValues().apply {
+            put("deleted_at", 0)
+            put("updated", System.currentTimeMillis())
+        }, "id = ?", arrayOf(id))
+    }
+
+    fun deletePermanently(id: String) {
+        if (writableDatabase.delete("books", "id = ? AND deleted_at > 0", arrayOf(id)) != 0) documentFile(id).delete()
     }
 
     fun bookmarks(id: String): List<Bookmark> = readableDatabase.query(

@@ -2,6 +2,10 @@ package id.tuturium.app
 
 import android.content.ActivityNotFoundException
 import android.app.Activity
+import android.speech.RecognizerIntent
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,7 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import id.tuturium.app.icons.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,23 +38,64 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Tuturium(model: TuturiumModel) {
     val context = LocalContext.current
     val playback by ReadingService.state.collectAsStateWithLifecycle()
-    var tab by rememberSaveable { mutableStateOf("library") }
+    var tab by rememberSaveable { mutableStateOf("home") }
+    var showAddSheet by remember { mutableStateOf(false) }
+    var showLinkDialog by remember { mutableStateOf(false) }
+    var linkDraft by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) model.import(uri)
     }
-    val openFile = {
+    val openFile: () -> Unit = {
         try {
             picker.launch((DocumentImporter.mimeFormats.keys + "application/octet-stream").toTypedArray())
         } catch (_: ActivityNotFoundException) {
             model.status = "Pemilih dokumen Android belum tersedia."
         }
     }
-    LaunchedEffect(Unit) { model.checkUpdate(automatic = true) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null) {
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            recognizer.process(InputImage.fromBitmap(bitmap, 0))
+                .addOnSuccessListener { result ->
+                    if (result.text.isBlank()) model.status = "Tidak ada tulisan yang terdeteksi."
+                    else model.addText("Hasil pindai", result.text)
+                }
+                .addOnFailureListener { model.status = "Pemindaian teks gagal." }
+                .addOnCompleteListener { recognizer.close() }
+        }
+    }
+    val scan: () -> Unit = {
+        try { camera.launch(null) }
+        catch (_: Exception) { model.status = "Aplikasi kamera belum tersedia." }
+    }
+    val dictation = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spoken.isNullOrBlank()) model.addText("Hasil dikte", spoken)
+        }
+    }
+    val dictate: () -> Unit = {
+        try {
+            dictation.launch(android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Ucapkan teks yang ingin disimpan")
+            })
+        } catch (_: ActivityNotFoundException) {
+            model.status = "Pengenalan suara belum tersedia di perangkat ini."
+        }
+    }
+    val paste: () -> Unit = { model.textDraft = ""; model.showPaste = true }
+    val link: () -> Unit = { showLinkDialog = true }
+
+    LaunchedEffect(Unit) { model.refresh(); model.checkUpdate(automatic = true) }
     LaunchedEffect(tab) { if (tab == "settings") model.loadVoices() }
     LaunchedEffect(model.status) {
         model.status?.let {
@@ -60,11 +104,15 @@ fun Tuturium(model: TuturiumModel) {
         }
     }
     LaunchedEffect(playback.error) { playback.error?.let { snackbar.showSnackbar(it) } }
-    BackHandler(model.showUpdate || model.reader != null || tab == "settings") {
+    BackHandler(model.showUpdate || model.reader != null || tab !in listOf("home", "library") ||
+        showAddSheet || showLinkDialog) {
         when {
+            showLinkDialog -> showLinkDialog = false
+            showAddSheet -> showAddSheet = false
             model.showUpdate -> model.showUpdate = false
             model.reader != null -> model.closeReader()
-            else -> tab = "library"
+            tab in listOf("stats", "settings", "storage", "trash", "updates") -> tab = "profile"
+            else -> tab = "home"
         }
     }
 
@@ -79,9 +127,10 @@ fun Tuturium(model: TuturiumModel) {
     }
     TuturiumTheme(model.theme) {
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
-                if (model.reader == null && !model.showUpdate) {
+                if (model.reader == null && !model.showUpdate && tab in listOf("home", "library")) {
                     Column {
                         AnimatedVisibility(playback.bookId != null && playback.total > 0) {
                             MiniPlayer(playback, onOpen = { playback.bookId?.let(model::open) }, onPlay = {
@@ -89,12 +138,10 @@ fun Tuturium(model: TuturiumModel) {
                                 ReadingService.command(context, action)
                             })
                         }
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                            NavigationBarItem(tab == "library", { tab = "library"; model.refresh() },
-                                { Icon(Icons.AutoMirrored.Rounded.LibraryBooks, null) }, label = { Text("Pustaka") })
-                            NavigationBarItem(tab == "settings", { tab = "settings" },
-                                { Icon(Icons.Rounded.Tune, null) }, label = { Text("Setelan") })
-                        }
+                        ModernNavigation(tab,
+                            onHome = { tab = "home"; model.refresh() },
+                            onLibrary = { tab = "library"; model.refresh() },
+                            onAdd = { showAddSheet = true })
                     }
                 }
             }
@@ -105,7 +152,7 @@ fun Tuturium(model: TuturiumModel) {
                 else -> tab
             }
             Crossfade(screen, modifier = Modifier.fillMaxSize().padding(padding),
-                animationSpec = tween(160), label = "Layar Tuturium") { target ->
+                animationSpec = tween(170), label = "Layar Tuturium") { target ->
                 when (target) {
                     "update" -> model.release?.let { UpdateScreen(model, it) }
                     "reader" -> {
@@ -113,10 +160,68 @@ fun Tuturium(model: TuturiumModel) {
                         val document = model.content
                         if (book != null && document != null) Reader(model, book, document, playback) { tab = "settings" }
                     }
-                    "settings" -> SettingsScreen(model)
-                    else -> LibraryScreen(model, playback, openFile)
+                    "home" -> ModernHome(model,
+                        openProfile = { tab = "profile" },
+                        openBook = { model.open(it.id) },
+                        onFile = openFile, onScan = scan, onLink = link,
+                        onPaste = paste, onDictation = dictate, onAdd = { showAddSheet = true })
+                    "library" -> ModernLibrary(model, playback,
+                        onFolder = { model.status = "Folder akan tersedia pada pembaruan selanjutnya." })
+                    "profile" -> ModernProfile(
+                        onBack = { tab = "home" },
+                        onStats = { tab = "stats" },
+                        onSettings = { tab = "settings" },
+                        onStorage = { model.refresh(); tab = "storage" },
+                        onTrash = { model.refresh(); tab = "trash" },
+                        onUpdate = { tab = "updates" })
+                    "stats" -> ModernStatistics(model, { tab = "profile" })
+                    "settings" -> Column {
+                        ModernDetailHeader("Kembali ke profil", { tab = "profile" })
+                        SettingsScreen(model)
+                    }
+                    "storage" -> ModernStorage(model, { tab = "profile" })
+                    "trash" -> ModernTrash(model, { tab = "profile" })
+                    "updates" -> ModernUpdateMenu(model, { tab = "profile" })
                 }
             }
+        }
+        if (showAddSheet) {
+            ModalBottomSheet(onDismissRequest = { showAddSheet = false },
+                containerColor = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    Text("Tambahkan bacaan", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(12.dp))
+                    listOf(
+                        Triple("File", Icons.Rounded.FolderOpen, openFile),
+                        Triple("Pindai", Icons.Rounded.CameraAlt, scan),
+                        Triple("Tautan", Icons.Rounded.Link, link),
+                        Triple("Tempel teks", Icons.Rounded.EditNote, paste),
+                        Triple("Dikte", Icons.Rounded.Mic, dictate)
+                    ).forEach { (title, icon, action) ->
+                        ListItem(headlineContent = { Text(title) },
+                            leadingContent = { Icon(icon, null) },
+                            modifier = Modifier.clickable {
+                                showAddSheet = false
+                                action()
+                            })
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+        }
+        if (showLinkDialog) {
+            AlertDialog(onDismissRequest = { showLinkDialog = false },
+                title = { Text("Dengarkan tautan") },
+                text = { OutlinedTextField(linkDraft, { linkDraft = it.take(2048) },
+                    singleLine = true, label = { Text("URL HTTPS halaman web") }) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        model.importLink(linkDraft)
+                        showLinkDialog = false
+                        linkDraft = ""
+                    }, enabled = linkDraft.startsWith("https://")) { Text("Impor") }
+                },
+                dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Batal") } })
         }
         if (model.showPaste) PasteDialog(model)
         model.importing?.let { progress ->
@@ -125,6 +230,36 @@ fun Tuturium(model: TuturiumModel) {
                     Text(progress)
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 } }, confirmButton = { TextButton(onClick = model::cancelImport) { Text("Batalkan") } })
+        }
+    }
+}
+
+@Composable
+private fun ModernUpdateMenu(model: TuturiumModel, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        ModernDetailHeader("Pembaruan aplikasi", onBack)
+        Card(Modifier.fillMaxWidth().padding(16.dp), colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(painterResource(R.drawable.brand), null, Modifier.size(50.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Tuturium", style = MaterialTheme.typography.titleLarge)
+                        Text("Versi ${BuildConfig.VERSION_NAME}")
+                    }
+                }
+                Text(model.updateStatus ?: "Periksa versi terbaru melalui GitHub Releases.")
+                Button(onClick = { model.checkUpdate() },
+                    enabled = !model.checking && model.updateProgress == null) {
+                    Icon(Icons.Rounded.SystemUpdate, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (model.checking) "Memeriksa…" else "Periksa pembaruan")
+                }
+                if (model.release != null) {
+                    TextButton(onClick = { model.showUpdate = true }) { Text("Lihat pembaruan tersedia") }
+                }
+            }
         }
     }
 }
