@@ -68,11 +68,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handle(intent)
-        setContent {
-            val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
-            if (cloud.connected) Tuturium(model)
-            else TuturiumCloudLoginScreen(cloud, onSignIn = ::startGoogleSignIn)
-        }
+        // Guest access is the default. Signing in from Profile upgrades the
+        // current library to optional Google Drive synchronization.
+        setContent { Tuturium(model) }
     }
 
     /** Credential Manager signs in the Google account; Drive consent is
