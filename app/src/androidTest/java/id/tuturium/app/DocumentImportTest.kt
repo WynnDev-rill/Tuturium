@@ -134,6 +134,12 @@ class DocumentImportTest {
                 verify(book, library.document(book.id))
             } finally {
                 library.delete(book.id)
+                assertNull(library.book(book.id))
+                assertTrue(library.trashed().any { it.id == book.id })
+                library.restore(book.id)
+                assertNotNull(library.book(book.id))
+                library.delete(book.id)
+                library.deletePermanently(book.id)
             }
             assertNull(library.book(book.id))
             assertTrue(library.bookmarks(book.id).isEmpty())
