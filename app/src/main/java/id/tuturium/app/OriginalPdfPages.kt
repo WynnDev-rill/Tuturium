@@ -36,17 +36,17 @@ fun OriginalPdfPages(source: File) {
         }
     }
     when (val total = count) {
-        null -> Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
+        null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
-        0, -1 -> Box(Modifier.fillMaxSize().background(Color.White),
+        0, -1 -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
             contentAlignment = Alignment.Center) {
-            Text("PDF asli tidak dapat dirender. Pilih mode Teks & sorotan.",
-                color = Color.DarkGray)
+            Text("Halaman PDF tidak dapat dibuka. Pilih mode Teks.",
+                color = MaterialTheme.colorScheme.onBackground)
         }
         else -> LazyColumn(
-            modifier = Modifier.fillMaxSize().background(Color(0xFFE7E7E7)),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             items(total, key = { it }) { index ->
