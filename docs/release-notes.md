@@ -1,0 +1,4 @@
+- Impor PDF, EPUB, DOCX, dan TXT ke pustaka lokal, termasuk PDF pindai berhuruf Latin dengan OCR.
+- Dengarkan dengan suara offline Android, pengaturan nada dan kecepatan, serta sorotan yang mengikuti teks.
+- Sambung kembali dari posisi terakhir, gunakan markah atau pencarian, dan kendalikan pemutaran dari notifikasi.
+- Periksa pembaruan GitHub saat Tuturium dibuka dan verifikasi APK sebelum meneruskan pemasangan ke Android.

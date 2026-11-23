@@ -33,3 +33,12 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Signing material, local packages, and Python skill cache
+*.p12
+*.pfx
+*.jks.base64
+dist/
+__pycache__/
+*.pyc
+*-signing-key.zip
