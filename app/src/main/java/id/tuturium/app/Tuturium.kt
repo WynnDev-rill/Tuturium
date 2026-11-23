@@ -96,7 +96,7 @@ fun Tuturium(model: TuturiumModel) {
     val link: () -> Unit = { showLinkDialog = true }
 
     LaunchedEffect(Unit) { model.refresh(); model.checkUpdate(automatic = true) }
-    LaunchedEffect(tab) { if (tab == "settings") model.loadVoices() }
+    LaunchedEffect(tab) { if (tab == "voices") model.loadVoices() }
     LaunchedEffect(model.status) {
         model.status?.let {
             snackbar.showSnackbar(it)
@@ -111,7 +111,7 @@ fun Tuturium(model: TuturiumModel) {
             showAddSheet -> showAddSheet = false
             model.showUpdate -> model.showUpdate = false
             model.reader != null -> model.closeReader()
-            tab in listOf("stats", "settings", "storage", "trash", "updates") -> tab = "profile"
+            tab in listOf("stats", "settings", "voices", "storage", "trash", "updates") -> tab = "profile"
             else -> tab = "home"
         }
     }
@@ -119,6 +119,14 @@ fun Tuturium(model: TuturiumModel) {
     val dark = model.theme == "dark" || (model.theme == "system" && isSystemInDarkTheme())
     SideEffect {
         (context as? Activity)?.window?.let { window ->
+            // Do not force 30 or 60 FPS: let Android select the device's active refresh rate.
+            // Compose uses display vsync and supports variable refresh rates.
+            val attributes = window.attributes
+            if (attributes.preferredRefreshRate != 0f || attributes.preferredDisplayModeId != 0) {
+                attributes.preferredRefreshRate = 0f
+                attributes.preferredDisplayModeId = 0
+                window.attributes = attributes
+            }
             // Avoid Android's grey contrast scrim blending into the black bottom bar.
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 window.isNavigationBarContrastEnforced = false
@@ -175,14 +183,13 @@ fun Tuturium(model: TuturiumModel) {
                         onBack = { tab = "home" },
                         onStats = { tab = "stats" },
                         onSettings = { tab = "settings" },
+                        onVoices = { tab = "voices" },
                         onStorage = { model.refresh(); tab = "storage" },
                         onTrash = { model.refresh(); tab = "trash" },
                         onUpdate = { tab = "updates" })
                     "stats" -> ModernStatistics(model, { tab = "profile" })
-                    "settings" -> Column {
-                        ModernDetailHeader("Kembali ke profil", { tab = "profile" })
-                        SettingsScreen(model)
-                    }
+                    "settings" -> ListeningSettingsV2(model) { tab = "profile" }
+                    "voices" -> VoiceLibraryV2(model) { tab = "profile" }
                     "storage" -> StorageV2(model, { tab = "profile" })
                     "trash" -> ModernTrash(model, { tab = "profile" })
                     "updates" -> ModernUpdateMenu(model, { tab = "profile" })

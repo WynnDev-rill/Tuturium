@@ -39,7 +39,7 @@ fun splitSpeech(text: String, section: Int = 0, paragraph: Int = 0, limit: Int =
     return passes
 }
 
-data class VoiceChoice(val name: String, val language: String, val label: String, val quality: Int)
+data class VoiceChoice(val name: String, val language: String, val label: String, val quality: Int, val network: Boolean = false)
 
 internal fun isIndonesian(language: String) = language == "id" || language == "in" || language == "ind"
 
@@ -54,7 +54,7 @@ fun chooseVoice(voices: List<VoiceChoice>, selected: String?, systemLanguage: St
                 it.language == "en" -> 1
                 else -> 0
             }
-        }.thenByDescending { it.quality }.thenBy { it.name }
+        }.thenBy { it.network }.thenByDescending { it.quality }.thenBy { it.name }
     ).firstOrNull()
 
 fun versionParts(value: String): List<Int>? {

@@ -93,9 +93,11 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     var textDraft by mutableStateOf("")
     var settings by mutableStateOf(ReadingSettings.read(app))
         private set
+    var listeningOptions by mutableStateOf(ListeningOptions.read(app))
+        private set
     var voices by mutableStateOf<List<VoiceChoice>>(emptyList())
         private set
-    var voiceStatus by mutableStateOf("Memuat suara offline…")
+    var voiceStatus by mutableStateOf("Memuat pustaka suara…")
         private set
     var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
         private set
@@ -291,17 +293,23 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         voiceStatus = "Memuat suara offline…"
         voiceProbe = TextToSpeech(app) { result ->
             viewModelScope.launch(Dispatchers.Main) {
-                voices = if (result == TextToSpeech.SUCCESS) voiceProbe?.offlineVoices().orEmpty().map { it.choice() }
+                voices = if (result == TextToSpeech.SUCCESS) voiceProbe?.availableVoices().orEmpty().map { it.choice() }
                     .sortedWith(compareByDescending<VoiceChoice> { isIndonesian(it.language) }.thenBy { it.label }.thenBy { it.name })
                 else emptyList()
-                voiceStatus = if (voices.isEmpty()) "Belum ada suara offline yang terpasang." else ""
+                voiceStatus = if (voices.isEmpty()) "Belum ada suara TTS yang tersedia pada perangkat." else ""
             }
         }
     }
 
     fun changeSettings(value: ReadingSettings, persist: Boolean = true) {
-        settings = value
-        if (persist) value.save(app)
+        settings = value.copy(speed = value.speed.coerceIn(0.5f, 4f))
+        if (persist) settings.save(app)
+    }
+
+    fun changeListeningOptions(value: ListeningOptions) {
+        listeningOptions = value
+        value.save(app)
+        if (follow != value.autoScroll) changeFollow(value.autoScroll)
     }
 
     fun changeTheme(value: String) {
