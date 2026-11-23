@@ -16,6 +16,9 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -44,6 +47,10 @@ fun Reader(model: TuturiumModel, book: Book, document: ReadingDocument, playback
 private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDocument, playback: Playback,
     showSettings: () -> Unit) {
     val context = LocalContext.current
+    val pdfSource = remember(book.id) {
+        if (book.format == "PDF") Library.get(context).originalPdf(book.id) else null
+    }
+    var showPdf by rememberSaveable(book.id) { mutableStateOf(pdfSource != null) }
     val active = playback.bookId == book.id && playback.total > 0
     val current = (if (active) playback.index else model.position).coerceIn(0, document.passes.lastIndex)
     val isPlaying = active && playback.playing
@@ -139,15 +146,43 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 Icon(Icons.Rounded.MoreHoriz, "Opsi pembaca", Modifier.size(27.dp))
             }
         }
-        LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(15.dp)) {
+        if (book.format == "PDF") {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically) {
+                if (pdfSource != null) {
+                    FilterChip(showPdf, { showPdf = true },
+                        label = { Text("PDF asli") },
+                        leadingIcon = { Icon(Icons.Rounded.PictureAsPdf, null) })
+                    Spacer(Modifier.width(9.dp))
+                }
+                FilterChip(!showPdf || pdfSource == null, { showPdf = false },
+                    label = { Text("Teks & sorotan") },
+                    leadingIcon = { Icon(Icons.Rounded.Subject, null) })
+            }
+        }
+        if (showPdf && pdfSource != null) {
+            Box(Modifier.weight(1f)) { OriginalPdfPages(pdfSource) }
+        } else {
+        LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth()
+            .background(if (book.format == "PDF") Color(0xFFF9F8F4)
+                else MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(horizontal = 23.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)) {
             itemsIndexed(rows) { _, row ->
                 if (row.heading != null) {
-                    Text(row.heading, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                    if (book.format == "PDF") {
+                        Text(row.heading, modifier = Modifier.padding(top = 8.dp, bottom = 5.dp),
+                            fontFamily = FontFamily.Serif, fontSize = 13.sp,
+                            color = Color(0xFF777777), fontWeight = FontWeight.Medium)
+                    } else {
+                        Text(row.heading, style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
                 } else {
                     val pass = row.passes.firstOrNull { it.index == current }?.value
-                    val sentenceColor = MaterialTheme.colorScheme.primaryContainer
+                    val sentenceColor = if (book.format == "PDF") Color(0xFFE6E8FE)
+                        else MaterialTheme.colorScheme.primaryContainer
                     val wordColor = MaterialTheme.colorScheme.primary
                     val wordInk = MaterialTheme.colorScheme.onPrimary
                     val spokenRange = playback.range.takeIf { active && pass != null }
@@ -183,10 +218,16 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                             val offset = layout?.getOffsetForPosition(point) ?: return@detectTapGestures
                             row.passes.lastOrNull { it.value.offset <= offset }?.index?.let(latestSeek)
                         }
-                    }, onTextLayout = { layout = it }, fontFamily = ReaderFont, fontSize = model.fontSize.sp,
-                        lineHeight = (model.fontSize * 1.48f).sp, color = MaterialTheme.colorScheme.onBackground)
+                    }, onTextLayout = { layout = it },
+                        fontFamily = if (book.format == "PDF") FontFamily.Serif else ReaderFont,
+                        fontSize = (if (book.format == "PDF") model.fontSize * 0.85f else model.fontSize).sp,
+                        lineHeight = (model.fontSize * if (book.format == "PDF") 1.35f else 1.48f).sp,
+                        textAlign = if (book.format == "PDF") TextAlign.Justify else TextAlign.Start,
+                        color = if (book.format == "PDF") Color(0xFF222222)
+                            else MaterialTheme.colorScheme.onBackground)
                 }
             }
+        }
         }
         ReaderPlaybackBar(model, book, document, playback, current, isPlaying, isLoading,
             speedPanel = { panel = "speed" }, voicePanel = { panel = "voices" }, seek = ::seek)
