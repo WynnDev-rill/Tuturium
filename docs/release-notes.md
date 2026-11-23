@@ -1,4 +1,9 @@
-- Impor PDF, EPUB, DOCX, dan TXT ke pustaka lokal, termasuk PDF pindai berhuruf Latin dengan OCR.
-- Dengarkan dengan suara offline Android, pengaturan nada dan kecepatan, serta sorotan yang mengikuti teks.
-- Sambung kembali dari posisi terakhir, gunakan markah atau pencarian, dan kendalikan pemutaran dari notifikasi.
-- Periksa pembaruan GitHub saat Tuturium dibuka dan verifikasi APK sebelum meneruskan pemasangan ke Android.
+# Tuturium v1.1.0
+
+- Beranda baru dengan daftar Lanjutkan dan enam cara menambahkan bahan bacaan.
+- Tema hitam, navigasi Beranda/Perpustakaan/+, serta profil tamu tanpa login.
+- Perpustakaan dengan pencarian, urutan judul, progres, dan menu dokumen.
+- Statistik mendengarkan dan jumlah kata yang direkam secara lokal.
+- Dokumen yang dihapus masuk ke sampah dan bisa dipulihkan atau dihapus permanen.
+- Menu pembaruan aplikasi dari profil, memakai pemeriksaan APK dan sertifikat yang sama.
+- Pindai lewat kamera, dikte Android, dan impor teks web melalui tautan HTTPS.
