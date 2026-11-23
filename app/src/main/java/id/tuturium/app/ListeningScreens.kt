@@ -288,3 +288,13 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, dismiss: () -> U
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SkipOptionsSheet(model: TuturiumModel, dismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+        Box(Modifier.fillMaxWidth().heightIn(max = 690.dp)) {
+            ListeningSettingsV2(model, onBack = dismiss)
+        }
+    }
+}
