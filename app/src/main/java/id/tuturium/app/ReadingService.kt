@@ -198,7 +198,7 @@ class ReadingService : Service() {
         when (intent?.action) {
             PLAY -> {
                 val id = intent.getStringExtra("book")
-                if (id != null) open(id, intent.getIntExtra("index", -1))
+                if (id != null) open(id, intent.getIntExtra("index", -1), intent.getIntExtra("offset", 0))
                 else if (document != null) startCurrent()
                 else {
                     promote()
@@ -209,7 +209,7 @@ class ReadingService : Service() {
             STOP -> finish()
             NEXT -> seek(current.index + 1)
             PREVIOUS -> seek(current.index - 1)
-            SEEK -> seek(intent.getIntExtra("index", 0))
+            SEEK -> seek(intent.getIntExtra("index", 0), offset = intent.getIntExtra("offset", 0))
             SETTINGS -> if (current.playing) {
                 speechOffset = current.range?.first ?: speechOffset
                 stopUtterance()
@@ -220,13 +220,14 @@ class ReadingService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun open(id: String, index: Int) {
+    private fun open(id: String, index: Int, offset: Int = 0) {
         if (current.bookId == id && document != null) {
-            if (index >= 0 && current.index != index) seek(index, keepPlaying = false)
+            if (index >= 0) seek(index, keepPlaying = false, offset = offset)
             startCurrent()
             return
         }
         stopUtterance()
+        speechOffset = offset.coerceAtLeast(0)
         listenedWords = 0
         document = null
         val ticket = ++request
@@ -333,12 +334,13 @@ class ReadingService : Service() {
         } else publish()
     }
 
-    private fun seek(index: Int, keepPlaying: Boolean = true) {
+    private fun seek(index: Int, keepPlaying: Boolean = true, offset: Int = 0) {
         if (document == null) return
         val next = index.coerceIn(0, current.total - 1)
         val active = keepPlaying && (current.playing || current.loading)
         stopUtterance()
-        speechOffset = 0
+        speechOffset = offset.coerceIn(0,
+            (document?.passes?.getOrNull(next)?.text?.lastIndex ?: 0).coerceAtLeast(0))
         current = current.copy(index = next, completed = false, range = null, error = null)
         persist(next)
         if (active) startCurrent() else publish()
@@ -562,9 +564,10 @@ class ReadingService : Service() {
         val state = mutable.asStateFlow()
 
         fun command(context: Context, action: String, book: String? = null,
-            index: Int = -1, minutes: Int = 0): Boolean {
+            index: Int = -1, minutes: Int = 0, offset: Int = 0): Boolean {
             val intent = Intent(context, ReadingService::class.java).setAction(action)
                 .putExtra("book", book).putExtra("index", index).putExtra("minutes", minutes)
+                .putExtra("offset", offset)
             return try {
                 if (action == PLAY) ContextCompat.startForegroundService(context, intent)
                 else context.startService(intent)
