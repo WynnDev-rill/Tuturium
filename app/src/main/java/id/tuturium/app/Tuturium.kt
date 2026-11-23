@@ -185,7 +185,9 @@ fun Tuturium(model: TuturiumModel) {
                         onVoices = { tab = "voices" },
                         onStorage = { model.refresh(); tab = "storage" },
                         onTrash = { model.refresh(); tab = "trash" },
-                        onUpdate = { tab = "updates" })
+                        onUpdate = { tab = "updates" },
+                        onCloudSync = { TuturiumCloud.uploadSoon(context.applicationContext) },
+                        onCloudLogout = { (context as? MainActivity)?.signOutGoogle() })
                     "stats" -> ModernStatistics(model, { tab = "profile" })
                     "settings" -> ListeningSettingsV2(model) { tab = "profile" }
                     "voices" -> VoiceLibraryV2(model) { tab = "profile" }
