@@ -27,7 +27,7 @@ class LibraryV2FlowTest {
         compose.onNode(hasSetTextAction()).performTextInput("tidak ditemukan 123 xyz")
         compose.onNodeWithText("Tidak ada hasil pencarian.").assertIsDisplayed()
         compose.onNodeWithContentDescription("Tutup pencarian").performClick()
-        compose.onNodeWithText("Perpustakaan").assertIsDisplayed()
+        compose.onAllNodesWithText("Perpustakaan").onFirst().assertIsDisplayed()
     }
 
     @Test fun createFolderThroughSheetAndSeeEmptyFolder() {
