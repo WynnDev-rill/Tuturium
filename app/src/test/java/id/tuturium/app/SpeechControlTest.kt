@@ -49,7 +49,7 @@ class SpeechControlTest {
 
     @Test fun speechPreparationFallsBackToOriginalTextWhenFilterThrows() {
         val text = "Bab Satu MENEMUKAN SUARAKU Meskipun bahasa Inggris adalah bahasa kedua."
-        val result = safePreparedSpeech(text, ListeningOptions(skipEnabled = true)) {
+        val result = safePreparedSpeech(text, ListeningOptions(skipEnabled = true)) { _, _ ->
             throw IllegalArgumentException("OEM-specific filter failure")
         }
         assertEquals(text, result.text)
