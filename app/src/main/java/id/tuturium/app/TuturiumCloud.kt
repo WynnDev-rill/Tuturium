@@ -23,6 +23,8 @@ fun isCompatibleCloudAccount(saved: String?, next: String): Boolean =
 
 data class TuturiumCloudState(
     val email: String? = null,
+    val displayName: String? = null,
+    val photoUrl: String? = null,
     val connected: Boolean = false,
     val busy: Boolean = false,
     val message: String = "Masuk dengan Google untuk menggunakan penyimpanan Drive.",
@@ -40,10 +42,17 @@ internal object TuturiumCloud {
 
     @Volatile private var token: String? = null
     @Volatile private var email: String? = null
+    @Volatile private var pendingDisplayName: String? = null
+    @Volatile private var pendingPhotoUrl: String? = null
     private var pending: Job? = null
     private var dirtySince: Long = 0L
 
     fun message(text: String) { mutable.value = mutable.value.copy(message = text, busy = false) }
+
+    fun setGoogleIdentity(name: String?, photo: String?) {
+        pendingDisplayName = name?.trim()?.take(120)
+        pendingPhotoUrl = photo?.takeIf { it.startsWith("https://") }?.take(2048)
+    }
 
     suspend fun connect(context: Context, account: String, accessToken: String) =
         withContext(Dispatchers.IO) {
@@ -80,13 +89,16 @@ internal object TuturiumCloud {
                     }
                 } finally { snapshot.delete() }
                 check(context.getSharedPreferences("tuturium_cloud", Context.MODE_PRIVATE).edit()
-                    .putString("account_email", account).commit()) {
+                    .putString("account_email", account)
+                    .putString("display_name", pendingDisplayName)
+                    .putString("photo_url", pendingPhotoUrl).commit()) {
                     "Akun Google tidak dapat disimpan."
                 }
                 token = accessToken
                 email = account
                 mutable.value = TuturiumCloudState(
-                    email = account, connected = true, busy = false,
+                    email = account, displayName = pendingDisplayName,
+                    photoUrl = pendingPhotoUrl, connected = true, busy = false,
                     message = "Tersinkronisasi ke Google Drive",
                     lastSynced = System.currentTimeMillis()
                 )
@@ -150,6 +162,8 @@ internal object TuturiumCloud {
         pending?.cancel()
         token = null
         email = null
+        pendingDisplayName = null
+        pendingPhotoUrl = null
         dirtySince = 0L
         mutable.value = TuturiumCloudState()
     }
@@ -160,6 +174,9 @@ internal object TuturiumCloud {
         withContext(Dispatchers.IO) {
             if (state.value.connected && state.value.email == account) {
                 token = accessToken
+                mutable.value = mutable.value.copy(
+                    displayName = pendingDisplayName ?: state.value.displayName,
+                    photoUrl = pendingPhotoUrl ?: state.value.photoUrl)
                 uploadSoon(context)
             } else {
                 connect(context, account, accessToken)
