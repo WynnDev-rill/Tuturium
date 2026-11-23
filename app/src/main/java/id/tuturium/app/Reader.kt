@@ -17,6 +17,7 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +54,10 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     var preview by remember { mutableStateOf<Float?>(null) }
     var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val marked = model.bookmarks.any { it.index == current }
+    LaunchedEffect(book.id, model.listeningOptions.autoplay) {
+        if (model.listeningOptions.autoplay && ReadingService.state.value.bookId != book.id)
+            model.play(book, current)
+    }
     LaunchedEffect(playback.timerUntil) {
         while (playback.timerUntil > 0) {
             clock = SystemClock.elapsedRealtime()
@@ -117,33 +122,23 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(model::closeReader) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali ke pustaka") }
-            Column(Modifier.weight(1f)) {
-                Text(book.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(document.sections[document.passes[current].section].title,
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 17.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = model::closeReader) {
+                Icon(Icons.Rounded.KeyboardArrowDown, "Kembali ke pustaka", Modifier.size(31.dp))
             }
-            IconButton({ model.toggleBookmark(current) }) {
+            Text(book.title, modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            IconButton(onClick = { model.toggleBookmark(current) }) {
                 Icon(if (marked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                    if (marked) "Hapus markah" else "Simpan markah", tint = MaterialTheme.colorScheme.primary)
+                    if (marked) "Hapus markah" else "Simpan markah",
+                    tint = if (marked) Color(0xFFF23E3E) else Color.White)
             }
-            Box {
-                var menu by remember { mutableStateOf(false) }
-                IconButton({ menu = true }) { Icon(Icons.Rounded.MoreVert, "Opsi pembaca") }
-                DropdownMenu(menu, { menu = false }) {
-                    listOf("Daftar isi" to "sections", "Markah" to "bookmarks", "Cari di dokumen" to "search",
-                        "Pengatur waktu tidur" to "timer", "Setelan suara" to "voice").forEach { (label, id) ->
-                        DropdownMenuItem(text = { Text(label) }, onClick = {
-                            menu = false
-                            if (id == "voice") { model.closeReader(); showSettings() } else panel = id
-                        })
-                    }
-                }
+            IconButton(onClick = { panel = "menu" }) {
+                Icon(Icons.Rounded.MoreHoriz, "Opsi pembaca", Modifier.size(27.dp))
             }
         }
-        HorizontalDivider()
         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp)) {
@@ -193,42 +188,8 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 }
             }
         }
-        Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 4.dp,
-            shape = RoundedCornerShape(topStart = 25.dp, topEnd = 25.dp)) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                if (document.passes.size > 1) {
-                    Slider(value = preview ?: current.toFloat(), onValueChange = { preview = it },
-                        onValueChangeFinished = { preview?.let { seek(it.toInt()) }; preview = null },
-                        valueRange = 0f..document.passes.lastIndex.toFloat())
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("${(preview?.toInt() ?: current) + 1} / ${document.passes.size}",
-                        style = MaterialTheme.typography.labelMedium)
-                    TextButton({ panel = "speed" }) { Text(rate(model.settings.speed)) }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    IconButton({ seek(current - 1) }, enabled = current > 0) {
-                        Icon(Icons.Rounded.SkipPrevious, "Kalimat sebelumnya")
-                    }
-                    FilledIconButton({ model.play(book, current) }, modifier = Modifier.size(62.dp)) {
-                        if (isLoading) CircularProgressIndicator(Modifier.size(23.dp), color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp)
-                        else Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            if (isPlaying) "Jeda" else "Putar", Modifier.size(31.dp))
-                    }
-                    IconButton({ seek(current + 1) }, enabled = current < document.passes.lastIndex) {
-                        Icon(Icons.Rounded.SkipNext, "Kalimat berikutnya")
-                    }
-                }
-                if (playback.timerUntil > clock) Text(
-                    "Jeda dalam ${(playback.timerUntil - clock + 59_999) / 60_000} mnt",
-                    modifier = Modifier.clickable { panel = "timer" }.padding(8.dp),
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
-        }
+        ReaderPlaybackBar(model, book, document, playback, current, isPlaying, isLoading,
+            speedPanel = { panel = "speed" }, voicePanel = { panel = "voices" }, seek = ::seek)
     }
 
     when (panel) {
@@ -263,22 +224,58 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 }
             }
         }
-        "timer" -> ReaderOptions("Pengatur waktu tidur", { panel = null }) {
-            if (playback.bookId == null) item {
-                Text("Mulai pemutaran untuk menggunakan pengatur waktu.", Modifier.padding(12.dp))
-            } else itemsIndexed(listOf(0, 15, 30, 45, 60, 90)) { _, minutes ->
-                ListItem(headlineContent = { Text(if (minutes == 0) "Matikan pengatur waktu" else "$minutes menit") },
-                    modifier = Modifier.clickable {
-                        ReadingService.command(context, ReadingService.TIMER, minutes = minutes)
-                        panel = null
-                    })
+        "menu" -> ReaderMenuSheet(model, book, current, marked,
+            dismiss = { panel = null }, navigate = { panel = it })
+        "voices" -> ReaderVoiceSheet(model) { panel = null }
+        "timer" -> ReaderTimerSheet(playback) { panel = null }
+        "speed" -> SpeedControlSheet(model, playback) { panel = null }
+        "queue" -> ReaderQueueSheet(model) { panel = null }
+        "notes" -> ReaderNotesSheet(book, current) { panel = null }
+        "skip" -> {
+            @OptIn(ExperimentalMaterial3Api::class)
+            @Composable fun SkipOptions() {
+                ModalBottomSheet(onDismissRequest = { panel = null },
+                    containerColor = SpeechifyPanel) {
+                    Box(Modifier.fillMaxWidth().heightIn(max = 690.dp)) {
+                        ListeningSettingsV2(model) { panel = null }
+                    }
+                }
             }
+            SkipOptions()
         }
-        "speed" -> AlertDialog(onDismissRequest = { panel = null }, title = { Text("Kecepatan suara") },
-            text = { VoiceSlider("Kecepatan", rate(model.settings.speed), model.settings.speed, .5f..3f,
-                { model.changeSettings(model.settings.copy(speed = it), false) },
-                { model.changeSettings(model.settings) }) },
-            confirmButton = { TextButton({ model.changeSettings(model.settings); panel = null }) { Text("Selesai") } })
+        "rename" -> {
+            var newTitle by remember(book.id) { mutableStateOf(book.title) }
+            AlertDialog(onDismissRequest = { panel = null },
+                title = { Text("Ubah nama") },
+                text = { OutlinedTextField(newTitle, { newTitle = it.take(200) },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true) },
+                confirmButton = { TextButton(onClick = {
+                    model.rename(book, newTitle); panel = null
+                }, enabled = newTitle.isNotBlank()) { Text("Simpan") } },
+                dismissButton = { TextButton(onClick = { panel = null }) { Text("Batal") } })
+        }
+        "display" -> AlertDialog(onDismissRequest = { panel = null },
+            title = { Text("Tampilan") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    VoiceSlider("Ukuran teks", "${model.fontSize.toInt()} sp", model.fontSize,
+                        16f..34f, model::changeFont)
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf("system" to "Sistem", "light" to "Terang",
+                            "dark" to "Gelap").forEach { (value, label) ->
+                            FilterChip(model.theme == value, { model.changeTheme(value) },
+                                label = { Text(label) })
+                        }
+                    }
+                }
+            }, confirmButton = { TextButton(onClick = { panel = null }) { Text("Selesai") } })
+        "delete" -> AlertDialog(onDismissRequest = { panel = null },
+            title = { Text("Hapus file?") },
+            text = { Text("Dokumen dipindahkan ke File yang Dihapus.") },
+            confirmButton = { TextButton(onClick = {
+                model.remove(book); model.closeReader(); panel = null
+            }) { Text("Hapus") } },
+            dismissButton = { TextButton(onClick = { panel = null }) { Text("Batal") } })
     }
 }
 
