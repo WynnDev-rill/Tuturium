@@ -197,6 +197,75 @@ class Library private constructor(context: Context) :
         }
     }
 
+
+    /** Restore a Drive snapshot without replacing a newer local edit. Book ids
+     * remain stable, so bookmarks and positions survive device migration. */
+    fun restoreCloudBook(
+        incoming: Book, deleted: Boolean, sectionsJson: String,
+        marks: List<Bookmark>, originalPdf: File?
+    ): Boolean {
+        require(UUID.fromString(incoming.id).toString() == incoming.id)
+        val sections = JSONArray(sectionsJson)
+        require(sections.length() in 1..10_000)
+        for (i in 0 until sections.length()) {
+            val item = sections.getJSONObject(i)
+            require(item.has("title") && item.has("text"))
+        }
+        val db = writableDatabase
+        val old = db.query("books", arrayOf("updated"), "id = ?",
+            arrayOf(incoming.id), null, null, null).use {
+            if (it.moveToFirst()) it.getLong(0) else null
+        }
+        if (old != null && old >= incoming.updated) return false
+        val output = documentFile(incoming.id)
+        val stream = output.startWrite()
+        try {
+            stream.write(sectionsJson.toByteArray(Charsets.UTF_8))
+            output.finishWrite(stream)
+        } catch (e: Exception) {
+            output.failWrite(stream)
+            throw e
+        }
+        originalPdf?.takeIf { it.isFile && incoming.format == "PDF" }?.let { source ->
+            val pdf = AtomicFile(File(folder, "${incoming.id}.pdf"))
+            val target = pdf.startWrite()
+            try {
+                source.inputStream().use { it.copyTo(target, 65536) }
+                pdf.finishWrite(target)
+            } catch (e: Exception) {
+                pdf.failWrite(target)
+                throw e
+            }
+        }
+        db.beginTransaction()
+        try {
+            val values = ContentValues().apply {
+                put("id", incoming.id)
+                put("title", incoming.title.take(200))
+                put("format", incoming.format)
+                put("count", incoming.count)
+                put("position", incoming.position.coerceIn(0, incoming.count))
+                put("words", incoming.words)
+                put("created", incoming.created)
+                put("updated", incoming.updated)
+                put("deleted_at", if (deleted) incoming.updated.coerceAtLeast(1L) else 0L)
+            }
+            db.insertWithOnConflict("books", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            db.delete("bookmarks", "book = ?", arrayOf(incoming.id))
+            marks.forEach { mark ->
+                db.insertWithOnConflict("bookmarks", null, ContentValues().apply {
+                    put("book", incoming.id)
+                    put("position", mark.index)
+                    put("excerpt", mark.excerpt.take(180))
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return true
+    }
+
     private fun documentFile(id: String) = AtomicFile(File(folder, "$id.json"))
 
     private fun Cursor.book() = Book(
