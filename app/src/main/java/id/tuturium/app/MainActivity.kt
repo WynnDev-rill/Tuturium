@@ -229,6 +229,18 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun removeMany(books: List<Book>) = viewModelScope.launch {
+        safe("Dokumen gagal dihapus") {
+            val ids = books.map { it.id }.toSet()
+            if (ReadingService.state.value.bookId in ids)
+                ReadingService.command(app, ReadingService.STOP)
+            if (reader?.id in ids) closeReader()
+            withContext(Dispatchers.IO) { ids.forEach(library::delete) }
+            ids.forEach { BookActions.remove(app, it) }
+            refresh()
+        }
+    }
+
     fun restore(book: Book) = viewModelScope.launch {
         safe("Pemulihan gagal") {
             withContext(Dispatchers.IO) { library.restore(book.id) }
