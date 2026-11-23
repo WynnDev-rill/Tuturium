@@ -35,4 +35,35 @@ class GoogleVoiceCatalogTest {
         assertEquals("id-local",
             resolveIndonesianVoice(voices, "id-online", allowNetwork = false)?.name)
     }
+
+    @Test fun selectedIndonesianOnlineVoiceIsAllowedByDefault() {
+        val voices = listOf(
+            VoiceChoice("en-us", "en", "English", 500, true),
+            VoiceChoice("id-id-network", "id", "Indonesia", 400, true)
+        )
+        assertEquals("id-id-network", resolveIndonesianVoice(voices, "id-id-network")?.name)
+        assertEquals("id-id-network", resolveIndonesianVoice(voices, null)?.name)
+        assertNull(resolveIndonesianVoice(voices, null, allowNetwork = false))
+    }
+
+    @Test fun localVoiceRemainsPreferredButOnlineIsSelectable() {
+        val voices = listOf(
+            VoiceChoice("id-id-online", "id", "Indonesia", 600, true),
+            VoiceChoice("id-id-x-idd-local", "id", "Indonesia", 300, false)
+        )
+        assertEquals("id-id-x-idd-local", resolveIndonesianVoice(voices, null)?.name)
+        assertEquals("id-id-online", resolveIndonesianVoice(voices, "id-id-online")?.name)
+        assertEquals(listOf(false, true),
+            googleIndonesianVoices(voices).map { it.network })
+    }
+
+    @Test fun automaticGoogleIndonesianFallbackStaysIndonesian() {
+        val voices = listOf(
+            VoiceChoice(GOOGLE_ID_AUTO, "id", "Indonesia", 0, true),
+            VoiceChoice("en-fallback", "en", "English", 500, true)
+        )
+        assertEquals("Google Indonesia otomatis", indonesianVoiceLabel(voices.first(), voices))
+        assertEquals(GOOGLE_ID_AUTO, resolveIndonesianVoice(voices, GOOGLE_ID_AUTO)?.name)
+        assertTrue(googleIndonesianVoices(voices).all { it.language == "id" })
+    }
 }
