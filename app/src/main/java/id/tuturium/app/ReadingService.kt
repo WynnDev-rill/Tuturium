@@ -66,10 +66,15 @@ data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Floa
     }
 }
 
-fun TextToSpeech.offlineVoices(): List<Voice> = voices.orEmpty()
-    .filter { !it.isNetworkConnectionRequired && TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
+fun TextToSpeech.availableVoices(): List<Voice> = voices.orEmpty()
+    .filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
+    .sortedWith(compareBy<Voice> { it.isNetworkConnectionRequired }.thenByDescending { it.quality })
 
-fun Voice.choice() = VoiceChoice(name, locale.toLanguageTag().substringBefore('-'), locale.getDisplayName(Locale.forLanguageTag("id")), quality)
+fun TextToSpeech.offlineVoices(): List<Voice> = availableVoices()
+    .filter { !it.isNetworkConnectionRequired }
+
+fun Voice.choice() = VoiceChoice(name, locale.toLanguageTag().substringBefore('-'),
+    locale.getDisplayName(Locale.forLanguageTag("id")), quality, isNetworkConnectionRequired)
 
 class ReadingService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -101,7 +106,7 @@ class ReadingService : Service() {
                 listeningStart = 0L
             } else if (!field.playing && value.playing) {
                 listeningStart = SystemClock.elapsedRealtime()
-                listeningSpeed = ReadingSettings.read(this).speed
+                listeningSpeed = value.effectiveSpeed
             }
             field = value
             mutable.value = value
@@ -278,12 +283,15 @@ class ReadingService : Service() {
         }
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
-        val available = engine.offlineVoices()
+        val available = engine.availableVoices()
         val preferredLocale = if (options.matchLanguage) "id" else Locale.getDefault().language
-        val selected = chooseVoice(available.map { it.choice() }, settings.voice, preferredLocale)
+        val selected = if (!options.matchLanguage && settings.voice == null)
+            available.firstOrNull { it.locale.language == preferredLocale }?.choice()
+                ?: chooseVoice(available.map { it.choice() }, null, preferredLocale)
+        else chooseVoice(available.map { it.choice() }, settings.voice, preferredLocale)
         val voice = available.firstOrNull { it.name == selected?.name }
         if (voice == null || engine.setVoice(voice) != TextToSpeech.SUCCESS) {
-            fail("Belum ada suara offline. Unduh data suara melalui setelan TTS Android.")
+            fail("Belum ada suara TTS yang tersedia. Pilih suara lain di Pustaka Suara.")
             return
         }
         if (options.mixWithMusic) {
