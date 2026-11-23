@@ -9,3 +9,7 @@
 
 # PDF encryption support can load this provider by class name.
 -keep class org.bouncycastle.jce.provider.BouncyCastleProvider { *; }
+
+# PDFBox has an optional Gemalto JPEG2000 encoder/decoder that is not bundled
+# by pdfbox-android and was unavailable in Tuturium 1.1.0 as well.
+-dontwarn com.gemalto.jp2.**
