@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +72,7 @@ fun StorageV2(model: TuturiumModel, onBack: () -> Unit) {
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Spacer(Modifier.width(48.dp))
         }
+        val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
         Text("Penyimpanan lokal", modifier = Modifier.padding(horizontal = 17.dp, vertical = 12.dp),
             style = MaterialTheme.typography.titleMedium)
         Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -115,9 +117,11 @@ fun StorageV2(model: TuturiumModel, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().height(55.dp)) {
                     Text("Kosongkan cache ${humanSize(snapshot.cache)}")
                 }
-                Text("Buku, progres, dan folder tetap tersimpan di perangkat. " +
-                    "Pembersihan hanya menghapus unduhan APK dan salinan berbagi sementara. " +
-                    "Tidak ada cadangan cloud otomatis.",
+                Text(if (cloud.connected)
+                    "Dokumen lokal tetap disimpan sebagai salinan kerja. " +
+                        "Pengaturan cloud tersedia di Profil → Akun."
+                else "Buku dan progres akun tamu disimpan di perangkat. " +
+                    "Pembersihan cache tidak menghapus dokumen.",
                     color = Color(0xFFAAAAAA), style = MaterialTheme.typography.bodySmall)
             }
         }

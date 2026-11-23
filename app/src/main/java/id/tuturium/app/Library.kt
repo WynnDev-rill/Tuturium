@@ -26,6 +26,7 @@ data class Bookmark(val index: Int, val excerpt: String)
 
 class Library private constructor(context: Context) :
     SQLiteOpenHelper(context, "library.db", null, 3) {
+    private val appContext = context.applicationContext
     private val folder = File(context.filesDir, "books").apply { mkdirs() }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -77,6 +78,7 @@ class Library private constructor(context: Context) :
         try {
             source.inputStream().use { it.copyTo(stream, 65536) }
             atomic.finishWrite(stream)
+            TuturiumCloud.markDirty(appContext)
         } catch (error: Exception) {
             atomic.failWrite(stream)
             throw error
@@ -125,6 +127,7 @@ class Library private constructor(context: Context) :
             file.delete()
             throw error
         }
+        TuturiumCloud.markDirty(appContext)
         return book
     }
 
@@ -142,12 +145,16 @@ class Library private constructor(context: Context) :
             put("position", index)
             put("updated", System.currentTimeMillis())
         }, "id = ? AND count >= ?", arrayOf(id, index.toString()))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun rename(id: String, title: String) {
         require(title.isNotBlank())
-        writableDatabase.update("books", ContentValues().apply { put("title", title.trim().take(200)) },
-            "id = ?", arrayOf(id))
+        writableDatabase.update("books", ContentValues().apply {
+            put("title", title.trim().take(200))
+            put("updated", System.currentTimeMillis())
+        }, "id = ?", arrayOf(id))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun trashed(): List<Book> = readableDatabase.query(
@@ -157,7 +164,9 @@ class Library private constructor(context: Context) :
     fun delete(id: String) {
         writableDatabase.update("books", ContentValues().apply {
             put("deleted_at", System.currentTimeMillis().coerceAtLeast(1L))
+            put("updated", System.currentTimeMillis())
         }, "id = ?", arrayOf(id))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun restore(id: String) {
@@ -165,12 +174,14 @@ class Library private constructor(context: Context) :
             put("deleted_at", 0)
             put("updated", System.currentTimeMillis())
         }, "id = ?", arrayOf(id))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun deletePermanently(id: String) {
         if (writableDatabase.delete("books", "id = ? AND deleted_at > 0", arrayOf(id)) != 0) {
             documentFile(id).delete()
             File(folder, "$id.pdf").delete()
+            TuturiumCloud.markDirty(appContext)
         }
     }
 
@@ -191,10 +202,83 @@ class Library private constructor(context: Context) :
                     put("excerpt", text.take(180))
                 })
             }
+            db.update("books", ContentValues().apply {
+                put("updated", System.currentTimeMillis())
+            }, "id = ?", arrayOf(id))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
+        TuturiumCloud.markDirty(appContext)
+    }
+
+
+    /** Restore a Drive snapshot without replacing a newer local edit. Book ids
+     * remain stable, so bookmarks and positions survive device migration. */
+    fun restoreCloudBook(
+        incoming: Book, deleted: Boolean, sectionsJson: String,
+        marks: List<Bookmark>, originalPdf: File?
+    ): Boolean {
+        require(UUID.fromString(incoming.id).toString() == incoming.id)
+        val sections = JSONArray(sectionsJson)
+        require(sections.length() in 1..10_000)
+        for (i in 0 until sections.length()) {
+            val item = sections.getJSONObject(i)
+            require(item.has("title") && item.has("text"))
+        }
+        val db = writableDatabase
+        val old = db.query("books", arrayOf("updated"), "id = ?",
+            arrayOf(incoming.id), null, null, null).use {
+            if (it.moveToFirst()) it.getLong(0) else null
+        }
+        if (old != null && old >= incoming.updated) return false
+        val output = documentFile(incoming.id)
+        val stream = output.startWrite()
+        try {
+            stream.write(sectionsJson.toByteArray(Charsets.UTF_8))
+            output.finishWrite(stream)
+        } catch (e: Exception) {
+            output.failWrite(stream)
+            throw e
+        }
+        originalPdf?.takeIf { it.isFile && incoming.format == "PDF" }?.let { source ->
+            val pdf = AtomicFile(File(folder, "${incoming.id}.pdf"))
+            val target = pdf.startWrite()
+            try {
+                source.inputStream().use { it.copyTo(target, 65536) }
+                pdf.finishWrite(target)
+            } catch (e: Exception) {
+                pdf.failWrite(target)
+                throw e
+            }
+        }
+        db.beginTransaction()
+        try {
+            val values = ContentValues().apply {
+                put("id", incoming.id)
+                put("title", incoming.title.take(200))
+                put("format", incoming.format)
+                put("count", incoming.count)
+                put("position", incoming.position.coerceIn(0, incoming.count))
+                put("words", incoming.words)
+                put("created", incoming.created)
+                put("updated", incoming.updated)
+                put("deleted_at", if (deleted) incoming.updated.coerceAtLeast(1L) else 0L)
+            }
+            db.insertWithOnConflict("books", null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            db.delete("bookmarks", "book = ?", arrayOf(incoming.id))
+            marks.forEach { mark ->
+                db.insertWithOnConflict("bookmarks", null, ContentValues().apply {
+                    put("book", incoming.id)
+                    put("position", mark.index)
+                    put("excerpt", mark.excerpt.take(180))
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return true
     }
 
     private fun documentFile(id: String) = AtomicFile(File(folder, "$id.json"))

@@ -145,3 +145,21 @@ fun prepareSpeech(source: String, settings: ListeningOptions): PreparedSpeech {
  *  Only retry recoverable synthesis failures once; never loop on network errors. */
 fun shouldRetrySpeechAtNormalSpeed(speed: Float, retried: Boolean, recoverable: Boolean): Boolean =
     recoverable && !retried && kotlin.math.abs(speed - 1f) > 0.01f
+
+/** A device-specific filter failure must not prevent a book from being read.
+ * Every fallback offset maps directly to the original paragraph. */
+fun safePreparedSpeech(
+    source: String,
+    settings: ListeningOptions,
+    prepare: (String, ListeningOptions) -> PreparedSpeech = ::prepareSpeech
+): PreparedSpeech {
+    fun original() = PreparedSpeech(source, IntArray(source.length) { it })
+    return try {
+        val prepared = prepare(source, settings)
+        if (prepared.offsets.size != prepared.text.length ||
+            prepared.offsets.any { it !in source.indices }) original()
+        else prepared
+    } catch (_: Exception) {
+        original()
+    }
+}

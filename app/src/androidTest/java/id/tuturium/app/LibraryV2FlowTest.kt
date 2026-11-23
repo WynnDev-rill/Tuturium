@@ -39,6 +39,29 @@ class LibraryV2FlowTest {
         compose.onNodeWithText("Folder ini kosong. Impor atau pindahkan file ke sini.").assertIsDisplayed()
     }
 
+    @Test fun guestStartsWithoutGoogleAndSignInIsOptionalInProfile() {
+        compose.onNodeWithText("Beranda").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Profil tamu").performClick()
+        compose.onNodeWithText("Akun tamu").assertIsDisplayed()
+        compose.onNodeWithText("Akun").performClick()
+        compose.onNodeWithText("Masuk dengan Google").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Kembali").performClick()
+        compose.onNodeWithText("Penyimpanan & Data").performClick()
+        compose.onNodeWithText("Penyimpanan lokal").assertIsDisplayed()
+    }
+
+    @Test fun guestAccountMenuIsAboveStatisticsAndCloudIsNotMandatory() {
+        compose.onNodeWithContentDescription("Profil tamu").performClick()
+        compose.onNodeWithText("Akun").assertIsDisplayed()
+        compose.onNodeWithText("Statistik").assertIsDisplayed()
+        compose.onNodeWithText("Akun").performClick()
+        compose.onNodeWithText("Akun tamu").assertIsDisplayed()
+        compose.onNodeWithText("Masuk dengan Google").assertIsDisplayed()
+        compose.onNodeWithText("Penyimpanan Google Drive").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Kembali").performClick()
+        compose.onNodeWithText("Statistik").assertIsDisplayed()
+    }
+
     @Test fun storageDashboardExplainsLocalStorage() {
         compose.onNodeWithContentDescription("Profil tamu").performClick()
         compose.onNodeWithText("Penyimpanan & Data").performClick()

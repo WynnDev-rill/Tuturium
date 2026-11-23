@@ -110,7 +110,7 @@ fun Tuturium(model: TuturiumModel) {
             showAddSheet -> showAddSheet = false
             model.showUpdate -> model.showUpdate = false
             model.reader != null -> model.closeReader()
-            tab in listOf("stats", "settings", "voices", "storage", "trash", "updates") -> tab = "profile"
+            tab in listOf("account", "stats", "settings", "voices", "storage", "trash", "updates") -> tab = "profile"
             else -> tab = "home"
         }
     }
@@ -180,12 +180,18 @@ fun Tuturium(model: TuturiumModel) {
                         onAdd = { showAddSheet = true })
                     "profile" -> ModernProfile(
                         onBack = { tab = "home" },
+                        onAccount = { tab = "account" },
                         onStats = { tab = "stats" },
                         onSettings = { tab = "settings" },
                         onVoices = { tab = "voices" },
                         onStorage = { model.refresh(); tab = "storage" },
                         onTrash = { model.refresh(); tab = "trash" },
                         onUpdate = { tab = "updates" })
+                    "account" -> TuturiumAccountScreen(
+                        onBack = { tab = "profile" },
+                        onSignIn = { (context as? MainActivity)?.startGoogleSignIn() },
+                        onSync = { (context as? MainActivity)?.syncGoogleDrive() },
+                        onSignOut = { (context as? MainActivity)?.signOutGoogle() })
                     "stats" -> ModernStatistics(model, { tab = "profile" })
                     "settings" -> ListeningSettingsV2(model) { tab = "profile" }
                     "voices" -> VoiceLibraryV2(model) { tab = "profile" }

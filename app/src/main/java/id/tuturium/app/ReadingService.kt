@@ -305,8 +305,8 @@ class ReadingService : Service() {
             startCurrentInternal()
         } catch (error: Exception) {
             android.util.Log.e("TuturiumPlayback", "Cannot start speech", error)
-            fail("Pemutar gagal pada tahap $startupStage. Coba putar lagi; " +
-                "jika masih gagal, laporkan tahap ini.")
+            val kind = error.javaClass.simpleName.take(45)
+            fail("Gagal pada tahap $startupStage ($kind). Coba ulangi atau kirim pesan ini.")
         }
     }
 
@@ -329,8 +329,12 @@ class ReadingService : Service() {
         val settings = ReadingSettings.read(this)
         val options = ListeningOptions.read(this)
         startupStage = "menyiapkan teks"
-        val prepared = prepareSpeech(pass.text, options)
-        val from = prepared.offsets.indexOfFirst { it >= speechOffset }
+        // On some devices skip-filter preparation throws even though the
+        // unfiltered passage speaks successfully in Google TTS previews.
+        // Never abort playback for an optional text filter.
+        val prepared = safePreparedSpeech(pass.text, options)
+        val from = if (speechOffset <= 0) 0
+            else prepared.offsets.indexOfFirst { it >= speechOffset }
         if (prepared.text.isEmpty() || (speechOffset > 0 && from < 0)) {
             speechOffset = 0
             if (current.index < current.total - 1) {

@@ -28,6 +28,14 @@ Skrip mengunggah nilai sebagai GitHub Actions secrets secara privat, tidak mence
 
 Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/WynnDev-rill/Tuturium/releases/latest) dan dapat diperiksa dari menu **Profil → Pembaruan aplikasi**. Versi baru harus memakai sertifikat yang sama agar bisa memperbarui instalasi yang sudah ada tanpa menghapus data.
 
+## Pembaruan 1.3.5 — Cloud-first Google Drive
+
+- Default tetap **akun tamu dengan penyimpanan lokal**; login Google opsional dari Profil. Setelah login dan persetujuan izin `drive.appdata`, pustaka tersinkronkan ke Drive pribadi tanpa Supabase.
+- Arsip Google Drive pribadi mencakup buku, PDF asli, progres, markah, folder, statistik, dan preferensi. Sinkronisasi otomatis tertunda dan bisa dipicu dari Profil.
+- Saat migrasi awal, data lokal lama **tidak dihapus** sampai sinkronisasi, checksum, dan pemulihan Google Drive telah diuji. Penyimpanan lokal masih dipakai sebagai cache kerja untuk memproses dokumen, sehingga rilis ini belum sepenuhnya bebas penyimpanan lokal permanen.
+- Pemutar TTS dapat melanjutkan dari teks asli jika filter persiapan teks melempar exception.
+- OAuth Google Personal/akun pemilik project diperlukan; login dan Drive API perlu diuji pada perangkat asli dengan Google Play Services.
+
 ## Pembaruan 1.3.4
 
 - Perbaikan reliabilitas tombol Play pembaca dan transisi antar-kalimat dengan suara Indonesia online.

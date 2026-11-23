@@ -37,12 +37,14 @@ internal object BookActions {
         val values = ids(c, key).toMutableSet()
         if (!values.add(id)) values.remove(id)
         prefs(c).edit().putStringSet(key, values).apply()
+        TuturiumCloud.markDirty(c)
     }
 
     fun enqueue(c: Context, id: String, next: Boolean = false) {
         val values = queue(c).filterNot { it == id }.toMutableList()
         if (next) values.add(0, id) else values.add(id)
         prefs(c).edit().putString("queue", values.joinToString(",")).apply()
+        TuturiumCloud.markDirty(c)
     }
 
     fun queue(c: Context): List<String> =
@@ -53,12 +55,14 @@ internal object BookActions {
         if (values.isEmpty()) return null
         val first = values.removeAt(0)
         prefs(c).edit().putString("queue", values.joinToString(",")).apply()
+        TuturiumCloud.markDirty(c)
         return first
     }
 
     fun removeFromQueue(c: Context, id: String) {
         prefs(c).edit().putString("queue",
             queue(c).filterNot { it == id }.joinToString(",")).apply()
+        TuturiumCloud.markDirty(c)
     }
 
     fun remove(c: Context, id: String) {
@@ -66,5 +70,6 @@ internal object BookActions {
             prefs(c).edit().putStringSet(key, ids(c, key) - id).apply()
         }
         prefs(c).edit().putString("queue", queue(c).filterNot { it == id }.joinToString(",")).apply()
+        TuturiumCloud.markDirty(c)
     }
 }
