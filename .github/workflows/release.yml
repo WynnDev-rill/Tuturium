@@ -2,7 +2,6 @@ name: Signed Android release
 on:
   push:
     branches: [main]
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   workflow_dispatch:
     inputs:
       tag:
@@ -61,6 +60,16 @@ jobs:
           test -n "$KEYSTORE_BASE64" && test -n "$TUTURIUM_STORE_PASSWORD"
           keystore="$RUNNER_TEMP/tuturium.p12"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          # The original signing-key backup may have been stored as a ZIP.
+          # Extract the exact PKCS#12 entry securely, never the password.txt.
+          magic=$(od -An -tx1 -N4 "$keystore" | tr -d ' \\n')
+          if [[ "$magic" == "504b0304" ]]; then
+            mv "$keystore" "$RUNNER_TEMP/tuturium-signing-source.zip"
+            unzip -p "$RUNNER_TEMP/tuturium-signing-source.zip" Tuturium.p12 > "$keystore"
+          fi
+          # Detect an invalid store before running Gradle; no private data in logs.
+          keytool -list -storetype PKCS12 -keystore "$keystore" \
+            -storepass:env TUTURIUM_STORE_PASSWORD -alias tuturium >/dev/null
           echo "TUTURIUM_KEYSTORE=$keystore" >> "$GITHUB_ENV"
       - name: Verify and assemble
         if: steps.version.outputs.skip != 'true'
@@ -84,4 +93,6 @@ jobs:
       - name: Remove the runner keystore
         if: always()
         run: |
-          if [ -f "$RUNNER_TEMP/tuturium.p12" ]; then unlink "$RUNNER_TEMP/tuturium.p12"; fi
+          for file in "$RUNNER_TEMP/tuturium.p12" "$RUNNER_TEMP/tuturium-signing-source.zip"; do
+            if [ -f "$file" ]; then unlink "$file"; fi
+          done
