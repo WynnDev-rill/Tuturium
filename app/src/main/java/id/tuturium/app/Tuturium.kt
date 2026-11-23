@@ -96,7 +96,6 @@ fun Tuturium(model: TuturiumModel) {
     val link: () -> Unit = { showLinkDialog = true }
 
     LaunchedEffect(Unit) { model.refresh(); model.checkUpdate(automatic = true) }
-    LaunchedEffect(tab) { if (tab == "voices") model.loadVoices() }
     LaunchedEffect(model.status) {
         model.status?.let {
             snackbar.showSnackbar(it)
