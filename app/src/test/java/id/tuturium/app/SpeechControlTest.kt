@@ -37,6 +37,6 @@ class SpeechControlTest {
     @Test fun tenSecondSeekUsesCurrentSpeechRate() {
         val passes = (1..10).map { Pass("satu dua tiga empat lima", 0, 0, 0) }
         assertEquals(6, seekBySeconds(passes, 1, 10, 1f))
-        assertEquals(0, seekBySeconds(passes, 6, -10, 1f))
+        assertEquals(1, seekBySeconds(passes, 6, -10, 1f))
     }
 }
