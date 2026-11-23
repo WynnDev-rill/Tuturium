@@ -26,6 +26,7 @@ data class Bookmark(val index: Int, val excerpt: String)
 
 class Library private constructor(context: Context) :
     SQLiteOpenHelper(context, "library.db", null, 3) {
+    private val appContext = context.applicationContext
     private val folder = File(context.filesDir, "books").apply { mkdirs() }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -77,6 +78,7 @@ class Library private constructor(context: Context) :
         try {
             source.inputStream().use { it.copyTo(stream, 65536) }
             atomic.finishWrite(stream)
+            TuturiumCloud.markDirty(appContext)
         } catch (error: Exception) {
             atomic.failWrite(stream)
             throw error
@@ -125,6 +127,7 @@ class Library private constructor(context: Context) :
             file.delete()
             throw error
         }
+        TuturiumCloud.markDirty(appContext)
         return book
     }
 
@@ -142,6 +145,7 @@ class Library private constructor(context: Context) :
             put("position", index)
             put("updated", System.currentTimeMillis())
         }, "id = ? AND count >= ?", arrayOf(id, index.toString()))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun rename(id: String, title: String) {
@@ -158,6 +162,7 @@ class Library private constructor(context: Context) :
         writableDatabase.update("books", ContentValues().apply {
             put("deleted_at", System.currentTimeMillis().coerceAtLeast(1L))
         }, "id = ?", arrayOf(id))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun restore(id: String) {
@@ -165,12 +170,14 @@ class Library private constructor(context: Context) :
             put("deleted_at", 0)
             put("updated", System.currentTimeMillis())
         }, "id = ?", arrayOf(id))
+        TuturiumCloud.markDirty(appContext)
     }
 
     fun deletePermanently(id: String) {
         if (writableDatabase.delete("books", "id = ? AND deleted_at > 0", arrayOf(id)) != 0) {
             documentFile(id).delete()
             File(folder, "$id.pdf").delete()
+            TuturiumCloud.markDirty(appContext)
         }
     }
 
