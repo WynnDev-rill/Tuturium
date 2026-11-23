@@ -75,6 +75,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     var books by mutableStateOf<List<Book>>(emptyList())
         private set
+    var deletedBooks by mutableStateOf<List<Book>>(emptyList())
+        private set
     var reader by mutableStateOf<Book?>(null)
         private set
     var content by mutableStateOf<ReadingDocument?>(null)
@@ -94,7 +96,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var voiceStatus by mutableStateOf("Memuat suara offline…")
         private set
-    var theme by mutableStateOf(prefs.getString("theme", "system") ?: "system")
+    var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
         private set
     var fontSize by mutableStateOf(prefs.getFloat("font_size", 22f))
         private set
@@ -114,7 +116,9 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
 
     fun refresh() = viewModelScope.launch {
-        books = withContext(Dispatchers.IO) { library.books() }
+        val (active, deleted) = withContext(Dispatchers.IO) { library.books() to library.trashed() }
+        books = active
+        deletedBooks = deleted
     }
 
     fun open(id: String) {
@@ -169,6 +173,19 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun cancelImport() = importJob?.cancel()
 
+    fun importLink(url: String) = addDocument {
+        val parsed = java.net.URI(url.trim())
+        require(parsed.scheme == "https" && parsed.host != null &&
+            parsed.host.matches(Regex("[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+"))) {
+            "Gunakan tautan HTTPS ke halaman web publik."
+        }
+        val page = org.jsoup.Jsoup.connect(parsed.toString()).userAgent("Tuturium/1.1")
+            .timeout(15_000).maxBodySize(2_000_000).followRedirects(false).get()
+        val title = page.title().ifBlank { parsed.host }.take(200)
+        val text = page.body().text().take(DocumentImporter.MAX_TEXT)
+        library.add(title, "WEB", ReadingDocument(listOf(Section(title, text))))
+    }
+
     fun rename(book: Book, title: String) = viewModelScope.launch {
         safe("Judul gagal disimpan") {
             withContext(Dispatchers.IO) { library.rename(book.id, title) }
@@ -182,6 +199,20 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
             if (ReadingService.state.value.bookId == book.id) ReadingService.command(app, ReadingService.STOP)
             if (reader?.id == book.id) closeReader()
             withContext(Dispatchers.IO) { library.delete(book.id) }
+            refresh()
+        }
+    }
+
+    fun restore(book: Book) = viewModelScope.launch {
+        safe("Pemulihan gagal") {
+            withContext(Dispatchers.IO) { library.restore(book.id) }
+            refresh()
+        }
+    }
+
+    fun deletePermanently(book: Book) = viewModelScope.launch {
+        safe("Penghapusan gagal") {
+            withContext(Dispatchers.IO) { library.deletePermanently(book.id) }
             refresh()
         }
     }
