@@ -127,7 +127,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                             Icon(Icons.Rounded.DriveFileMove, "Pindahkan yang dipilih")
                         }
                         IconButton(onClick = {
-                            model.books.filter { it.id in selectedIds }.forEach(model::remove)
+                            model.removeMany(model.books.filter { it.id in selectedIds })
                             selectedIds = emptySet(); selecting = false
                         }, enabled = selectedIds.isNotEmpty()) {
                             Icon(Icons.Rounded.DeleteOutline, "Hapus yang dipilih", tint = Color.Red)
@@ -154,6 +154,10 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                             }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false },
                                 modifier = Modifier.width(275.dp).background(Panel)) {
+                                DropdownMenuItem(text = { Text("Pilih beberapa") },
+                                    leadingIcon = { Icon(Icons.Rounded.Checklist, null) },
+                                    onClick = { selecting = true; menu = false })
+                                HorizontalDivider(color = Color.DarkGray)
                                 Text("Lihat", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp),
                                     color = Secondary, style = MaterialTheme.typography.labelMedium)
                                 listOf(
@@ -191,9 +195,6 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                                         prefs.edit().putBoolean("group", groupByFormat).apply()
                                         menu = false
                                     })
-                                DropdownMenuItem(text = { Text("Pilih beberapa") },
-                                    leadingIcon = { Icon(Icons.Rounded.Checklist, null) },
-                                    onClick = { selecting = true; menu = false })
                             }
                         }
                     }
