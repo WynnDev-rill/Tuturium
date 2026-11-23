@@ -246,7 +246,7 @@ private fun ModernUpdateMenu(model: TuturiumModel, onBack: () -> Unit) {
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text("Tuturium", style = MaterialTheme.typography.titleLarge)
-                        Text("Versi \${BuildConfig.VERSION_NAME}")
+                        Text("Versi ${BuildConfig.VERSION_NAME}")
                     }
                 }
                 Text(model.updateStatus ?: "Periksa versi terbaru melalui GitHub Releases.")
