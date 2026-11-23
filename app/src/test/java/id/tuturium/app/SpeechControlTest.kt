@@ -47,4 +47,20 @@ class SpeechControlTest {
         assertFalse(shouldRetrySpeechAtNormalSpeed(2f, false, false))
     }
 
+    @Test fun speechPreparationFallsBackToOriginalTextWhenFilterThrows() {
+        val text = "Bab Satu MENEMUKAN SUARAKU Meskipun bahasa Inggris adalah bahasa kedua."
+        val result = safePreparedSpeech(text, ListeningOptions(skipEnabled = true)) {
+            throw IllegalArgumentException("OEM-specific filter failure")
+        }
+        assertEquals(text, result.text)
+        assertArrayEquals(IntArray(text.length) { it }, result.offsets)
+    }
+
+    @Test fun speechPreparationKeepsOriginalPositionMappingForNormalText() {
+        val text = "Aku mempelajari bahasa ibuku."
+        val result = safePreparedSpeech(text, ListeningOptions())
+        assertEquals(text, result.text)
+        assertEquals(4, result.offsets[4])
+    }
+
 }
