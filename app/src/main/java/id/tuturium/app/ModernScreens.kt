@@ -360,7 +360,9 @@ private fun NavTab(title: String, icon: androidx.compose.ui.graphics.vector.Imag
 
 @Composable
 fun ModernProfile(onBack: () -> Unit, onStats: () -> Unit, onSettings: () -> Unit,
-    onVoices: () -> Unit, onStorage: () -> Unit, onTrash: () -> Unit, onUpdate: () -> Unit) {
+    onVoices: () -> Unit, onStorage: () -> Unit, onTrash: () -> Unit, onUpdate: () -> Unit,
+    onCloudSync: () -> Unit, onCloudLogout: () -> Unit) {
+    val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
     LazyColumn(Modifier.fillMaxSize().background(Color.Black),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -375,14 +377,26 @@ fun ModernProfile(onBack: () -> Unit, onStats: () -> Unit, onSettings: () -> Uni
                     Icon(Icons.Rounded.Person, null, Modifier.size(64.dp), tint = Color.White)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text("Akun tamu", style = MaterialTheme.typography.titleLarge, color = Color.White)
-                Text("Tuturium lokal · tanpa login", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(cloud.email ?: "Google Drive",
+                    style = MaterialTheme.typography.titleMedium, color = Color.White)
+                Text(cloud.message, color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = Tile, modifier = Modifier.fillMaxWidth()) {
                 Column {
                     ProfileEntry(Icons.Rounded.BarChart, "Statistik", onStats)
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(22.dp), color = Tile,
+                modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    ProfileEntry(Icons.Rounded.CloudDone, "Sinkronkan Google Drive",
+                        onCloudSync, if (cloud.busy) "Sedang menyinkronkan…" else cloud.message)
+                    ProfileEntry(Icons.Rounded.Logout, "Keluar akun Google", onCloudLogout,
+                        "Buku lama tetap disimpan sampai pemulihan Drive terverifikasi")
                 }
             }
         }
@@ -440,7 +454,9 @@ fun ModernStorage(model: TuturiumModel, onBack: () -> Unit) {
         Surface(color = Tile, shape = RoundedCornerShape(22.dp),
             modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Data disimpan di perangkat ini. Tidak ada akun atau unggahan cloud.")
+                val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
+                Text(if (cloud.connected) "Google Drive: ${cloud.email}. ${cloud.message}"
+                    else "Google Drive belum terhubung.")
                 Text("Dokumen: ${model.books.size}", style = MaterialTheme.typography.titleMedium)
                 Text("File yang dihapus: ${model.deletedBooks.size}",
                     style = MaterialTheme.typography.titleMedium)
