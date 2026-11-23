@@ -554,15 +554,17 @@ class ReadingService : Service() {
         private val mutable = MutableStateFlow(Playback())
         val state = mutable.asStateFlow()
 
-        fun command(context: Context, action: String, book: String? = null, index: Int = -1, minutes: Int = 0) {
+        fun command(context: Context, action: String, book: String? = null,
+            index: Int = -1, minutes: Int = 0): Boolean {
             val intent = Intent(context, ReadingService::class.java).setAction(action)
                 .putExtra("book", book).putExtra("index", index).putExtra("minutes", minutes)
-            try {
+            return try {
                 if (action == PLAY) ContextCompat.startForegroundService(context, intent)
                 else context.startService(intent)
+                true
             } catch (error: Exception) {
                 android.util.Log.e("TuturiumPlayback", "Cannot send $action to service", error)
-                // A missing or restricted background service must never crash the UI.
+                false
             }
         }
     }
