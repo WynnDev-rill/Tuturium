@@ -286,8 +286,10 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun play(book: Book, index: Int = -1) {
         val state = ReadingService.state.value
-        if (state.bookId == book.id && (state.playing || state.loading)) ReadingService.command(app, ReadingService.PAUSE)
+        val launched = if (state.bookId == book.id && (state.playing || state.loading))
+            ReadingService.command(app, ReadingService.PAUSE)
         else ReadingService.command(app, ReadingService.PLAY, book.id, index)
+        if (!launched) status = "Pemutar Android tidak dapat dimulai. Buka Tuturium dan coba lagi."
     }
 
     fun reloadVoicesIfOpened() {
