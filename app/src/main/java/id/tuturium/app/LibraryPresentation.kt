@@ -7,7 +7,7 @@ import kotlin.math.ceil
 internal fun estimateRemainingMinutes(wordCount: Int, passCount: Int, position: Int, speed: Float): Int {
     if (wordCount <= 0 || passCount <= 0) return 0
     val ratio = (passCount - position.coerceIn(0, passCount)).toDouble() / passCount
-    val wpm = 150.0 * speed.coerceIn(0.5f, 3f)
+    val wpm = 150.0 * speed.coerceIn(PLAYBACK_SPEED_RANGE)
     return ceil(wordCount * ratio / wpm).toInt()
 }
 
