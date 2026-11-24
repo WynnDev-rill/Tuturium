@@ -72,13 +72,17 @@ class OfflineVoiceRuntimeTest {
             val engine = OfflineAudio(context)
             val started = mutableListOf<Int>()
             val spoken = mutableListOf<Int>()
+            val clipDurations = mutableListOf<Long>()
             val lastCue = mutableMapOf<Int, IntRange>()
             var interruptions = 0
             val done = CompletableDeferred<Unit>()
             try {
                 engine.play(this, model.voices.first(), passages.asSequence(), rate, 1f,
                     onPass = { started += it.index },
-                    onSpoken = { spoken += it.index },
+                    onSpoken = { pass, duration ->
+                        spoken += pass.index
+                        clipDurations += duration
+                    },
                     onRange = { range -> started.lastOrNull()?.let { lastCue[it] = range } },
                     onRendering = { if (!it && started.isNotEmpty()) interruptions++ },
                     onDone = { done.complete(Unit) },
@@ -86,6 +90,8 @@ class OfflineVoiceRuntimeTest {
                 withTimeout(80_000) { done.await() }
                 assertEquals("Start order at ${rate}x", listOf(0, 1, 2), started)
                 assertEquals("Completion order at ${rate}x", started, spoken)
+                assertTrue("Played narration must report the full clip duration at ${rate}x",
+                    clipDurations.size == passages.size && clipDurations.all { it > 0L })
                 assertEquals("Every passage reached its last cue at ${rate}x",
                     passages.associate { it.index to synthesisRanges(it.speech.text).last() }, lastCue)
                 assertEquals("Visible rebuffering at ${rate}x", 0, interruptions)
@@ -128,7 +134,7 @@ class OfflineVoiceRuntimeTest {
                 var completed = 0
                 try {
                     engine.play(this, voice, sequenceOf(pass), 4f, 1f, onPass = {}, onRange = {},
-                        onSpoken = { completed++ }, onRendering = {},
+                        onSpoken = { _, _ -> completed++ }, onRendering = {},
                         onDone = { done.complete(Unit) }, onError = { done.completeExceptionally(it) })
                     withTimeout(40_000L) { done.await() }
                     assertEquals(1, completed)
@@ -216,7 +222,7 @@ class OfflineVoiceRuntimeTest {
             val done = CompletableDeferred<Unit>()
             try {
                 engine.play(this, OfflineCatalog.models.single().voices.first(), passages.asSequence(), 4f, 1f,
-                    onPass = { started += it.index }, onSpoken = { spoken += it.index },
+                    onPass = { started += it.index }, onSpoken = { pass, _ -> spoken += pass.index },
                     onRange = {}, onRendering = { if (!it && started.isNotEmpty()) interrupted = true },
                     onDone = { done.complete(Unit) }, onError = { done.completeExceptionally(it) })
                 withTimeout(15_000) { done.await() }

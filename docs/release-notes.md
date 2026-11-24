@@ -1,3 +1,9 @@
+## Tuturium 1.3.20
+
+- Progres di daftar, kotak, dan pembaca mengikuti jumlah kata sampai posisi baca yang tersimpan.
+- Sisa durasi memperhitungkan teks yang dilewati, jeda tambahan, dan kecepatan. Tuturium menyesuaikan estimasi dari audio yang selesai diputar oleh Supertonic atau Google TTS.
+- Pembaca dan panel kecepatan menampilkan sisa waktu dengan tanda ≈. Perpustakaan membulatkannya ke atas dalam menit.
+
 ## Tuturium 1.3.19
 
 - Supertonic mengikuti klausa, merapikan singkatan, dan memangkas hening di tepi audio.
