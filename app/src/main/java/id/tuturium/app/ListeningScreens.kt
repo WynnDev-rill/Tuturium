@@ -72,11 +72,6 @@ fun ListeningSettingsV2(model: TuturiumModel, onBack: () -> Unit) {
         }
         item { Text("Umum", modifier = Modifier.padding(start = 24.dp, top = 27.dp, bottom = 12.dp),
             style = MaterialTheme.typography.titleMedium) }
-        item { SwitchRow(Icons.Rounded.PlayCircle, "Putar Audio Otomatis",
-            checked = p.autoplay, onChecked = { model.changeListeningOptions(p.copy(autoplay = it)) }) }
-        item { SwitchRow(Icons.Rounded.VisibilityOff, "Sembunyikan Putar Otomatis",
-            "Sembunyikan pintasan putar otomatis di menu pembaca.",
-            checked = p.hideAutoplay, onChecked = { model.changeListeningOptions(p.copy(hideAutoplay = it)) }) }
         item { SwitchRow(Icons.Rounded.AutoAwesomeMotion, "Gulir otomatis",
             checked = p.autoScroll, onChecked = { model.changeListeningOptions(p.copy(autoScroll = it)) }) }
         item { SwitchRow(Icons.Rounded.Translate, "Cocokkan Suara dengan Bahasa",
@@ -428,7 +423,9 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         for (preset in listOf(0.8f, 1f, 1.25f)) {
-                            TextButton(onClick = { setSpeed(preset) }) {
+                            TextButton(onClick = { setSpeed(preset) }, modifier = Modifier.semantics {
+                                contentDescription = "Pilih ${formatPlaybackSpeed(preset)}"
+                            }) {
                                 Text(formatPlaybackSpeed(preset), color = colors.onSurface)
                             }
                         }
