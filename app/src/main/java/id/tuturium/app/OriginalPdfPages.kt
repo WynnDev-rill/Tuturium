@@ -5,7 +5,18 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.unit.IntOffset
+import android.content.ClipData
+import android.content.ClipboardManager
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,7 +50,8 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun OriginalPdfPages(
     source: File, readingPage: Int, follow: Boolean, reading: Boolean,
-    firstPassByPage: Map<Int, Int>, onReadPage: (Int) -> Unit
+    firstPassByPage: Map<Int, Int>, passesByPage: Map<Int, List<IndexedValue<Pass>>>,
+    onReadWord: (WordSelection) -> Unit
 ) {
     val session = remember(source.path) { PdfPageSession(source) }
     DisposableEffect(session) {
@@ -92,17 +104,17 @@ internal fun OriginalPdfPages(
     Box(Modifier.fillMaxSize()) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize().nestedScroll(scrollInput)
             .semantics { contentDescription = "Dokumen PDF" },
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 52.dp, bottom = 4.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(total, key = { it }) { index ->
                 val pass = firstPassByPage[index]
-                PdfPageImage(session, index, onRead = pass
+                PdfPageImage(session, source, index, passesByPage[index].orEmpty(), onReadWord, onRead = pass
                     ?.takeUnless { reading && index == target }
                     ?.let { start ->
                         {
                             browsing = true
                             requestedPage = index
-                            onReadPage(start)
+                            onReadWord(WordSelection(start, 0))
                         }
                     })
             }
@@ -120,7 +132,22 @@ internal fun OriginalPdfPages(
 }
 
 @Composable
-private fun PdfPageImage(session: PdfPageSession, index: Int, onRead: (() -> Unit)?) {
+private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
+    passes: List<IndexedValue<Pass>>, onReadWord: (WordSelection) -> Unit, onRead: (() -> Unit)?) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val read by rememberUpdatedState(onReadWord)
+    val readPage by rememberUpdatedState(onRead)
+    var selected by remember { mutableStateOf<PdfWordHit?>(null) }
+    var anchor by remember { mutableStateOf(Offset.Zero) }
+    var selectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val colors = MaterialTheme.colorScheme
+    val dark = colors.background.luminance() < 0.4f
+    val filter = remember(dark) {
+        if (dark) ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
+            -0.85f,0f,0f,0f,230f, 0f,-0.85f,0f,0f,230f,
+            0f,0f,-0.85f,0f,230f, 0f,0f,0f,1f,0f))) else null
+    }
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val pixelWidth = with(density) { (configuration.screenWidthDp.dp.toPx() * 1.6f)
@@ -137,10 +164,47 @@ private fun PdfPageImage(session: PdfPageSession, index: Int, onRead: (() -> Uni
         contentAlignment = Alignment.Center) {
         if (bitmap != null) {
             val image = remember(bitmap) { bitmap.asImageBitmap() }
-            val action = if (onRead == null) Modifier else
-                Modifier.clickable(onClickLabel = "Baca halaman ini", onClick = onRead)
-            Image(image, "Halaman PDF ${index + 1}", modifier = Modifier.fillMaxSize().then(action),
-                contentScale = ContentScale.Fit)
+            val action = if (onRead == null) Modifier else Modifier.semantics {
+                onClick(label = "Baca halaman ini") { readPage?.invoke(); true }
+            }
+            Image(image, "Halaman PDF ${index + 1}", modifier = Modifier.fillMaxSize().then(action)
+                .pointerInput(source, index, passes) {
+                    detectTapGestures(onTap = { readPage?.invoke() }, onLongPress = { point ->
+                        val x = point.x / size.width
+                        val y = point.y / size.height
+                        anchor = point
+                        selectionJob?.cancel()
+                        selectionJob = scope.launch {
+                            val hit = withContext(Dispatchers.IO) {
+                                runCatching { readPdfWordHits(context, source, index, passes) }
+                                    .getOrDefault(emptyList())
+                                    .filter { x >= it.left - 0.006f && x <= it.right + 0.006f &&
+                                        y >= it.top - 0.008f && y <= it.bottom + 0.008f }
+                                    .minByOrNull { kotlin.math.abs(x - (it.left + it.right) / 2f) +
+                                        kotlin.math.abs(y - (it.top + it.bottom) / 2f) }
+                            }
+                            selected = hit
+                            if (hit == null) android.widget.Toast.makeText(context,
+                                "Teks tidak dapat dipilih pada lokasi ini. Gunakan mode Teks.",
+                                android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    })
+                }, contentScale = ContentScale.Fit, colorFilter = filter)
+            Box(Modifier.align(Alignment.TopStart).offset {
+                IntOffset(anchor.x.roundToInt(), anchor.y.roundToInt())
+            }) {
+                DropdownMenu(expanded = selected != null, onDismissRequest = { selected = null }) {
+                    DropdownMenuItem(text = { Text("Baca") }, enabled = selected?.selection != null,
+                        onClick = { selected?.selection?.let(read); selected = null })
+                    DropdownMenuItem(text = { Text("Salin") }, onClick = {
+                        selected?.let { hit ->
+                            context.getSystemService(ClipboardManager::class.java)
+                                .setPrimaryClip(ClipData.newPlainText("Teks PDF", hit.text))
+                        }
+                        selected = null
+                    })
+                }
+            }
         } else Text(if (result.second) "Halaman PDF gagal dirender."
             else "Memuat halaman", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

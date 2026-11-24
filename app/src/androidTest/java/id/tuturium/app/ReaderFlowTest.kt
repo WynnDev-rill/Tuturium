@@ -63,6 +63,7 @@ class ReaderFlowTest {
             "Kalimat pertama. Kalimat kedua. Kalimat ketiga. Kalimat keempat.")
         compose.onNodeWithText("Simpan").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText(EXAMPLE).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Putar").assertIsDisplayed()
         compose.onNodeWithContentDescription("Atur kecepatan").performClick()
         compose.onNodeWithContentDescription("Penggeser kecepatan").performTouchInput { swipeUp(durationMillis = 400) }
         compose.runOnIdle {
@@ -118,7 +119,7 @@ class ReaderFlowTest {
         val pack = OfflineCatalog.models.single()
         runBlocking { OfflineModelStore.install(context, pack) {} }
         compose.onNodeWithContentDescription("Buka profil").performClick()
-        compose.onNodeWithText("Bacakan").performClick()
+        compose.onNodeWithText("Pustaka Suara").performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Supertonic F1"))
         compose.onNodeWithText("Supertonic F1").performClick()
         compose.onNodeWithText("Pratinjau suara").assertIsDisplayed()

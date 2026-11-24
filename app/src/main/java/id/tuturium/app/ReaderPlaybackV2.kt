@@ -25,17 +25,17 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
     val actual = if (playback.bookId == book.id && (playing || loading)) playback.effectiveSpeed else model.settings.speed
     val wholeSeconds = (book.words * 60f / (150f * actual.coerceAtLeast(0.5f))).toInt().coerceAtLeast(1)
     val elapsedSeconds = (wholeSeconds * progress).toInt()
-    Surface(color = Color.Black,
+    Surface(color = MaterialTheme.colorScheme.background,
         shape = RoundedCornerShape(topStart = 23.dp, topEnd = 23.dp)) {
         Column(Modifier.fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
             LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth().height(3.dp),
-                color = SpeechifyAccent, trackColor = Color(0xFF383838))
+                color = SpeechifyAccent, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
             Spacer(Modifier.height(9.dp))
             Text("≈ ${formatPlaybackTime(elapsedSeconds)} / ${formatPlaybackTime(wholeSeconds)}",
-                color = SpeechifyMuted, style = MaterialTheme.typography.labelMedium)
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
@@ -61,19 +61,19 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
                 }, modifier = Modifier.size(46.dp)) {
                     Icon(Icons.Rounded.Forward10, "Maju sekitar 10 detik", Modifier.size(34.dp))
                 }
-                Surface(onClick = speedPanel, color = Color(0xFF272727),
+                Surface(onClick = speedPanel, color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.size(56.dp).semantics {
                         contentDescription = "Atur kecepatan"
                     }, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(formatPlaybackSpeed(actual),
-                            color = Color.White, fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
             if (playback.timerUntil > SystemClock.elapsedRealtime()) {
-                Text("Timer tidur aktif", color = SpeechifyMuted,
+                Text("Timer tidur aktif", color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall)
             }
         }

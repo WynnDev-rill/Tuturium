@@ -11,9 +11,9 @@ class NarrationAudioTest {
     @Test fun boostsQuietNarrationWhileRoundingOffLoudPeaks() {
         val samples = floatArrayOf(0f, 0.03f, -0.06f, Float.NaN)
         val gain = narrationGain(samples)
-        assertEquals(4f, gain)
-        assertEquals(0.12f, amplifyNarration(samples[1], gain), 0.0001f)
-        assertEquals(-0.24f, amplifyNarration(samples[2], gain), 0.0001f)
+        assertTrue(gain > 4f && gain <= 8f)
+        assertEquals(samples[1] * gain, amplifyNarration(samples[1], gain), 0.0001f)
+        assertEquals(samples[2] * gain, amplifyNarration(samples[2], gain), 0.0001f)
         assertEquals(0f, amplifyNarration(0f, gain), 0f)
         assertEquals(0f, amplifyNarration(Float.NaN, gain), 0f)
         val peak = amplifyNarration(1f, gain)

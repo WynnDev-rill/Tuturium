@@ -12,7 +12,7 @@ Unduh `Tuturium.apk` dari [GitHub Releases](https://github.com/WynnDev-rill/Tutu
 - Lanjutkan audio ketika layar terkunci. Gunakan putar/jeda dan tombol lompat dari notifikasi media atau dari pembaca. Pengatur waktu tidur tersedia melalui menu pembaca.
 - Tuturium memeriksa rilis stabil di GitHub saat aplikasi dibuka dan menyediakan pemeriksaan manual di Setelan. Pengunduhan dan pemasangan dimulai dengan tindakan pengguna. Android meminta konfirmasi pemasangan.
 
-Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine, DOCX mengambil isi utama, dan PDF menyediakan pilihan **PDF** (halaman asli jika berkasnya tersimpan) dengan gulir vertikal atau **Teks** (paragraf rapi dengan sorotan dan pemilihan kata yang langsung dibacakan). Tampilan Teks mengikuti tema gelap/terang aplikasi, dan tombol kata aktif memudahkan kembali ke posisi narasi setelah menggulir jauh. Untuk halaman PDF tanpa teks, model OCR lokal mengenali tulisan Latin. Kuota perangkat dan keterbacaan gambar memengaruhi OCR. Jumlah maksimum dokumen impor adalah 100 MB, hingga 1.500 halaman PDF atau bagian EPUB, dan hingga dua juta karakter hasil ekstraksi. Mesin TTS yang menyediakan rentang ucapan memungkinkan sorotan kata. Mesin lain menggunakan sorotan kalimat.
+Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine, DOCX mengambil isi utama, dan PDF menyediakan pilihan **PDF** (halaman asli jika berkasnya tersimpan) dengan gulir vertikal atau **Teks** (paragraf rapi dengan sorotan dan pemilihan kata yang langsung dibacakan). Tampilan Teks mengikuti tema gelap/terang aplikasi, dan tombol kata aktif memudahkan kembali ke posisi narasi setelah menggulir jauh. Untuk halaman PDF tanpa teks, model OCR lokal mengenali tulisan Latin. Kuota perangkat dan keterbacaan gambar memengaruhi OCR. Ukuran maksimum dokumen impor 100 MB. PDF tidak memiliki batas jumlah halaman atau karakter tetap; kemampuan memuat tetap bergantung pada RAM dan ruang penyimpanan. EPUB dan format teks lain mempertahankan pembatas keamanan. Mesin TTS yang menyediakan rentang ucapan memungkinkan sorotan kata. Mesin lain menggunakan sorotan kalimat.
 
 ## Supertonic 3
 
@@ -67,7 +67,7 @@ Di **Profil → Akun**, pilih **Masuk dengan Google**. Tuturium meminta izin Goo
 - Mengatur ulang tipografi, jarak paragraf, dan penanda halaman tanpa menghilangkan teks sumber.
 - Sorotan warna pada kalimat dan kata sedang dibacakan; ketuk kata mana saja untuk memulai Google TTS dari kata itu.
 - Saat menggulir jauh, ketuk chip kata aktif di bagian atas untuk kembali; pembacaan tidak memaksa scroll ketika menjelajah manual.
-- Halaman PDF asli tetap putih sesuai dokumen, tetapi latar dan kontrol di sekelilingnya mengikuti tema Tuturium.
+- Sejak 1.3.14 halaman PDF menggunakan filter gelap ketika tema pembaca gelap.
 
 ## Pembaruan 1.1.1
 
