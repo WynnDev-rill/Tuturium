@@ -10,10 +10,41 @@ internal object FolderStore {
     fun names(context: Context): List<String> =
         prefs(context).getStringSet("names", emptySet()).orEmpty().sortedBy { it.lowercase() }
 
-    fun add(context: Context, name: String): Boolean {
+    fun parentOf(context: Context, name: String): String? {
+        val p = prefs(context)
+        return p.getString("parent:$name", null)
+            ?.takeIf { it != name && it in p.getStringSet("names", emptySet()).orEmpty() }
+    }
+
+    fun canMove(context: Context, name: String, destination: String?): Boolean {
+        val names = prefs(context).getStringSet("names", emptySet()).orEmpty()
+        if (name !in names || (destination != null && destination !in names)) return false
+        val visited = mutableSetOf(name)
+        var ancestor = destination
+        while (ancestor != null) {
+            if (!visited.add(ancestor)) return false
+            ancestor = parentOf(context, ancestor)
+        }
+        return true
+    }
+
+    fun move(context: Context, name: String, destination: String?): Boolean {
+        if (!canMove(context, name, destination)) return false
+        val edit = prefs(context).edit()
+        if (destination == null) edit.remove("parent:$name")
+        else edit.putString("parent:$name", destination)
+        val saved = edit.commit()
+        if (saved) TuturiumCloud.markDirty(context)
+        return saved
+    }
+
+    fun add(context: Context, name: String, parent: String? = null): Boolean {
         val safe = name.trim().take(60)
         if (safe.isBlank() || names(context).any { it.equals(safe, true) }) return false
-        val saved = prefs(context).edit().putStringSet("names", (names(context) + safe).toSet()).commit()
+        if (parent != null && parent !in names(context)) return false
+        val edit = prefs(context).edit().putStringSet("names", (names(context) + safe).toSet())
+        if (parent != null) edit.putString("parent:$safe", parent)
+        val saved = edit.commit()
         if (saved) TuturiumCloud.markDirty(context)
         return saved
     }
@@ -36,8 +67,12 @@ internal object FolderStore {
         val existing = names(context)
         val editor = p.edit()
         editor.putStringSet("names", (existing - current + safe).toSet())
-        p.all.keys.filter { it.startsWith("book:") && p.getString(it, null) == current }
-            .forEach { editor.putString(it, safe) }
+        p.all.keys.filter { (it.startsWith("book:") || it.startsWith("parent:")) &&
+            p.getString(it, null) == current }.forEach { editor.putString(it, safe) }
+        if (current != safe) {
+            editor.remove("parent:$current")
+            parentOf(context, current)?.let { editor.putString("parent:$safe", it) }
+        }
         val pins = p.getStringSet("pinned_folders", emptySet()).orEmpty()
         if (current in pins) editor.putStringSet("pinned_folders", pins - current + safe)
         val saved = editor.commit()
@@ -48,8 +83,12 @@ internal object FolderStore {
     fun remove(context: Context, name: String) {
         val p = prefs(context)
         val editor = p.edit().putStringSet("names", (names(context) - name).toSet())
-        p.all.keys.filter { it.startsWith("book:") && p.getString(it, null) == name }
-            .forEach(editor::remove)
+        val parent = parentOf(context, name)
+        editor.remove("parent:$name")
+        p.all.keys.filter { (it.startsWith("book:") || it.startsWith("parent:")) &&
+            p.getString(it, null) == name }.forEach {
+            if (parent == null) editor.remove(it) else editor.putString(it, parent)
+        }
         editor.putStringSet("pinned_folders",
             p.getStringSet("pinned_folders", emptySet()).orEmpty() - name)
         editor.apply()

@@ -1,3 +1,10 @@
+## Tuturium 1.3.19
+
+- Supertonic mengikuti klausa, merapikan singkatan, dan memangkas hening di tepi audio.
+- Jeda narasi menyesuaikan tanda baca dan sambungan PDF. Pengaturan jeda tambahan tersedia di menu Audio.
+- Pencarian kata menempel dekat keyboard. Menu folder mendukung pindah folder, dan layar Dihapus mendukung pilih, pulihkan, serta hapus permanen secara massal.
+- [Riset, benchmark, dan pengujian](https://github.com/WynnDev-rill/Tuturium/blob/main/docs/narration-flow.md).
+
 ## Tuturium 1.3.18
 
 - Gunakan audio focus MAY_DUCK untuk opsi musik latar; pemulihan volume ditangani Android saat focus dilepas.

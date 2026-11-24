@@ -54,7 +54,7 @@ internal fun ReaderSearchBar(
     val focus = remember { FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) { focus.requestFocus(); keyboard?.show() }
-    Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+    Surface(Modifier.fillMaxWidth().imePadding().padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(25.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(enabled = count > 1, onClick = { onNavigate(-1) }) {
@@ -108,7 +108,7 @@ internal fun ReaderAudioSheet(model: TuturiumModel, dismiss: () -> Unit) {
     val volume = model.settings.volume.coerceIn(0.01f, 1f)
     val options = model.listeningOptions
     TuturiumSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 24.dp),
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 22.dp, end = 22.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Audio", style = MaterialTheme.typography.titleLarge)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -120,10 +120,30 @@ internal fun ReaderAudioSheet(model: TuturiumModel, dismiss: () -> Unit) {
             Slider(volume, { model.changeSettings(model.settings.copy(volume = it), persist = false) },
                 valueRange = 0.01f..1f,
                 onValueChangeFinished = { model.changeSettings(model.settings) })
-            Text("100% menggunakan level narasi penuh. Volume media tetap diatur oleh perangkat.",
+            HorizontalDivider()
+            NarrationPauseControl("Jeda tambahan antarkalimat", options.sentencePauseMs) { ms ->
+                model.changeListeningOptions(model.listeningOptions.copy(sentencePauseMs = ms))
+            }
+            NarrationPauseControl("Jeda tambahan antarparagraf", options.paragraphPauseMs) { ms ->
+                model.changeListeningOptions(model.listeningOptions.copy(paragraphPauseMs = ms))
+            }
+            Text("Jeda ikut memendek saat kecepatan dinaikkan.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+private fun NarrationPauseControl(label: String, value: Int, save: (Int) -> Unit) {
+    var draft by remember(value) { mutableStateOf(value.toFloat()) }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        Text(if (draft == 0f) "Mati" else "${draft.toInt()} ms",
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Slider(draft, onValueChange = { draft = it }, valueRange = 0f..1200f, steps = 11,
+        modifier = Modifier.semantics { contentDescription = label },
+        onValueChangeFinished = { save(draft.toInt()) })
 }
 
 private val readerThemes = listOf("system" to "Ikuti perangkat", "light" to "Terang", "dark" to "Gelap")

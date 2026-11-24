@@ -72,6 +72,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
     }
     var renameFile by remember { mutableStateOf<Book?>(null) }
     var deleteFile by remember { mutableStateOf<Book?>(null) }
+    var movingFolder by remember { mutableStateOf<String?>(null) }
     var folderOptions by remember { mutableStateOf<String?>(null) }
     var renameFolder by remember { mutableStateOf<String?>(null) }
     var deleteFolder by remember { mutableStateOf<String?>(null) }
@@ -97,14 +98,14 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
         }, sort).sortedWith(compareByDescending<Book> { BookActions.pinned(context, it.id) })
     }
     val pinnedBooks = remember(model.books, revision) { model.books.filter { BookActions.pinned(context, it.id) }.map { it.id }.toSet() }
-    val shownFolders = if (search.isBlank()) allFolders else allFolders.filter {
-        it.contains(search.trim(), ignoreCase = true)
+    val shownFolders = allFolders.filter {
+        FolderStore.parentOf(context, it) == folder && it.contains(search.trim(), ignoreCase = true)
     }
     BackHandler(searching || folder != null || selecting) {
         when {
             searching -> { searching = false; search = ""; keyboard?.hide() }
             selecting -> { selectedIds = emptySet(); selecting = false }
-            else -> folder = null
+            else -> folder = folder?.let { FolderStore.parentOf(context, it) }
         }
     }
     LazyColumn(Modifier.fillMaxSize().background(Color.Black),
@@ -152,7 +153,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
                         }
                     }
                     else -> {
-                        if (folder != null) IconButton(onClick = { folder = null }) {
+                        if (folder != null) IconButton(onClick = { folder = folder?.let { FolderStore.parentOf(context, it) } }) {
                             Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Daftar folder")
                         }
                         Text(folder ?: "Perpustakaan", Modifier.weight(1f),
@@ -276,7 +277,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
             }
         }
         run {
-            if (folder == null && filter in listOf("Buku", "Folder")) {
+            if (filter in listOf("Buku", "Folder")) {
                 items(shownFolders, key = { "folder:$it" }) { name ->
                     Row(Modifier.fillMaxWidth().height(82.dp)
                         .clickable { folder = name; filter = "Buku" },
@@ -317,7 +318,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
             }
             if ((filter == "Folder" && shownFolders.isEmpty()) ||
                 (filter != "Folder" && visible.isEmpty() &&
-                    (folder != null || filter != "Buku" || shownFolders.isEmpty()))) item {
+                    (filter != "Buku" || shownFolders.isEmpty()))) item {
                 Column(Modifier.fillMaxWidth().padding(top = 65.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(17.dp)) {
@@ -342,7 +343,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
     LaunchedEffect(searching) { if (searching) { focus.requestFocus(); keyboard?.show() } }
     if (folderEditor) FolderEditorV2(folderDraft, { folderDraft = it },
         "Buat Folder", { folderEditor = false }, {
-            if (FolderStore.add(context, it)) {
+            if (FolderStore.add(context, it, folder)) {
                 folders = FolderStore.names(context); folder = it.trim().take(60)
                 filter = "Buku"; folderEditor = false; revision++
             } else model.status = "Nama folder tidak valid atau sudah digunakan."
@@ -359,28 +360,58 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
     deleteFolder?.let { name ->
         TuturiumDialog(onDismissRequest = { deleteFolder = null },
             title = { Text("Hapus folder?") },
-            text = { Text("Folder “$name” dihapus, tetapi semua dokumen tetap tersedia di Perpustakaan.") },
+            text = { Text("Isi folder “$name” akan dipindahkan satu tingkat ke atas.") },
             confirmButton = { TextButton(onClick = {
+                val parent = FolderStore.parentOf(context, name)
                 FolderStore.remove(context, name)
-                if (folder == name) folder = null
+                if (folder == name) folder = parent
                 folders = FolderStore.names(context); deleteFolder = null; revision++
             }) { Text("Hapus") } },
             dismissButton = { TextButton(onClick = { deleteFolder = null }) { Text("Batal") } })
     }
     folderOptions?.let { name ->
+        val members = model.books.filter { FolderStore.folderOf(context, it.id) == name }
         TuturiumSheet(onDismissRequest = { folderOptions = null }, containerColor = Panel) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp)) {
-                SheetHeadline(Icons.Rounded.Folder, name)
-                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = Color(0xFF243751), shape = RoundedCornerShape(14.dp)) {
+                        Icon(Icons.Rounded.Folder, null, Modifier.padding(10.dp).size(28.dp), tint = Color(0xFF68BCF3))
+                    }
+                    Column(Modifier.padding(start = 14.dp)) {
+                        Text(name, style = MaterialTheme.typography.titleMedium)
+                        Text("${members.size} dokumen", style = MaterialTheme.typography.bodySmall, color = Secondary)
+                    }
+                }
                 SheetAction(Icons.Rounded.PushPin,
                     if (FolderStore.isPinned(context, name)) "Lepas sematan" else "Sematkan di atas") {
-                    FolderStore.togglePinned(context, name); folderOptions = null; revision++
+                    FolderStore.togglePinned(context, name)
+                    folderOptions = null
+                    revision++
+                }
+                HorizontalDivider(color = Color.DarkGray)
+                if (members.isNotEmpty()) {
+                    SheetAction(Icons.Rounded.CheckCircleOutline, "Pilih isi") {
+                        folder = name
+                        filter = "Buku"
+                        search = ""
+                        selecting = true
+                        selectedIds = members.map { it.id }.toSet()
+                        folderOptions = null
+                    }
+                }
+                SheetAction(Icons.Rounded.DriveFileMove, "Pindahkan ke folder") {
+                    movingFolder = name
+                    folderOptions = null
                 }
                 SheetAction(Icons.Rounded.Edit, "Ubah nama") {
-                    folderDraft = name; renameFolder = name; folderOptions = null
+                    folderDraft = name
+                    renameFolder = name
+                    folderOptions = null
                 }
+                HorizontalDivider(color = Color.DarkGray)
                 SheetAction(Icons.Rounded.DeleteOutline, "Hapus folder", danger = true) {
-                    deleteFolder = name; folderOptions = null
+                    deleteFolder = name
+                    folderOptions = null
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -453,15 +484,16 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
             }
         }
     }
-    if (moveFile != null || chooseTargetForSelection || choosingForFolder) {
+    if (moveFile != null || movingFolder != null || chooseTargetForSelection || choosingForFolder) {
         val moving = moveFile
-        var destination by remember(moving?.id, chooseTargetForSelection) { mutableStateOf<String?>(null) }
+        var destination by remember(moving?.id, movingFolder, chooseTargetForSelection) { mutableStateOf<String?>(null) }
         var destinationQuery by remember { mutableStateOf("") }
         var searchDestination by remember { mutableStateOf(false) }
         var createDestination by remember { mutableStateOf(false) }
         var destinationDraft by remember { mutableStateOf("") }
         TuturiumSheet(onDismissRequest = {
             moveFile = null; chooseTargetForSelection = false; choosingForFolder = false
+            movingFolder = null
         }, containerColor = Panel) {
             Column(Modifier.fillMaxWidth().heightIn(max = 680.dp)
                 .padding(horizontal = 22.dp, vertical = 12.dp)) {
@@ -493,7 +525,10 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 modifier = Modifier.clickable { destination = null })
                         }
-                        allFolders.filter { it.contains(destinationQuery, true) }.forEach { name ->
+                        allFolders.filter { name ->
+                            name.contains(destinationQuery, true) &&
+                                (movingFolder?.let { FolderStore.canMove(context, it, name) } ?: true)
+                        }.forEach { name ->
                             ListItem(headlineContent = { Text(name) },
                                 leadingContent = { Icon(Icons.Rounded.Folder, null, tint = Color(0xFF2F9ED6)) },
                                 trailingContent = { if (destination == name) Icon(Icons.Rounded.Check, "Dipilih") },
@@ -502,11 +537,24 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
                         }
                     }
                     Button(onClick = {
-                        val ids = if (moving != null) listOf(moving.id) else selectedIds.toList()
-                        ids.forEach { FolderStore.assign(context, it, destination) }
-                        selectedIds = emptySet(); selecting = false
-                        moveFile = null; chooseTargetForSelection = false; revision++
-                        model.status = "Bacaan dipindahkan ke ${destination ?: "Perpustakaan"}."
+                        val source = movingFolder
+                        if (source != null) {
+                            if (!FolderStore.move(context, source, destination)) {
+                                model.status = "Folder tujuan tidak tersedia."
+                                return@Button
+                            }
+                            model.status = "Folder dipindahkan ke ${destination ?: "Perpustakaan"}."
+                        } else {
+                            val ids = if (moving != null) listOf(moving.id) else selectedIds.toList()
+                            ids.forEach { FolderStore.assign(context, it, destination) }
+                            model.status = "Bacaan dipindahkan ke ${destination ?: "Perpustakaan"}."
+                        }
+                        selectedIds = emptySet()
+                        selecting = false
+                        moveFile = null
+                        chooseTargetForSelection = false
+                        movingFolder = null
+                        revision++
                     }, modifier = Modifier.fillMaxWidth().height(52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Pindahkan") }
                 }
@@ -617,7 +665,7 @@ private fun PinnedBookTitle(book: Book, lines: Int, pinned: Boolean) {
 }
 
 @Composable
-private fun FileArtwork(format: String, modifier: Modifier) {
+internal fun FileArtwork(format: String, modifier: Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
         Box(Modifier.fillMaxWidth(.83f).fillMaxHeight(.94f)
             .clip(RoundedCornerShape(8.dp)).background(Color(0xFFF7F7F8))) {
@@ -632,15 +680,6 @@ private fun FileArtwork(format: String, modifier: Modifier) {
     }
 }
 
-@Composable
-private fun SheetHeadline(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(40.dp))
-        Spacer(Modifier.width(12.dp))
-        Text(title, style = MaterialTheme.typography.titleLarge,
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
 @Composable
 private fun SheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String,
     danger: Boolean = false, onClick: () -> Unit) {

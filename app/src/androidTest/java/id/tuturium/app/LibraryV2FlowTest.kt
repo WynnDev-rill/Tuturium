@@ -92,6 +92,54 @@ class LibraryV2FlowTest {
         compose.onAllNodesWithContentDescription("Disematkan").onFirst().assertIsDisplayed()
     }
 
+    @Test fun folderMenuMovesFolderAndKeepsItsDocuments() {
+        val context = compose.activity
+        val library = Library.get(context)
+        val destination = "$folderName tujuan"
+        val book = library.add("Isi yang dipindahkan", "TXT", ReadingDocument(listOf(Section("Bab", "Baca."))))
+        try {
+            FolderStore.add(context, folderName)
+            FolderStore.add(context, destination)
+            FolderStore.assign(context, book.id, folderName)
+            compose.onNodeWithText("Perpustakaan").performClick()
+            compose.onNodeWithContentDescription("Opsi folder $folderName").performClick()
+            compose.onNodeWithText("Pilih isi").assertIsDisplayed()
+            compose.onNodeWithText("Pindahkan ke folder").performClick()
+            compose.onAllNodesWithText(destination).onLast().performClick()
+            compose.onNodeWithText("Pindahkan").performClick()
+            compose.waitUntil(10_000) { FolderStore.parentOf(context, folderName) == destination }
+            compose.onNodeWithText(folderName).assertDoesNotExist()
+            compose.onNodeWithText(destination).performClick()
+            compose.onNodeWithText(folderName).performClick()
+            compose.onNodeWithText(book.title).assertIsDisplayed()
+            org.junit.Assert.assertFalse(FolderStore.canMove(context, destination, folderName))
+        } finally {
+            FolderStore.remove(context, destination)
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
+    @Test fun deletedScreenRestoresSelectedItems() {
+        val library = Library.get(compose.activity)
+        val title = "Dokumen untuk dipulihkan"
+        val book = library.add(title, "TXT", ReadingDocument(listOf(Section("Bab", "Teks uji."))))
+        try {
+            library.delete(book.id)
+            compose.onNodeWithContentDescription("Buka profil").performClick()
+            compose.onNodeWithText("File yang Dihapus").performScrollTo().performClick()
+            compose.onNodeWithText("Dihapus").assertIsDisplayed()
+            compose.onNodeWithText("Pulihkan").assertIsNotEnabled()
+            compose.onNodeWithText(title).performClick()
+            compose.onNodeWithText("Pulihkan").performClick()
+            compose.waitUntil(15_000) { library.book(book.id) != null }
+            compose.onNodeWithText(title).assertDoesNotExist()
+        } finally {
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     @Test fun aboutOpensDedicatedPage() {
         compose.onNodeWithContentDescription("Buka profil").performClick()
         compose.onNodeWithText("Tentang Tuturium").performScrollTo().performClick()

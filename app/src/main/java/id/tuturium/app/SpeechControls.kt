@@ -21,7 +21,9 @@ data class ListeningOptions(
     val skipRound: Boolean = true,
     val skipSquare: Boolean = true,
     val skipCurly: Boolean = true,
-    val autoRamp: Boolean = false
+    val autoRamp: Boolean = false,
+    val sentencePauseMs: Int = 0,
+    val paragraphPauseMs: Int = 0
 ) {
     companion object {
         fun read(context: Context): ListeningOptions =
@@ -43,7 +45,9 @@ data class ListeningOptions(
                     skipRound = p.getBoolean("skipRound", true),
                     skipSquare = p.getBoolean("skipSquare", true),
                     skipCurly = p.getBoolean("skipCurly", true),
-                    autoRamp = p.getBoolean("autoRamp", false)
+                    autoRamp = p.getBoolean("autoRamp", false),
+                    sentencePauseMs = p.getInt("sentencePauseMs", 0).coerceIn(0, 1200),
+                    paragraphPauseMs = p.getInt("paragraphPauseMs", 0).coerceIn(0, 1200)
                 )
             }
     }
@@ -66,6 +70,8 @@ data class ListeningOptions(
             putBoolean("skipSquare", skipSquare)
             putBoolean("skipCurly", skipCurly)
             putBoolean("autoRamp", autoRamp)
+            putInt("sentencePauseMs", sentencePauseMs.coerceIn(0, 1200))
+            putInt("paragraphPauseMs", paragraphPauseMs.coerceIn(0, 1200))
         }.apply()
     }
 }

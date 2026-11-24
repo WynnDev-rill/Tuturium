@@ -195,7 +195,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         panel = null
     }
 
-    Column(Modifier.fillMaxSize().then(if (searchOpen) Modifier.imePadding() else Modifier).background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (pdfSource == null) 17.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = model::closeReader, enabled = !model.savingReader) {

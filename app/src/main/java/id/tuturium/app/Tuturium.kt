@@ -261,7 +261,7 @@ fun Tuturium(model: TuturiumModel) {
             title = { Text("Buat Folder") },
             text = { OutlinedTextField(newFolderName, { newFolderName = it.take(60) }, singleLine = true, label = { Text("Nama folder") }) },
             confirmButton = { TextButton(onClick = {
-                if (FolderStore.add(context, newFolderName)) { folderRefresh++; showCreateFolder = false; tab = "library" }
+                if (FolderStore.add(context, newFolderName, model.importTargetFolder)) { folderRefresh++; showCreateFolder = false; tab = "library" }
                 else model.status = "Nama folder sudah digunakan atau tidak valid."
             }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("Batal") } })

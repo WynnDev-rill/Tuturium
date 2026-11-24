@@ -99,7 +99,7 @@ internal object OfflineSynth {
                 if (text.isBlank()) continue
                 val temp = File.createTempFile("prefetch-", ".wav", context.cacheDir)
                 try {
-                    write(context, voice, text, temp, steps)
+                    write(context, voice, text, temp, steps, pauseAfterMs = document.pauseAfter(i, options).totalMs)
                 } finally {
                     temp.delete()
                 }
@@ -108,13 +108,13 @@ internal object OfflineSynth {
     }
 
     suspend fun write(context: Context, voice: OfflineVoice, text: String, target: File,
-        steps: Int = 8, compressCache: Boolean = false): SynthesizedAudio =
+        steps: Int = 8, compressCache: Boolean = false, pauseAfterMs: Int = 0): SynthesizedAudio =
         withContext(dispatcher) {
             releaseJob?.cancel()
             try {
                 val cache = NarrationAudioCache(File(context.cacheDir, "supertonic-audio"))
                 val model = OfflineCatalog.model(voice.model)
-                fun key(quality: Int) = "${model.files.single().sha256}/${voice.id}/id/$quality/gain-v2"
+                fun key(quality: Int) = "${model.files.single().sha256}/${voice.id}/id/$quality/gain-v2/flow-v1/$pauseAfterMs"
                 if (OfflineModelStore.installed(context, model)) {
                     for (candidate in listOf(8, 6, 5)) {
                         if (candidate < steps) break
@@ -130,10 +130,12 @@ internal object OfflineSynth {
                     wav.write(ByteArray(44))
                     val engine = load(context)
                     check(voice.speaker in 0 until engine.numSpeakers())
-                    for (range in synthesisRanges(text)) {
+                    val ranges = synthesisRanges(text)
+                    for ((index, range) in ranges.withIndex()) {
                         ensureActive()
-                        // Synthesize at the model's baseline. The player controls listening speed.
-                        val pcm = engine.generateWithConfig(text.substring(range), GenerationConfig(
+                        val raw = text.substring(range)
+                        val normalized = PreparedSpeech(raw, IntArray(raw.length) { it }).normalizedForNarration().text
+                        val pcm = engine.generateWithConfig(normalized, GenerationConfig(
                             sid = voice.speaker, speed = 1f, numSteps = steps, extra = mapOf("lang" to "id")))
                         ensureActive()
                         check(pcm.samples.isNotEmpty() && pcm.sampleRate > 0)
@@ -142,7 +144,9 @@ internal object OfflineSynth {
                         cues += AudioCue(bytes * 500L / rate, range)
                         buffer.clear()
                         val gain = narrationGain(pcm.samples)
-                        for (sample in pcm.samples) {
+                        val audible = spokenPcmRange(pcm.samples, rate)
+                        for (frame in audible) {
+                            val sample = pcm.samples[frame]
                             if (!buffer.hasRemaining()) {
                                 wav.write(buffer.array(), 0, buffer.position())
                                 buffer.clear()
@@ -151,7 +155,16 @@ internal object OfflineSynth {
                             buffer.putShort((amplifyNarration(sample, gain) * 32767f).toInt().toShort())
                         }
                         if (buffer.position() > 0) wav.write(buffer.array(), 0, buffer.position())
-                        bytes += pcm.samples.size * 2L
+                        val pauseMs = if (index == ranges.lastIndex) pauseAfterMs else clausePause(raw)
+                        val silenceBytes = rate * pauseMs / 1000 * 2
+                        var pending = silenceBytes
+                        if (pending > 0) buffer.array().fill(0)
+                        while (pending > 0) {
+                            val length = minOf(pending, buffer.capacity())
+                            wav.write(buffer.array(), 0, length)
+                            pending -= length
+                        }
+                        bytes += audible.count() * 2L + silenceBytes
                         check(bytes < Int.MAX_VALUE - 44L)
                     }
                     check(bytes > 0)
@@ -209,7 +222,7 @@ internal data class SynthesizedAudio(val cues: List<AudioCue>, val durationMs: L
 
 internal data class AudioCue(val startMs: Long, val range: IntRange)
 
-internal fun synthesisRanges(text: String, limit: Int = 180): List<IntRange> {
+internal fun synthesisRanges(text: String, limit: Int = 220): List<IntRange> {
     require(limit >= 2)
     return buildList {
         var start = 0
@@ -220,8 +233,12 @@ internal fun synthesisRanges(text: String, limit: Int = 180): List<IntRange> {
             }
             var end = minOf(start + limit, text.length)
             if (end < text.length) {
-                val space = text.lastIndexOf(' ', end)
-                if (space > start) end = space
+                val middle = start + limit * 3 / 5
+                val clause = (middle until end).lastOrNull { i ->
+                    text[i] in ",;:!?—" && text[i + 1].isWhitespace()
+                }
+                val space = (end downTo start + 1).firstOrNull { text[it].isWhitespace() }
+                end = clause?.plus(1) ?: space ?: end
                 if (text[end].isLowSurrogate() && text[end - 1].isHighSurrogate()) end--
             }
             var trimmed = end

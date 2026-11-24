@@ -604,17 +604,26 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun restore(book: Book) = viewModelScope.launch {
-        safe("Pemulihan gagal") {
-            withContext(Dispatchers.IO) { library.restore(book.id) }
-            refresh()
-        }
-    }
+    var trashBusy by mutableStateOf(false)
+        private set
 
-    fun deletePermanently(book: Book) = viewModelScope.launch {
-        safe("Penghapusan gagal") {
-            withContext(Dispatchers.IO) { library.deletePermanently(book.id) }
-            refresh()
+    fun changeTrash(ids: Set<String>, permanent: Boolean) {
+        if (trashBusy || ids.isEmpty()) return
+        trashBusy = true
+        viewModelScope.launch {
+            try {
+                safe(if (permanent) "Penghapusan gagal" else "Pemulihan gagal") {
+                    withContext(Dispatchers.IO) {
+                        val valid = library.trashed().filter { it.id in ids }
+                        valid.forEach {
+                            if (permanent) library.deletePermanently(it.id) else library.restore(it.id)
+                        }
+                    }
+                }
+                refresh()
+            } finally {
+                trashBusy = false
+            }
         }
     }
 

@@ -1,0 +1,17 @@
+# Alur narasi Tuturium 1.3.19
+
+NaturalReader mendokumentasikan urutan baca PDF dan penyaringan struktur halaman. Speechify mendokumentasikan mulai-dengar dari kata, baris, atau paragraf. @Voice menyediakan pengaturan jeda per kalimat/paragraf dan Librera mendokumentasikan penggantian teks serta jeda berbasis aturan. Tuturium menerapkan pengaturan dan pemrosesan narasi secara lokal dengan model yang sama. [NaturalReader](https://help.naturalreaders.com/en/articles/13756182-skipped-text-or-incorrect-reading-order-personal-version) · [Speechify](https://speechify.com/blog/listening-features/) · [@Voice](https://hyperionics.com/atVoice/change_log.asp) · [Librera](https://librera.app/librera-reader/faq/tts-replacements/)
+
+- Supertonic mengutamakan batas klausa, lalu spasi, dengan batas maksimum 220 karakter. Potongan mempertahankan rentang karakter asli. Normalisasi memperluas singkatan Indonesia yang dikenal, memperbaiki ligatur PDF, dan membersihkan karakter format sebelum sintesis.
+- Trim memakai jendela 10 ms pada tepi audio, batas pencarian 600 ms per sisi, dan margin 20 ms. Hening di tengah sampel tetap utuh. PCM lalu digabung dalam satu WAV per potongan dengan penanda yang dihitung dari jumlah sampel setelah trim. Antarfile memakai satu playlist Media3. Kecepatan aplikasi tetap diterapkan saat pemutaran.
+- Jeda alami membedakan klausa, kalimat, elipsis, dan paragraf. Dua kontrol di menu **Audio** menambah 0–1.200 ms antara kalimat atau paragraf pada laju 1×. Google TTS tetap memakai prosodi mesinnya dan menerima jeda tambahan sesuai setelan.
+- Pada PDF, larik halaman dan teks asli tetap menjadi dasar indeks semua markah. Jika dua halaman benar-benar bertetangga, halaman pertama berakhir tanpa tanda penutup kalimat dan halaman berikutnya dimulai huruf kecil, Supertonic menyambung dua bagian pada playlist dengan jeda 12 ms pada laju 1× sebagai pengganti jeda paragraf. Dokumen, halaman, sorotan, dan posisi tetap merujuk sumber yang sama. Tiap bagian masih disintesis sendiri. Halaman terlewat dan awal judul huruf besar memakai jeda biasa.
+- Perubahan format membuat kunci cache baru. Cache untuk audio versi ini disusun pada pembacaan atau pramuat berikutnya.
+
+## Benchmark
+
+Pengukuran menggunakan enam frasa Indonesia yang sama dengan [benchmark Supertonic adaptif](supertonic-adaptive.md), model INT8 yang sudah dimuat pada host x86, dua thread, dan lima langkah. Batas tetap 180, 220 dan 260 karakter memberi RTF masing-masing 0,198, 0,195 dan 0,199 pada putaran ini. Batas 220 dipilih sebagai anggaran chunk yang kecil, lalu dipakai bersama preferensi batas klausa. Hasil ini mengevaluasi batas panjang dan belum mengukur semua bentuk klausa.
+
+Trim pada enam WAV mentah memangkas median **1,115 detik** per klip. Proxy transkripsi Whisper Tiny mencatat **37 edit kata dari 88** sebelum dan sesudah trim. Masing-masing transkrip bisa berbeda. Angka ini menguji sinyal pada host dan belum mengukur kejelasan menurut pendengar pada 4×. Whisper hanya dipakai untuk evaluasi host.
+
+Simulasi 120 klip memakai waktu sintesis terukur dari 1.3.17, durasi audio setelah trim, dan 112 ms jeda kalimat. Ambang pramuat diturunkan ketika produsen masih mampu mengejar, dengan cadangan 12 detik ketika estimasi kebutuhan sudah lebih dari 1,12× kemampuan produsen. Pada 2×, 3× dan 4×, waktu mulai simulasi sama dengan konfigurasi sebelumnya, sekitar **3,15, 4,39 dan 6,33 detik**, dengan **nol antrean kosong** pada kedua konfigurasi. Pengukuran baterai, suhu, celah audio perangkat, dan sesi panjang POCO F6 fisik belum tersedia.

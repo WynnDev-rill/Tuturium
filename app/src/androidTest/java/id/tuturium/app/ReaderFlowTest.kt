@@ -101,6 +101,16 @@ class ReaderFlowTest {
         compose.onNodeWithText("Selesai").performClick()
         compose.onNodeWithContentDescription("Opsi pembaca").performClick()
         compose.onNodeWithText("Cari").performClick()
+        val decor = compose.activity.window.decorView
+        val ime = WindowInsetsCompat.Type.ime()
+        compose.waitUntil(10_000) {
+            androidx.core.view.ViewCompat.getRootWindowInsets(decor)?.isVisible(ime) == true
+        }
+        val keyboardTop = decor.height -
+            checkNotNull(androidx.core.view.ViewCompat.getRootWindowInsets(decor)).getInsets(ime).bottom
+        val searchBottom = compose.onNodeWithContentDescription("Cari di dokumen").fetchSemanticsNode().boundsInWindow.bottom
+        val searchGapDp = (keyboardTop - searchBottom) / decor.resources.displayMetrics.density
+        assertTrue("Search to keyboard gap: ${searchGapDp}dp", searchGapDp in 0f..64f)
         compose.onNodeWithContentDescription("Cari di dokumen").performTextInput("kalimat")
         compose.waitUntil(10_000) { compose.onAllNodesWithText("1/4").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Hasil berikutnya").performClick()

@@ -8,6 +8,7 @@ import java.nio.ByteOrder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -140,6 +141,56 @@ class OfflineVoiceRuntimeTest {
         }
     }
 
+    @Test(timeout = 240_000L)
+    fun offlineForegroundServiceAdvancesWithAnotherAppOpenAndAirplaneModeOn() = runBlocking {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") == "true")
+        assumeTrue(android.os.Build.VERSION.SDK_INT >= 29)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val pack = OfflineCatalog.models.single()
+        OfflineModelStore.install(context, pack) {}
+        val voice = pack.voices.first()
+        val previous = ReadingSettings.read(context)
+        val options = ListeningOptions.read(context)
+        val document = ReadingDocument(listOf(Section("Uji",
+            "Nina membaca berita pagi. Rani menutup pintu. Mereka menunggu kereta. " +
+                "Kereta bergerak perlahan. Penjaga menyalakan lampu. Semua penumpang tiba dengan selamat.")))
+        val library = Library.get(context)
+        val book = library.add("Uji narasi latar", "TXT", document)
+        fun shell(command: String): String =
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command))
+                .bufferedReader().use { it.readText() }
+        val alreadyOffline = shell("settings get global airplane_mode_on").trim() == "1"
+        try {
+            if (!alreadyOffline) shell("cmd connectivity airplane-mode enable")
+            assertEquals("1", shell("settings get global airplane_mode_on").trim())
+            previous.copy(voice = voice.id, speed = 1f).save(context)
+            ListeningOptions().save(context)
+            androidx.test.core.app.ActivityScenario.launch(MainActivity::class.java).use { activity ->
+                activity.onActivity {
+                    assertTrue(ReadingService.command(it, ReadingService.PLAY, book.id, 0))
+                }
+                val first = withTimeout(45_000L) {
+                    ReadingService.state.first { it.bookId == book.id && it.playing }
+                }
+                val opened = shell("am start -W -a android.settings.SETTINGS")
+                assertTrue(opened, opened.contains("Status: ok"))
+                val backgroundIndex = maxOf(first.index, ReadingService.state.value.index)
+                val later = withTimeout(30_000L) {
+                    ReadingService.state.first { it.bookId == book.id && it.playing && it.index > backgroundIndex }
+                }
+                assertTrue(later.index > backgroundIndex)
+            }
+        } finally {
+            ReadingService.command(context, ReadingService.STOP)
+            previous.save(context)
+            options.save(context)
+            if (!alreadyOffline) shell("cmd connectivity airplane-mode disable")
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     @Test(timeout = 30_000L)
     fun recoversFromAnExhaustedQueueWithoutSkippingOrRepeating() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -154,7 +205,7 @@ class OfflineVoiceRuntimeTest {
             OfflinePass(index, PreparedSpeech(text, IntArray(text.length) { it }))
         }
         withContext(Dispatchers.Main) {
-            val engine = OfflineAudio(context) { _, _, text, target, _, _ ->
+            val engine = OfflineAudio(context) { _, _, text, target, _, _, _ ->
                 if (text == texts[4]) delay(3_000)
                 target.writeBytes(pcm)
                 SynthesizedAudio(listOf(AudioCue(0, text.indices)), 1_000)

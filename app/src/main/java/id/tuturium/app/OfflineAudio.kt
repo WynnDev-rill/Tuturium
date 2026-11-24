@@ -19,7 +19,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-internal data class OfflinePass(val index: Int, val speech: PreparedSpeech)
+internal data class OfflinePass(val index: Int, val speech: PreparedSpeech, val pauseAfterMs: Int = 0)
 
 internal class SupertonicBuffer {
     private var inferenceRatio = 0.0
@@ -62,8 +62,9 @@ internal class SupertonicBuffer {
         if (count == 0) return false
         val demand = inferenceRatio * playbackRate
         val targetSeconds = when {
-            demand >= 0.95 -> 12
-            demand >= 0.65 || playbackRate >= 2f -> 6
+            demand >= 1.12 -> 12
+            demand >= 1.0 -> 7
+            demand >= 0.65 || playbackRate >= 2f -> 5
             else -> 3
         }
         val minimumClips = if (playbackRate >= 2f) 4 else 2
@@ -99,7 +100,7 @@ internal class SupertonicBuffer {
 /** Maintains one Media3 playlist for narration, with bounded PCM lookahead. */
 internal class OfflineAudio(
     private val context: Context,
-    private val synthesize: suspend (Context, OfflineVoice, String, File, Int, Boolean) -> SynthesizedAudio = OfflineSynth::write
+    private val synthesize: suspend (Context, OfflineVoice, String, File, Int, Boolean, Int) -> SynthesizedAudio = OfflineSynth::write
 ) {
     private var player: ExoPlayer? = null
     private var enhancer: android.media.audiofx.LoudnessEnhancer? = null
@@ -356,7 +357,7 @@ internal class OfflineAudio(
                             val remaining = (queuedMs - engine.currentPosition).coerceAtLeast(0)
                             val steps = buffer.inferenceSteps(rate, remaining, !started || recovering, thermal)
                             val compress = started && !recovering && buffer.compressionFits(rate, remaining, thermal)
-                            val audio = synthesize(context, voice, pass.speech.text, file, steps, compress)
+                            val audio = synthesize(context, voice, pass.speech.text, file, steps, compress, pass.pauseAfterMs)
                             ensureActive()
                             val finishedMs = SystemClock.elapsedRealtime()
                             buffer.generated(audio.durationMs, finishedMs - startMs, finishedMs, audio.cacheHit, steps)

@@ -403,7 +403,9 @@ class ReadingService : Service() {
         val options = ListeningOptions.read(this)
         automaticSpeed.configure(settings.speed, options.autoRamp)
         startupStage = "menyiapkan teks"
-        val prepared = preparePass(document, pass, options)
+        val sourceSpeech = preparePass(document, pass, options)
+        val prepared = if (offline == null && options.matchLanguage) sourceSpeech.normalizedForNarration()
+            else sourceSpeech
         val from = if (speechOffset <= 0) 0 else prepared.offsets.indexOfFirst { it >= speechOffset }
         if (prepared.text.isBlank() || from < 0) {
             speechOffset = 0
@@ -548,10 +550,10 @@ class ReadingService : Service() {
         val first = PreparedSpeech(initial.text.substring(offset),
             initial.offsets.copyOfRange(offset, initial.offsets.size))
         val passages = sequence {
-            yield(OfflinePass(startIndex, first))
+            yield(OfflinePass(startIndex, first, document.pauseAfter(startIndex, options).totalMs))
             for (index in startIndex + 1 until document.passes.size) {
                 val speech = preparePass(document, document.passes[index], options)
-                if (speech.text.isNotBlank()) yield(OfflinePass(index, speech))
+                if (speech.text.isNotBlank()) yield(OfflinePass(index, speech, document.pauseAfter(index, options).totalMs))
             }
         }
         val speed = automaticSpeed.rate
@@ -644,9 +646,19 @@ class ReadingService : Service() {
                 if (current.index + 1 < current.total) {
                     normalSpeedRetryPass = -1
                     speechOffset = 0
-                    current = current.copy(index = current.index + 1, range = null)
-                    persist(current.index)
-                    startCurrent()
+                    val extra = document?.pauseAfter(current.index, ListeningOptions.read(this@ReadingService))
+                        ?.extraMs ?: 0
+                    val finishedIndex = current.index
+                    val advance = Runnable {
+                        if (current.index == finishedIndex && activeUtterance == utteranceId &&
+                            (current.playing || current.loading)) {
+                            current = current.copy(index = current.index + 1, range = null)
+                            persist(current.index)
+                            startCurrent()
+                        }
+                    }
+                    if (extra > 0) handler.postDelayed(advance, (extra / speed.coerceAtLeast(0.5f)).toLong())
+                    else advance.run()
                 } else completeBook()
             }
         }

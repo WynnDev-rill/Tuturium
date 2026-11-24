@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -462,33 +464,82 @@ fun ModernStorage(model: TuturiumModel, onBack: () -> Unit) {
 
 @Composable
 fun ModernTrash(model: TuturiumModel, onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(Color.Black)) {
-        ModernDetailHeader("File yang Dihapus", onBack)
-        if (model.deletedBooks.isEmpty()) {
-            Text("Tidak ada file di sampah.", modifier = Modifier.padding(22.dp), color = Muted)
+    var selection by remember { mutableStateOf(setOf<String>()) }
+    var confirmation by remember { mutableStateOf(emptySet<String>()) }
+    val books = model.deletedBooks
+    val valid = books.mapTo(mutableSetOf()) { it.id }
+    val selected = selection.intersect(valid)
+    val allSelected = valid.isNotEmpty() && selected == valid
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxSize().background(colors.background)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali") }
+            Text("Dihapus", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+            if (books.isNotEmpty()) FilledTonalButton(
+                onClick = { selection = if (allSelected) emptySet() else valid },
+                enabled = !model.trashBusy) { Text(if (allSelected) "Batal pilih semua" else "Pilih semua") }
+        }
+        if (books.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("Tidak ada file di sampah.", color = colors.onSurfaceVariant)
+            }
         } else {
-            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(model.deletedBooks, key = { it.id }) { book ->
-                    Surface(color = Tile, shape = RoundedCornerShape(16.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                            Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                TextButton(onClick = { model.restore(book) }) { Text("Pulihkan") }
-                                var confirm by remember { mutableStateOf(false) }
-                                TextButton(onClick = { confirm = true }) { Text("Hapus permanen") }
-                                if (confirm) TuturiumDialog(onDismissRequest = { confirm = false },
-                                    title = { Text("Hapus permanen?") }, text = { Text("Tindakan ini tidak dapat dibatalkan.") },
-                                    confirmButton = { TextButton(onClick = {
-                                        model.deletePermanently(book); confirm = false
-                                    }) { Text("Hapus") } },
-                                    dismissButton = { TextButton(onClick = { confirm = false }) { Text("Batal") } })
-                            }
+            Text("Dokumen di sini dapat dipulihkan sampai dihapus permanen.",
+                Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+                items(books, key = { it.id }) { book ->
+                    val checked = book.id in selected
+                    Row(Modifier.fillMaxWidth().heightIn(min = 75.dp).toggleable(checked,
+                        enabled = !model.trashBusy, role = Role.Checkbox) {
+                        selection = if (checked) selected - book.id else selected + book.id
+                    }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(if (checked) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                            null, Modifier.padding(7.dp).size(23.dp),
+                            tint = if (checked) colors.primary else colors.onSurfaceVariant)
+                        FileArtwork(book.format, Modifier.size(width = 56.dp, height = 63.dp))
+                        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                            Text(book.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val percent = (book.position * 100L / book.count.coerceAtLeast(1)).coerceIn(0, 100)
+                            Text("$percent% · ${book.format}", color = colors.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
             }
+            HorizontalDivider(color = colors.outlineVariant)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(onClick = {
+                    model.changeTrash(selected, permanent = false)
+                    selection = emptySet()
+                }, enabled = selected.isNotEmpty() && !model.trashBusy, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Rounded.Restore, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Pulihkan")
+                }
+                OutlinedButton(onClick = { confirmation = selected },
+                    enabled = selected.isNotEmpty() && !model.trashBusy, modifier = Modifier.weight(1.35f),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error)) {
+                    Icon(Icons.Rounded.DeleteOutline, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Hapus permanen")
+                }
+            }
         }
+    }
+    if (confirmation.isNotEmpty()) {
+        TuturiumDialog(onDismissRequest = { confirmation = emptySet() },
+            title = { Text("Hapus ${confirmation.size} dokumen permanen?") },
+            text = { Text("Isi dokumen dan progres baca akan dihapus dari Tuturium.") },
+            confirmButton = { TextButton(onClick = {
+                model.changeTrash(confirmation, permanent = true)
+                confirmation = emptySet()
+                selection = emptySet()
+            }) { Text("Hapus permanen", color = colors.error) } },
+            dismissButton = { TextButton(onClick = { confirmation = emptySet() }) { Text("Batal") } })
     }
 }
 
