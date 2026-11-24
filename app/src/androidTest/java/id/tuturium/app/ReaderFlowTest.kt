@@ -79,7 +79,7 @@ class ReaderFlowTest {
         val pack = OfflineCatalog.models.single()
         runBlocking { OfflineModelStore.install(context, pack) {} }
         compose.onNodeWithContentDescription("Buka profil").performClick()
-        compose.onNodeWithText("Pustaka Suara").performClick()
+        compose.onNodeWithText("Bacakan").performClick()
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("Supertonic F1"))
         compose.onNodeWithText("Supertonic F1").performClick()
         compose.onNodeWithText("Pratinjau suara").assertIsDisplayed()
