@@ -111,7 +111,7 @@ internal fun OriginalPdfPages(
         if (follow && !browsing && list.firstVisibleItemIndex != target) list.scrollToItem(target)
     }
     var activeBand by remember(target, currentPass) { mutableStateOf<Pair<Float, Float>?>(null) }
-    val awayFromReading by remember(target, list) {
+    val awayFromReading by remember(target, currentPass, list) {
         derivedStateOf {
             val info = list.layoutInfo
             val item = info.visibleItemsInfo.firstOrNull { it.index == target }
@@ -266,7 +266,8 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
             val words = remember(hits, currentPass, spokenRange) {
                 if (spokenRange != null) pdfHighlightWords(hits, currentPass, spokenRange) else emptyList()
             }
-            val bandHits = if (words.isNotEmpty()) words else remember(hits, currentPass) { pdfHighlightWords(hits, currentPass, null) }.take(1)
+            val passHits = remember(hits, currentPass) { pdfHighlightWords(hits, currentPass, null) }
+            val bandHits = if (words.isNotEmpty()) words else passHits.take(1)
             val band = if (bandHits.isEmpty()) null else bandHits.minOf { it.top } to bandHits.maxOf { it.bottom }
             LaunchedEffect(band, currentPass) { if (passes.any { it.index == currentPass }) onActiveBand(band) }
             Canvas(Modifier.matchParentSize()) {
