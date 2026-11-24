@@ -175,6 +175,9 @@ class ReadingService : Service() {
     private val automaticSpeed = AutomaticSpeed()
     private var listeningStart = 0L
     private var listeningSpeed = 1f
+    private var captionIndex = -1
+    private var readingCaption: MediaReadingCaption? = null
+    private var lastMediaMetadata: Pair<String, String>? = null
     private var current = Playback()
         set(value) {
             if (field.playing && !value.playing && listeningStart > 0L) {
@@ -343,6 +346,8 @@ class ReadingService : Service() {
         speechOffset = offset.coerceAtLeast(0)
         automaticSpeed.reset()
         document = null
+        captionIndex = -1
+        readingCaption = null
         preparedParagraph = null
         preparedLocation = null
         val ticket = ++request
@@ -420,6 +425,7 @@ class ReadingService : Service() {
             } else completeBook()
             return
         }
+        setCaptionSpeech(current.index, sourceSpeech)
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
         startupStage = "memilih suara Indonesia"
@@ -575,6 +581,8 @@ class ReadingService : Service() {
             onPass = { pass ->
                 speechOffset = pass.speech.offsets.first()
                 current = current.copy(index = pass.index, offset = speechOffset, range = null)
+                setCaptionSpeech(pass.index, pass.speech)
+                refreshMediaCaption()
                 applyOfflineRate(session)
                 persist(pass.index, speechOffset)
                 runCatching { lock.acquire(300_000) }
@@ -589,6 +597,7 @@ class ReadingService : Service() {
             },
             onRange = { range ->
                 current = current.copy(range = range, offset = range.first)
+                refreshMediaCaption()
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastCheckpoint >= 2_000L) {
                     lastCheckpoint = now
@@ -614,7 +623,14 @@ class ReadingService : Service() {
             (document?.passes?.getOrNull(next)?.text?.lastIndex ?: 0).coerceAtLeast(0))
         current = current.copy(index = next, offset = speechOffset, completed = false, range = null, error = null)
         persist(next, speechOffset)
-        if (active) startCurrent() else publish()
+        if (active) startCurrent() else {
+            document?.let { doc ->
+                doc.passes.getOrNull(next)?.let { pass ->
+                    setCaptionSpeech(next, preparePass(doc, pass, ListeningOptions.read(this)))
+                }
+            }
+            publish()
+        }
     }
 
     private val listener = object : UtteranceProgressListener() {
@@ -640,6 +656,7 @@ class ReadingService : Service() {
                     val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
                     if (mappedStart != null && mappedEnd != null) {
                         current = current.copy(range = mappedStart..mappedEnd, offset = mappedStart)
+                        refreshMediaCaption()
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastCheckpoint >= 2000L) {
                             lastCheckpoint = now
@@ -840,6 +857,48 @@ class ReadingService : Service() {
         }
     }
 
+    private fun setCaptionSpeech(index: Int, speech: PreparedSpeech) {
+        captionIndex = index
+        readingCaption = MediaReadingCaption(speech)
+    }
+
+    private fun mediaCaptionText(): String {
+        if (current.completed) return "Bacaan selesai"
+        if (captionIndex == current.index) {
+            readingCaption?.at(current.offset)?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return if (current.loading) "Menyiapkan suara"
+            else if (current.total > 0) "Bagian ${current.index + 1} dari ${current.total}"
+            else "Pemutar dokumen"
+    }
+
+    private fun updateMediaMetadata(): Boolean {
+        val title = current.title.ifBlank { "Tuturium" }
+        val caption = mediaCaptionText()
+        val next = title to caption
+        if (next == lastMediaMetadata) return false
+        session.setMetadata(MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, caption)
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, caption)
+            .build())
+        lastMediaMetadata = next
+        return true
+    }
+
+    @SuppressLint("NotificationPermission")
+    private fun refreshMediaCaption() {
+        if (current.bookId == null || !foreground) return
+        runCatching {
+            // On Android 13+ System UI reads the MediaSession metadata directly.
+            // Older systems need refreshed MediaStyle notification content as well.
+            if (updateMediaMetadata() && Build.VERSION.SDK_INT < 33) {
+                getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
+            }
+        }.onFailure { android.util.Log.w("TuturiumPlayback", "Media caption update failed", it) }
+    }
+
     // Android exempts MediaStyle notifications backed by an active media session.
     @SuppressLint("NotificationPermission")
     private fun publish() {
@@ -850,9 +909,7 @@ class ReadingService : Service() {
             current.playing -> PlaybackState.STATE_PLAYING
             else -> PlaybackState.STATE_PAUSED
         }
-        session.setMetadata(MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, current.title)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, "Tuturium").build())
+        updateMediaMetadata()
         session.setPlaybackState(PlaybackState.Builder().setActions(
             PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or
                 PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_STOP
@@ -877,9 +934,7 @@ class ReadingService : Service() {
     private fun notification(): Notification = Notification.Builder(this, CHANNEL)
         .setSmallIcon(R.drawable.status_audio)
         .setContentTitle(current.title.ifBlank { "Tuturium" })
-        .setContentText(if (current.loading) "Menyiapkan suara" else if (current.total > 0) {
-            "Bagian ${current.index + 1} dari ${current.total}"
-        } else "Pemutar dokumen")
+        .setContentText(mediaCaptionText())
         .setContentIntent(openApp())
         .setOnlyAlertOnce(true)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
