@@ -1,8 +1,7 @@
-## Tuturium 1.3.7
+## Tuturium 1.3.8
 
-- Hapus tab Podcast dan mini player; kembali dari reader menjeda audio dan menyimpan progres sebelum keluar.
-- Filter perpustakaan: belum dibaca, baca nanti, PDF, dokumen, web, pindai, lainnya.
-- Sorotan kata mengikuti tengah viewport dengan toleransi dan menghormati scroll manual.
-- Durasi reader di atas satu jam menggunakan HH:mm:ss; estimasi pustaka tetap menit.
-- Checkpoint kata tersimpan lokal dan termasuk dalam arsip Google Drive; migrasi SQLite menjaga progres lama.
-
+- Tombol filter terpisah di sebelah Buku; menu titik tiga kembali untuk tata letak dan urutan.
+- Indikator simpan ditampilkan pada dokumen setelah kembali.
+- Paket suara Indonesia opsional: Supertonic 3 (10), Piper News (1), ArboTTS (6 pilihan lintas tier).
+- Model diunduh terpisah, disimpan lokal, dan digunakan tanpa API; suara Google tetap tersedia.
+- Model neural lokal memakai progres kalimat, bukan timestamp kata yang tidak disediakan model.

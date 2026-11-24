@@ -13,3 +13,11 @@
 # PDFBox has an optional Gemalto JPEG2000 encoder/decoder that is not bundled
 # by pdfbox-android and was unavailable in Tuturium 1.1.0 as well.
 -dontwarn com.gemalto.jp2.**
+
+# Native ONNX runtimes use JNI names and reflection.
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-keep class ai.onnxruntime.** { *; }
+-dontwarn org.apache.commons.compress.compressors.zstandard.**
+-dontwarn com.github.luben.zstd.**
+-dontwarn org.tukaani.xz.**
+-dontwarn org.brotli.dec.**

@@ -5,6 +5,25 @@ plugins {
 }
 
 val keyPath = providers.environmentVariable("TUTURIUM_KEYSTORE")
+// Pinned runtime only; model weights are never bundled in the APK.
+val sherpaAar = layout.buildDirectory.file("offline-runtime/sherpa-onnx-1.13.4.aar")
+val fetchSherpa = tasks.register("fetchSherpaRuntime") {
+    outputs.file(sherpaAar)
+    doLast {
+        val destination = sherpaAar.get().asFile
+        destination.parentFile.mkdirs()
+        val temporary = File(destination.parentFile, destination.name + ".tmp")
+        try {
+            java.net.URI("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.4/sherpa-onnx-static-link-onnxruntime-1.13.4.aar")
+                .toURL().openStream().use { input -> temporary.outputStream().use { input.copyTo(it) } }
+            val sha = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(temporary.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(sha == "dc5ac19a28dee3bffc5e5a5d50cb6afa977703fc4a7ee535a308506990fdd295")
+            check(temporary.renameTo(destination))
+        } finally { temporary.delete() }
+    }
+}
+
 android {
     namespace = "id.tuturium.app"
     compileSdk = 35
@@ -12,8 +31,8 @@ android {
         applicationId = "id.tuturium.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10307
-        versionName = "1.3.7"
+        versionCode = 10308
+        versionName = "1.3.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Client IDs are public identifiers, not OAuth client secrets.
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID",
@@ -46,10 +65,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    packaging.resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/{LICENSE,NOTICE}*")
+    packaging.resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/{LICENSE,NOTICE}*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+    packaging.jniLibs.pickFirsts += setOf("**/libc++_shared.so")
 }
 kotlin { compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 dependencies {
+    implementation(files(sherpaAar).builtBy(fetchSherpa))
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    implementation("org.apache.commons:commons-compress:1.27.1")
     implementation(platform("androidx.compose:compose-bom:2025.05.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.material3:material3")

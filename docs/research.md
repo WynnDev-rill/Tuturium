@@ -18,3 +18,9 @@ Perbandingan didasarkan pada dokumentasi publik. Target kualitas yang diterapkan
 - [Readium Kotlin](https://github.com/readium/kotlin-toolkit) menyediakan navigator, DRM, dan kemampuan publikasi EPUB yang luas. Tuturium memerlukan teks untuk TTS dan posisi yang konsisten di empat format. Basis EPUB yang dipilih adalah ZIP/spine standar dengan [jsoup](https://jsoup.org/) untuk parsing HTML. DOCX dibaca dengan parser XML streaming Android.
 - [Android TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech), audio focus, dan MediaSession menyediakan integrasi mesin lokal, headset, dan notifikasi. Pemutar audio berbasis file akan membutuhkan sintesis awal dan cache per berkas. Penggunaan TTS langsung mempertahankan umpan balik rentang tanpa menunggu konversi.
 - [Levyra](https://github.com/LUC4N3X/Levyra-deepsound) menjadi referensi pemeriksaan `/releases/latest`, tampilan versi terpasang/tersedia, dan verifikasi tanda tangan APK. Implementasi Tuturium ditulis sendiri. Pemeriksaan SHA-256 memakai metadata aset [GitHub Releases](https://docs.github.com/en/rest/releases/assets).
+
+
+## Suara lokal 1.3.8
+- Supertonic 3: https://k2-fsa.github.io/sherpa/onnx/tts/supertonic.html — 10 speaker, Indonesian lang=id, INT8. Sherpa AAR pinned v1.13.4.
+- Piper News TTS Indonesia: https://k2-fsa.github.io/sherpa/onnx/tts/all/Indonesian/vits-piper-id_ID-news_tts-medium.html — one speaker, original medium model.
+- ArboTTS: https://github.com/ARBO-TEAM/arboTTS — official release assets Nano Ardi, Small Arbo/Arba, Standard Arbo; Kokoro packs id_arbo/id_arba. G2P adapted from MIT upstream. Studio voice cloning, derived personas using other engines, and MCU binaries are not represented as separate ready-to-use voices. Runtime model smoke tests still necessary on Android.

@@ -140,7 +140,8 @@ fun VoiceLibraryV2(model: TuturiumModel, onBack: () -> Unit) {
 @Composable
 fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
     val voices = googleIndonesianVoices(model.voices)
-    val selected = resolveIndonesianVoice(voices, model.settings.voice)
+    val selected = if (OfflineCatalog.voice(model.settings.voice) == null)
+        resolveIndonesianVoice(voices, model.settings.voice) else null
     var openedName by remember { mutableStateOf<String?>(null) }
     val opened = voices.firstOrNull { it.name == openedName }
     DisposableEffect(model) { onDispose { model.stopVoicePreview() } }
@@ -227,6 +228,15 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
                 else Icon(Icons.Rounded.ChevronRight, "Buka detail suara",
                     tint = SpeechifyMuted)
             }
+        }
+        item {
+            Spacer(Modifier.height(14.dp))
+            Text("Suara neural offline", style = MaterialTheme.typography.titleLarge)
+            Text("Unduh model sekali. Pembacaan berikutnya berjalan di perangkat tanpa kuota API.",
+                color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
+        }
+        items(OfflineCatalog.models, key = { it.id }) { pack ->
+            OfflineModelCard(model, pack)
         }
         if (model.voiceStatus.isNotBlank() && voices.isNotEmpty()) item {
             Text(model.voiceStatus, style = MaterialTheme.typography.bodySmall, color = SpeechifyMuted)
@@ -409,6 +419,59 @@ fun SkipOptionsSheet(model: TuturiumModel, dismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Box(Modifier.fillMaxWidth().heightIn(max = 690.dp)) {
             ListeningSettingsV2(model, onBack = dismiss)
+        }
+    }
+}
+
+@Composable
+private fun OfflineModelCard(model: TuturiumModel, pack: OfflineModel) {
+    val installed = pack.id in model.installedModels
+    val downloading = model.downloadingModel == pack.id
+    Surface(color = Color(0xFF252525), shape = RoundedCornerShape(18.dp)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(pack.label, style = MaterialTheme.typography.titleMedium, color = Color.White)
+                    Text(if (installed) "Terpasang · Offline" else if (pack.bytes > 0)
+                        "±${(pack.bytes / 1_000_000L).coerceAtLeast(1)} MB · ${pack.voices.size} suara"
+                        else "±94 MB · ${pack.voices.size} suara",
+                        color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
+                }
+                if (!installed && !downloading) IconButton(onClick = { model.downloadVoiceModel(pack.id) },
+                    enabled = model.downloadingModel == null) { Icon(Icons.Rounded.Download, "Unduh " + pack.label) }
+                if (downloading) IconButton(onClick = model::cancelVoiceDownload) { Icon(Icons.Rounded.Close, "Batalkan unduhan") }
+            }
+            if (downloading) {
+                val progress = model.modelDownloadProgress
+                if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                else {
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                    Text("Mengunduh ${(progress * 100).toInt()}%", color = SpeechifyMuted)
+                }
+            }
+            if (installed) pack.voices.forEach { voice ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(voice.label, Modifier.weight(1f), color = Color.White)
+                    IconButton(onClick = { model.previewOfflineVoice(voice) }) {
+                        if (model.previewingVoice == voice.id && model.previewLoading)
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Icon(if (model.previewingVoice == voice.id) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            "Pratinjau " + voice.label)
+                    }
+                    IconButton(onClick = {
+                        model.stopVoicePreview()
+                        model.changeSettings(model.settings.copy(voice = voice.id, pitch = 1f))
+                    }) {
+                        Icon(if (model.settings.voice == voice.id) Icons.Rounded.CheckCircle else Icons.Rounded.Check,
+                            "Pilih " + voice.label, tint = if (model.settings.voice == voice.id) SpeechifyAccent else Color.White)
+                    }
+                }
+            }
+            if (!installed && model.downloadingModel == null) model.modelDownloadError?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            if (installed && OfflineCatalog.voice(model.previewingVoice)?.model == pack.id)
+                model.previewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
 }

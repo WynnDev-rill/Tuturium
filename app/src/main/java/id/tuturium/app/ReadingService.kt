@@ -114,6 +114,7 @@ class ReadingService : Service() {
     private lateinit var focus: AudioFocusRequest
     private lateinit var lock: PowerManager.WakeLock
     private var tts: TextToSpeech? = null
+    private val offlineAudio by lazy { OfflineAudio(applicationContext) }
     private var ready = false
     private var initializationFailed = false
     // A stable voice configuration is reused across consecutive sentences.
@@ -165,7 +166,8 @@ class ReadingService : Service() {
     private val initTimeout = Runnable {
         if (!ready) {
             initializationFailed = true
-            if (current.loading) fail("Mesin TTS Android tidak merespons.")
+            if (current.loading && OfflineCatalog.voice(ReadingSettings.read(this).voice) == null)
+                fail("Mesin TTS Android tidak merespons.")
         }
     }
     private val noisy = object : BroadcastReceiver() {
@@ -224,8 +226,9 @@ class ReadingService : Service() {
                     runCatching { tts?.setAudioAttributes(attributes) }
                         .onFailure { android.util.Log.w("TuturiumPlayback", "TTS audio attributes unavailable", it) }
                     tts?.setOnUtteranceProgressListener(listener)
-                    if (current.loading && document != null) startCurrent()
-                } else if (current.loading) {
+                    if (current.loading && document != null &&
+                        OfflineCatalog.voice(ReadingSettings.read(this).voice) == null) startCurrent()
+                } else if (current.loading && OfflineCatalog.voice(ReadingSettings.read(this).voice) == null) {
                     fail("Google TTS belum tersedia. Buka Pustaka Suara untuk memasangnya.")
                 }
             }
@@ -321,18 +324,18 @@ class ReadingService : Service() {
         val pass = document?.passes?.getOrNull(current.index) ?: return
         startupStage = "layanan audio"
         if (!promote()) return
-        if (initializationFailed) {
+        val settings = ReadingSettings.read(this)
+        val offline = OfflineCatalog.voice(settings.voice)
+        if (offline == null && initializationFailed) {
             fail("Google TTS belum siap. Buka Pustaka Suara dan periksa suara Indonesia.")
             return
         }
-        if (!ready) {
+        if (offline == null && !ready) {
             current = current.copy(loading = true, error = null)
             publish()
             return
         }
         startupStage = "membaca pengaturan"
-        val engine = tts ?: return
-        val settings = ReadingSettings.read(this)
         val options = ListeningOptions.read(this)
         startupStage = "menyiapkan teks"
         // On some devices skip-filter preparation throws even though the
@@ -357,6 +360,8 @@ class ReadingService : Service() {
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
         startupStage = "memilih suara Indonesia"
+        if (offline == null) {
+        val engine = tts ?: return
         if (cachedVoices.isEmpty() || (settings.voice != null &&
                 cachedVoices.none { it.name == settings.voice })) {
             cachedVoices = engine.indonesianCandidates()
@@ -372,6 +377,7 @@ class ReadingService : Service() {
                 return
             }
             appliedVoiceName = choice.name
+        }
         }
         // Unlike preview, the reader owns audio focus, a media notification and
         // a wakelock. An OEM exception in these optional components must not
@@ -401,6 +407,25 @@ class ReadingService : Service() {
         startupStage = "mengatur suara"
         val requestedSpeed = if (normalSpeedRetryPass == current.index) 1f
             else rampedSpeed(settings.speed, listenedWords, options.autoRamp)
+        if (offline != null) {
+            val token = (++utterance).toString()
+            activeUtterance = token
+            current = current.copy(playing = false, loading = true, completed = false,
+                effectiveSpeed = requestedSpeed, range = null, error = null)
+            publish()
+            offlineAudio.play(scope, offline, prepared.text.substring(preparedStart), requestedSpeed,
+                onStart = {
+                    if (activeUtterance == token) {
+                        runCatching { lock.acquire(300_000) }
+                        current = current.copy(playing = true, loading = false)
+                        publish()
+                    }
+                },
+                onDone = { listener.onDone(token) },
+                onError = { if (activeUtterance == token) fail("Suara offline gagal: " + it.message.orEmpty()) })
+            return
+        }
+        val engine = tts ?: return
         val usableSpeed = runCatching {
             if (engine.setSpeechRate(requestedSpeed) == TextToSpeech.SUCCESS) requestedSpeed
             else if (engine.setSpeechRate(1f) == TextToSpeech.SUCCESS) 1f else requestedSpeed
@@ -572,6 +597,7 @@ class ReadingService : Service() {
 
     private fun stopUtterance() {
         activeUtterance = null
+        offlineAudio.stop()
         runCatching { tts?.stop() }.onFailure {
             android.util.Log.w("TuturiumPlayback", "TTS stop failed", it)
         }
