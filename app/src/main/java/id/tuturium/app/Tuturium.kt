@@ -69,12 +69,12 @@ fun Tuturium(model: TuturiumModel) {
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             recognizer.process(InputImage.fromBitmap(bitmap, 0))
                 .addOnSuccessListener { result ->
-                    if (result.text.isBlank()) model.status = "Tidak ada tulisan yang terdeteksi."
+                    if (result.text.isBlank()) { model.importTargetFolder = null; model.status = "Tidak ada tulisan yang terdeteksi." }
                     else model.addText("Hasil pindai", result.text, format = "SCAN")
                 }
-                .addOnFailureListener { model.status = "Pemindaian teks gagal." }
+                .addOnFailureListener { model.importTargetFolder = null; model.status = "Pemindaian teks gagal." }
                 .addOnCompleteListener { recognizer.close() }
-        }
+        } else model.importTargetFolder = null
     }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) model.importTargetFolder = null else {
@@ -97,8 +97,8 @@ fun Tuturium(model: TuturiumModel) {
     val dictation = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-            if (!spoken.isNullOrBlank()) model.addText("Hasil dikte", spoken)
-        }
+            if (!spoken.isNullOrBlank()) model.addText("Hasil dikte", spoken) else model.importTargetFolder = null
+        } else model.importTargetFolder = null
     }
     val dictate: () -> Unit = {
         try {
@@ -125,7 +125,7 @@ fun Tuturium(model: TuturiumModel) {
     BackHandler(model.showUpdate || model.reader != null || tab !in listOf("home", "library") ||
         showAddSheet || showLinkDialog) {
         when {
-            showLinkDialog -> showLinkDialog = false
+            showLinkDialog -> { showLinkDialog = false; model.importTargetFolder = null }
             showAddSheet -> showAddSheet = false
             model.showUpdate -> model.showUpdate = false
             model.reader != null -> model.closeReader()
@@ -180,9 +180,10 @@ fun Tuturium(model: TuturiumModel) {
                         openProfile = { tab = "profile" },
                         openBook = { model.open(it.id) },
                         onFile = openFile, onScan = scan, onLink = link,
-                        onPaste = paste, onDictation = dictate, onAdd = { showAddSheet = true })
+                        onPaste = paste, onDictation = dictate, onAdd = { showAdd(null) })
                     "library" -> LibraryV2(model, playback,
-                        onAdd = { showAddSheet = true })
+                        onAdd = { showAdd(it) }, folderRefresh = folderRefresh,
+                        onFolderChanged = { libraryFolder = it })
                     "profile" -> ModernProfile(
                         onBack = { tab = "home" },
                         onAccount = { tab = "account" },
@@ -264,7 +265,7 @@ fun Tuturium(model: TuturiumModel) {
             }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("Batal") } })
         if (showLinkDialog) {
-            TuturiumDialog(onDismissRequest = { showLinkDialog = false },
+            TuturiumDialog(onDismissRequest = { showLinkDialog = false; model.importTargetFolder = null },
                 title = { Text("Dengarkan tautan") },
                 text = { OutlinedTextField(linkDraft, { linkDraft = it.take(2048) },
                     singleLine = true, label = { Text("URL HTTPS halaman web") }) },
