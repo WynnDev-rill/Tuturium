@@ -76,6 +76,32 @@ internal object OfflineSynth {
         }
     }
 
+    /** Prepare only a small startup window while the reader is paused. The normal
+     * playback pipeline reuses the exact same cache, without starting a player. */
+    suspend fun prepareOpeningAudio(context: Context, voice: OfflineVoice, document: ReadingDocument,
+        index: Int, offset: Int, options: ListeningOptions) = withContext(Dispatchers.IO) {
+        if (!OfflineModelStore.installed(context, OfflineCatalog.model(voice.model))) return@withContext
+        if (android.os.Build.VERSION.SDK_INT >= 29 &&
+            context.getSystemService(android.os.PowerManager::class.java).currentThermalStatus >=
+            android.os.PowerManager.THERMAL_STATUS_MODERATE) return@withContext
+        withWarmModel {
+            for (i in index until minOf(index + 2, document.passes.size)) {
+                ensureActive()
+                val pass = document.passes[i]
+                val prepared = if (options.skipEnabled)
+                    safePreparedSpeech(document.paragraphs[pass.section][pass.paragraph], options).forPass(pass)
+                else prepareSpeech(pass.text, options)
+                val start = if (i == index && offset > 0)
+                    prepared.offsets.indexOfFirst { it >= offset } else 0
+                if (start < 0 || start >= prepared.text.length) continue
+                val text = prepared.text.substring(start)
+                if (text.isBlank()) continue
+                val temp = File.createTempFile("prefetch-", ".wav", context.cacheDir)
+                try { write(context, voice, text, temp) } finally { temp.delete() }
+            }
+        }
+    }
+
     suspend fun write(context: Context, voice: OfflineVoice, text: String, target: File): SynthesizedAudio =
         withContext(dispatcher) {
             releaseJob?.cancel()
