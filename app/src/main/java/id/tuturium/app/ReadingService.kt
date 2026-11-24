@@ -53,7 +53,8 @@ data class Playback(
     val range: IntRange? = null,
     val timerUntil: Long = 0,
     val effectiveSpeed: Float = 1f,
-    val error: String? = null
+    val error: String? = null,
+    val offset: Int = 0
 )
 
 data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Float, val volume: Float = 1f) {
@@ -154,6 +155,8 @@ class ReadingService : Service() {
     private var document: ReadingDocument? = null
     private var request = 0
     private var utterance = 0
+    private val utteranceAudio = UtteranceAudioLength()
+    private var googlePaceProfile: PaceProfile? = null
     private var activeUtterance: String? = null
     private var offlineSession: OfflineSession? = null
 
@@ -411,7 +414,7 @@ class ReadingService : Service() {
             speechOffset = 0
             if (current.index < current.total - 1) {
                 val next = current.index + 1
-                current = current.copy(index = next, range = null, playing = false, loading = true)
+                current = current.copy(index = next, offset = 0, range = null, playing = false, loading = true)
                 val skipped = current
                 handler.post { if (current === skipped) startCurrent() }
             } else completeBook()
@@ -496,6 +499,8 @@ class ReadingService : Service() {
         startupStage = "mengaktifkan pemutar"
         val token = (++utterance).toString()
         activeUtterance = token
+        utteranceAudio.reset(token)
+        googlePaceProfile = PaceProfile.forPlayback(settings, options, usableSpeed)
         runCatching { lock.acquire(300_000) }
             .onFailure { android.util.Log.w("TuturiumPlayback", "WakeLock unavailable", it) }
         current = current.copy(playing = false, loading = true, completed = false,
@@ -569,15 +574,18 @@ class ReadingService : Service() {
                 persist(pass.index, speechOffset)
                 runCatching { lock.acquire(300_000) }
             },
-            onSpoken = { pass ->
+            onSpoken = { pass, audioMs ->
                 val words = countDocumentWords(pass.speech.text)
                 val rate = current.effectiveSpeed
                 val context = applicationContext
+                val extra = document.pauseAfter(pass.index, options).extraMs
+                ReadingPace.record(context, PaceProfile.forPlayback(settings, options, rate),
+                    words, (audioMs - extra).toDouble())
                 automaticSpeed.spoken(words)
                 positionWrites.launch { ListeningStats.recordUtterance(context, words, rate) }
             },
             onRange = { range ->
-                current = current.copy(range = range)
+                current = current.copy(range = range, offset = range.first)
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastCheckpoint >= 2_000L) {
                     lastCheckpoint = now
@@ -607,6 +615,12 @@ class ReadingService : Service() {
     }
 
     private val listener = object : UtteranceProgressListener() {
+        override fun onBeginSynthesis(utteranceId: String?, sampleRateInHz: Int, audioFormat: Int,
+            channelCount: Int) = utteranceAudio.begin(utteranceId, sampleRateInHz, audioFormat, channelCount)
+
+        override fun onAudioAvailable(utteranceId: String?, audio: ByteArray) =
+            utteranceAudio.add(utteranceId, audio.size)
+
         override fun onStart(utteranceId: String?) {
             handler.post {
                 if (utteranceId != null && utteranceId == activeUtterance) {
@@ -622,7 +636,7 @@ class ReadingService : Service() {
                     val mappedStart = activePrepared.offsets.getOrNull(preparedStart + start)
                     val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
                     if (mappedStart != null && mappedEnd != null) {
-                        current = current.copy(range = mappedStart..mappedEnd)
+                        current = current.copy(range = mappedStart..mappedEnd, offset = mappedStart)
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastCheckpoint >= 2000L) {
                             lastCheckpoint = now
@@ -639,6 +653,11 @@ class ReadingService : Service() {
                 val words = countDocumentWords(activePrepared.text.substring(preparedStart))
                 val speed = current.effectiveSpeed
                 val context = applicationContext
+                val audioMs = utteranceAudio.finish(utteranceId)
+                val profile = googlePaceProfile
+                if (audioMs != null && profile != null) {
+                    ReadingPace.record(context, profile, words, audioMs * speed)
+                }
                 positionWrites.launch { ListeningStats.recordUtterance(context, words, speed) }
                 automaticSpeed.spoken(words)
                 runCatching { if (lock.isHeld) lock.release() }
@@ -741,6 +760,7 @@ class ReadingService : Service() {
 
     private fun persist(index: Int, offset: Int = 0) {
         val id = current.bookId ?: return
+        if (current.offset != offset) current = current.copy(offset = offset)
         val context = applicationContext
         positionWrites.launch {
             runCatching { Library.get(context).position(id, index, offset) }
@@ -766,6 +786,8 @@ class ReadingService : Service() {
 
     private fun stopUtterance() {
         activeUtterance = null
+        utteranceAudio.reset(null)
+        googlePaceProfile = null
         offlineSession = null
         offlineAudio.stop()
         runCatching { tts?.stop() }.onFailure {

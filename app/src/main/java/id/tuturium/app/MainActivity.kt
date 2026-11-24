@@ -237,6 +237,26 @@ class MainActivity : ComponentActivity() {
 
 class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     private val library = Library.get(app)
+    private val timelineDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val timelines = object : android.util.LruCache<Triple<String, Long, ListeningOptions>, ReadingTimeline>(
+        8 * 1024 * 1024
+    ) {
+        override fun sizeOf(key: Triple<String, Long, ListeningOptions>, value: ReadingTimeline) = value.sizeBytes
+    }
+
+    internal suspend fun readingTimeline(book: Book, document: ReadingDocument?, options: ListeningOptions) =
+        withContext(timelineDispatcher) {
+            try {
+                val key = Triple(book.id, library.documentModifiedAt(book.id), options)
+                timelines.get(key) ?: ReadingTimeline(document ?: library.document(book.id), options)
+                    .also { timelines.put(key, it) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w("Tuturium", "Reading time index could not be calculated", error)
+                null
+            }
+        }
     private val prefs = app.getSharedPreferences("settings", 0)
     private var openJob: Job? = null
     private var importJob: Job? = null
@@ -262,6 +282,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     var savingReader by mutableStateOf(false)
         private set
     var position by mutableStateOf(0)
+        private set
+    var positionOffset by mutableStateOf(0)
         private set
     var status by mutableStateOf<String?>(null)
     var importing by mutableStateOf<String?>(null)
@@ -331,7 +353,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         val text = "Halo, ini pratinjau suara bahasa Indonesia. Anda dapat mendengarkan buku secara offline di Tuturium."
         val speech = PreparedSpeech(text, IntArray(text.length) { it })
         offlinePreview.play(viewModelScope, voice, sequenceOf(OfflinePass(0, speech)), 1f, 1f,
-            onPass = {}, onSpoken = {}, onRange = {},
+            onPass = {}, onSpoken = { _, _ -> }, onRange = {},
             onRendering = { previewLoading = !it },
             onDone = { previewingVoice = null; previewLoading = false },
             onError = {
@@ -428,7 +450,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
                 val (book, document, marks) = withContext(Dispatchers.IO) {
                     Triple(library.book(id) ?: error("Dokumen sudah dihapus."), library.document(id), library.bookmarks(id))
                 }
-                position = book.position.takeIf { it < book.count } ?: 0
+                position = book.position
+                positionOffset = book.wordOffset
                 bookmarks = marks
                 content = document
                 reader = book
@@ -460,9 +483,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
                     val latest = library.book(book.id) ?: error("Dokumen tidak ditemukan.")
                     val stopped = ReadingService.state.value
                     if (stopped.bookId == book.id && stopped.total > 0) {
-                        val index = if (stopped.completed) book.count else stopped.index
-                        val offset = if (stopped.completed) 0 else stopped.range?.first
-                            ?: latest.wordOffset.takeIf { latest.position == index } ?: 0
+                        val index = if (stopped.completed) latest.count else stopped.index
+                        val offset = if (stopped.completed) 0 else stopped.offset
                         library.position(book.id, index, offset)
                     }
                     library.books()
@@ -646,6 +668,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
             ReadingService.command(app, ReadingService.SEEK, index = next)
         } else {
             position = next
+            positionOffset = 0
             viewModelScope.launch {
                 safe("Posisi gagal disimpan") { withContext(databaseWrites) { library.position(book.id, next) } }
             }

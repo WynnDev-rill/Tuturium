@@ -144,6 +144,8 @@ class Library private constructor(context: Context) :
         return documentFile(id).openRead()
     }
 
+    internal fun documentModifiedAt(id: String): Long = documentFile(id).baseFile.lastModified()
+
     fun document(id: String): ReadingDocument {
         require(UUID.fromString(id).toString() == id)
         val json = JSONArray(documentFile(id).readFully().toString(Charsets.UTF_8))

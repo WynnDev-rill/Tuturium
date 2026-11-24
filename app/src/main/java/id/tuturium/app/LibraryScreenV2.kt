@@ -606,11 +606,7 @@ private fun LazyListScope.bookRows(
             Column(Modifier.weight(1f)) {
                 PinnedBookTitle(book, 1, book.id in pinnedBooks)
                 Spacer(Modifier.height(7.dp))
-                val current = if (playback.bookId == book.id && playback.total > 0)
-                    if (playback.completed) book.count else playback.index else book.position
-                val percent = (current.toFloat() / book.count.coerceAtLeast(1) * 100).toInt().coerceIn(0, 100)
-                val minutes = estimateRemainingMinutes(book.words, book.count, current, model.settings.speed)
-                Text("$percent% · ±$minutes menit · ${book.format}", color = Secondary,
+                Text(libraryReadingLabel(model, book, playback), color = Secondary,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -636,7 +632,7 @@ private fun LazyListScope.bookRows(
                             Modifier.size(if (cols == 2) 105.dp else 82.dp,
                                 if (cols == 2) 122.dp else 98.dp))
                         PinnedBookTitle(book, 2, book.id in pinnedBooks)
-                        Text("±${estimateRemainingMinutes(book.words, book.count, book.position, model.settings.speed)} menit",
+                        Text(libraryReadingLabel(model, book, playback),
                             color = Secondary, style = MaterialTheme.typography.labelSmall)
                         if (model.savingBookId == book.id) {
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Blue)

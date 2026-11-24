@@ -5,8 +5,8 @@ import org.junit.Test
 
 class ReaderLibraryUpdateTest {
     @Test fun durationCanExceedOneThousandMinutesAndSupportsFourTimesSpeed() {
-        assertEquals(2000, estimateRemainingMinutes(300000, 100, 0, 1f))
-        assertEquals(500, estimateRemainingMinutes(300000, 100, 0, 4f))
+        assertEquals(2000, ReadingPosition(0f, 300000).remainingMinutes(INITIAL_MILLIS_PER_WORD, 1f))
+        assertEquals(500, ReadingPosition(0f, 300000).remainingMinutes(INITIAL_MILLIS_PER_WORD, 4f))
     }
     @Test fun highlightUsesOnlyCurrentPassAndIntersectingWords() {
         val first = PdfWordHit("satu", .1f, .1f, .2f, .2f, WordSelection(4, 0))

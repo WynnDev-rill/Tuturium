@@ -171,7 +171,7 @@ internal class OfflineAudio(
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun play(
         scope: CoroutineScope, voice: OfflineVoice, passages: Sequence<OfflinePass>, speed: Float, pitch: Float,
-        volume: Float = 1f, onPass: (OfflinePass) -> Unit, onSpoken: (OfflinePass) -> Unit,
+        volume: Float = 1f, onPass: (OfflinePass) -> Unit, onSpoken: (OfflinePass, Long) -> Unit,
         onRange: (IntRange) -> Unit, onRendering: (Boolean) -> Unit,
         onDone: () -> Unit, onError: (Throwable) -> Unit
     ) {
@@ -201,7 +201,7 @@ internal class OfflineAudio(
         fun finishPass() {
             val previous = active ?: return
             active = null
-            onSpoken(previous.pass)
+            onSpoken(previous.pass, previous.audio.durationMs)
         }
 
         fun fail(error: Throwable) {

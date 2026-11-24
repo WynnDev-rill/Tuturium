@@ -67,7 +67,13 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     }
     var showPdf by rememberSaveable(book.id) { mutableStateOf(pdfSource != null) }
     val active = playback.bookId == book.id && playback.total > 0
-    val current = (if (active) playback.index else model.position).coerceIn(0, document.passes.lastIndex)
+    val readingIndex = if (active) {
+        if (playback.completed) document.passes.size else playback.index
+    } else model.position
+    val current = (readingIndex.takeIf { it < document.passes.size } ?: 0)
+        .coerceIn(0, document.passes.lastIndex)
+    val timePosition = readingPosition(model, book, readingIndex,
+        if (active) playback.offset else model.positionOffset, document)
     val pdfPasses = remember(document) {
         if (pdfSource != null) document.firstPassByPdfPage() else emptyMap()
     }
@@ -445,6 +451,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             if (matches.isNotEmpty()) matchIndex = (matchIndex + delta + matches.size) % matches.size
         }, { panel = null })
         else ReaderPlaybackBar(model, book, document, playback, current, isPlaying, isLoading,
+            timePosition,
             speedPanel = { panel = "speed" }, voicePanel = { panel = "voices" }, seek = ::seek)
     }
 
@@ -471,7 +478,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             })
         "voices" -> ReaderVoiceSheet(model) { panel = null }
         "timer" -> ReaderTimerSheet(playback) { panel = null }
-        "speed" -> SpeedControlSheet(model, playback, book, current, document.passes.size) { panel = null }
+        "speed" -> SpeedControlSheet(model, playback, book, timePosition) { panel = null }
         "queue" -> ReaderQueueSheet(model) { panel = null }
         "notes" -> ReaderNotesSheet(book, current) { panel = null }
         "skip" -> SkipOptionsSheet(model) { panel = null }
