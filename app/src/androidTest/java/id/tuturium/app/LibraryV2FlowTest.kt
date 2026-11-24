@@ -18,6 +18,28 @@ class LibraryV2FlowTest {
         FolderStore.remove(compose.activity, folderName)
     }
 
+    @Test fun holdingADocumentOpensItsOptionsAndRenamesIt() {
+        val library = Library.get(compose.activity)
+        val book = library.add("Dokumen tekan lama", "TXT",
+            ReadingDocument(listOf(Section("Bab", "Teks uji tekan lama."))))
+        try {
+            compose.onNodeWithText("Perpustakaan").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText(book.title).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(book.title).performTouchInput { longClick() }
+            compose.onNodeWithText("Ubah nama").performScrollTo().performClick()
+            compose.onNode(hasSetTextAction()).performTextReplacement("Dokumen sudah berganti nama")
+            compose.onNodeWithText("Simpan").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("Dokumen sudah berganti nama").fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     @Test fun menuChangesLayoutAndSearchKeepsLibraryVisible() {
         compose.onNodeWithText("Perpustakaan").performClick()
         compose.onNodeWithContentDescription("Opsi perpustakaan").performClick()

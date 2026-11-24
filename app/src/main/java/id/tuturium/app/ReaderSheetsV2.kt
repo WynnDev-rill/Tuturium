@@ -77,8 +77,8 @@ fun ReaderMenuSheet(model: TuturiumModel, book: Book, index: Int, marked: Boolea
                 model.changeListeningOptions(p.copy(autoScroll = it))
             }
             ReaderMenuAction(Icons.Rounded.Bedtime, "Timer tidur") { dismiss(); navigate("timer") }
-            ReaderMenuToggle(Icons.Rounded.MusicNote, "Padukan dengan Musik Latar", p.mixWithMusic) {
-                model.changeListeningOptions(p.copy(mixWithMusic = it))
+            ReaderMenuAction(Icons.Rounded.VolumeUp, "Audio", "Volume narasi dan musik latar") {
+                dismiss(); navigate("audio")
             }
             HorizontalDivider(color = Color.DarkGray)
             ReaderMenuAction(Icons.Rounded.DeleteOutline, "Hapus file", danger = true) {

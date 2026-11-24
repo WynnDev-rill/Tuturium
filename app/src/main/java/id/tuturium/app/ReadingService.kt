@@ -56,17 +56,22 @@ data class Playback(
     val error: String? = null
 )
 
-data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Float) {
+data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Float, val volume: Float = 1f) {
     companion object {
         fun read(context: Context): ReadingSettings = context.getSharedPreferences("settings", 0).let {
             ReadingSettings(OfflineCatalog.supportedSelection(it.getString("voice", null)),
-                it.getFloat("speed", 1f), it.getFloat("pitch", 1f))
+                it.getFloat("speed", 1f), it.getFloat("pitch", 1f), it.getFloat("tts_volume", 1f).coerceIn(0f, 1f))
         }
     }
     fun save(context: Context) {
+        val previous = read(context)
         context.getSharedPreferences("settings", 0).edit()
-            .putString("voice", voice).putFloat("speed", speed).putFloat("pitch", pitch).apply()
-        if (ReadingService.state.value.bookId != null) ReadingService.command(context, ReadingService.SETTINGS)
+            .putString("voice", voice).putFloat("speed", speed).putFloat("pitch", pitch)
+            .putFloat("tts_volume", volume.coerceIn(0f, 1f)).apply()
+        if (ReadingService.state.value.bookId != null && this != previous) {
+            val action = if (previous.copy(volume = volume) == this) ReadingService.VOLUME else ReadingService.SETTINGS
+            ReadingService.command(context, action)
+        }
     }
 }
 
@@ -264,6 +269,11 @@ class ReadingService : Service() {
             NEXT -> seek(current.index + 1)
             PREVIOUS -> seek(current.index - 1)
             SEEK -> seek(intent.getIntExtra("index", 0), offset = intent.getIntExtra("offset", 0).coerceAtLeast(0))
+            VOLUME -> offlineSession?.let {
+                val volume = ReadingSettings.read(this).volume
+                it.settings = it.settings.copy(volume = volume)
+                offlineAudio.setVolume(volume)
+            }
             SETTINGS -> if (current.playing || current.loading) {
                 val nextSettings = ReadingSettings.read(this)
                 val nextOptions = ListeningOptions.read(this)
@@ -274,6 +284,7 @@ class ReadingService : Service() {
                     session.settings = nextSettings
                     session.options = nextOptions
                     applyOfflineRate(session)
+                    offlineAudio.setVolume(nextSettings.volume)
                 } else {
                     speechOffset = current.range?.first ?: speechOffset
                     stopUtterance()
@@ -458,7 +469,9 @@ class ReadingService : Service() {
         startupStage = "mengirim teks ke Google TTS"
         val result = runCatching {
             engine.speak(prepared.text.substring(preparedStart),
-                TextToSpeech.QUEUE_FLUSH, null, token)
+                TextToSpeech.QUEUE_FLUSH, android.os.Bundle().apply {
+                    putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, settings.volume)
+                }, token)
         }.onFailure { android.util.Log.e("TuturiumPlayback", "Google TTS speak exception", it) }
             .getOrDefault(TextToSpeech.ERROR)
         if (result == TextToSpeech.ERROR) {
@@ -511,7 +524,7 @@ class ReadingService : Service() {
             effectiveSpeed = speed, range = null, error = null)
         runCatching { lock.acquire(300_000) }
         publish()
-        offlineAudio.play(scope, voice, passages, speed, settings.pitch,
+        offlineAudio.play(scope, voice, passages, speed, settings.pitch, volume = settings.volume,
             onPass = { pass ->
                 speechOffset = pass.speech.offsets.first()
                 current = current.copy(index = pass.index, range = null)
@@ -833,6 +846,7 @@ class ReadingService : Service() {
         const val SEEK = "SEEK"
         const val TIMER = "TIMER"
         const val SETTINGS = "SETTINGS"
+        const val VOLUME = "VOLUME"
         private const val CHANNEL = "reading"
         private const val NOTIFICATION = 41
         internal val positionDispatcher = Dispatchers.IO.limitedParallelism(1)

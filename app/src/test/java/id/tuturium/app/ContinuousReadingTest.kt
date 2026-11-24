@@ -18,7 +18,9 @@ class ContinuousReadingTest {
         val buffer = SupertonicBuffer()
         buffer.generated(2_000, 2_500, 10_000)
         assertFalse(buffer.ready(4f, 8_000, 4, false, 12_000))
-        assertTrue(buffer.ready(4f, 8_000, 4, false, 18_000))
+        assertFalse(buffer.ready(4f, 8_000, 4, false, 18_000))
+        assertTrue(buffer.ready(4f, 48_000, 4, false, 18_000))
+        assertTrue(buffer.ready(1f, 2_000, 1, false, 18_000))
         assertTrue(buffer.ready(4f, 2_000, 1, true, 10_000))
     }
 
@@ -43,5 +45,10 @@ class ContinuousReadingTest {
         assertEquals("Terhubung", google.copy(connected = true).driveStatus)
         assertEquals("Menyinkronkan…", google.copy(connected = true, busy = true).driveStatus)
         assertEquals("Gagal", google.copy(failed = true).driveStatus)
+    }
+    @Test fun searchCountsOccurrencesRatherThanSentences() {
+        assertEquals(listOf(
+            ReaderMatch(0, 0..5), ReaderMatch(0, 12..17), ReaderMatch(2, 4..9)
+        ), findReaderMatches(listOf("Ketika tiba ketika", "", "dan ketika pulang"), " ketika "))
     }
 }

@@ -357,6 +357,13 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
         private set
+    var readerFont by mutableStateOf(prefs.getString("reader_font", "sans") ?: "sans")
+        private set
+    var readerHighlight by mutableStateOf(prefs.getString("reader_highlight", "theme") ?: "theme")
+        private set
+    var readerBold by mutableStateOf(prefs.getBoolean("reader_bold", false))
+        private set
+
     var fontSize by mutableStateOf(prefs.getFloat("font_size", 22f))
         private set
     var follow by mutableStateOf(prefs.getBoolean("follow", listeningOptions.autoScroll))
@@ -376,6 +383,9 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Refresh Compose settings after importing a snapshot from another device. */
     fun reloadCloudPreferences() {
+        readerFont = prefs.getString("reader_font", "sans") ?: "sans"
+        readerHighlight = prefs.getString("reader_highlight", "theme") ?: "theme"
+        readerBold = prefs.getBoolean("reader_bold", false)
         settings = ReadingSettings.read(app)
         listeningOptions = ListeningOptions.read(app)
         favoriteVoices = prefs.getStringSet("favorite_voices", emptySet()).orEmpty().toSet()
@@ -811,6 +821,24 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     fun changeTheme(value: String) {
         theme = value
         prefs.edit().putString("theme", value).apply()
+        TuturiumCloud.markDirty(app)
+    }
+
+    fun changeReaderFont(value: String) {
+        readerFont = value
+        prefs.edit().putString("reader_font", value).apply()
+        TuturiumCloud.markDirty(app)
+    }
+
+    fun changeReaderHighlight(value: String) {
+        readerHighlight = value
+        prefs.edit().putString("reader_highlight", value).apply()
+        TuturiumCloud.markDirty(app)
+    }
+
+    fun changeReaderBold(value: Boolean) {
+        readerBold = value
+        prefs.edit().putBoolean("reader_bold", value).apply()
         TuturiumCloud.markDirty(app)
     }
 

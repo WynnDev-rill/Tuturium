@@ -106,9 +106,13 @@ internal object TuturiumCloud {
             cancelPending()
             mutex.withLock {
                 waiting("Memverifikasi akun Google Drive…")
-                val api = DriveAppDataClient(accessToken)
-                if (!isMatchingDriveAccount(account, api.accountEmail())) {
-                    throw CloudAccessException("Izin Drive diberikan untuk akun berbeda. Pilih akun Google yang sama.")
+                val verifiedToken = try {
+                    verifyDriveAccount(accessToken, account)
+                    accessToken
+                } catch (error: DriveHttpException) {
+                    if (error.status != 401) throw error
+                    clearCachedToken(context, accessToken)
+                    renewToken(context, account)
                 }
                 val saved = prefs(context)
                 if (!isCompatibleCloudAccount(saved.getString("account_email", null), account)) {
@@ -118,7 +122,7 @@ internal object TuturiumCloud {
                 if (!saved.edit().putString("account_email", account).commit()) {
                     throw CloudAccessException("Akun Drive tidak dapat disimpan di perangkat.")
                 }
-                syncWithRenewal(context, account, accessToken)
+                syncWithRenewal(context, account, verifiedToken)
                 requiresConsent = false
                 retryAfter = 0L
                 rememberDriveConsentAttempt(context)
@@ -180,11 +184,20 @@ internal object TuturiumCloud {
             }
         } catch (error: DriveHttpException) {
             if (error.status != 401) throw error
-            token = null
-            val client = Identity.getAuthorizationClient(context.applicationContext)
-            client.clearToken(ClearTokenRequest.builder().setToken(accessToken).build()).await()
+            clearCachedToken(context, accessToken)
             sync(context.applicationContext, DriveAppDataClient(renewToken(context, email)))
         }
+    }
+
+    private suspend fun clearCachedToken(context: Context, accessToken: String) {
+        token = null
+        val client = Identity.getAuthorizationClient(context.applicationContext)
+        client.clearToken(ClearTokenRequest.builder().setToken(accessToken).build()).await()
+    }
+
+    private fun verifyDriveAccount(accessToken: String, email: String) {
+        if (!isMatchingDriveAccount(email, DriveAppDataClient(accessToken).accountEmail()))
+            throw CloudAccessException("Izin Drive diberikan untuk akun berbeda. Pilih akun Google yang sama.")
     }
 
     private class DriveConsentRequired : CloudAccessException(
@@ -197,8 +210,7 @@ internal object TuturiumCloud {
         if (granted.hasResolution() || accessToken.isNullOrBlank() ||
             DRIVE_APPDATA_SCOPE !in granted.grantedScopes
         ) throw DriveConsentRequired()
-        if (!isMatchingDriveAccount(email, DriveAppDataClient(accessToken).accountEmail()))
-            throw CloudAccessException("Izin Drive diberikan untuk akun berbeda.")
+        verifyDriveAccount(accessToken, email)
         token = accessToken
         authorizedAt = SystemClock.elapsedRealtime()
         return accessToken

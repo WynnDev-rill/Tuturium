@@ -61,6 +61,13 @@ class ReaderFlowTest {
         compose.onNodeWithText("Tampilan").assertIsDisplayed().performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed()
         compose.onNodeWithText("Selesai").performClick()
+        compose.onNodeWithContentDescription("Opsi pembaca").performClick()
+        compose.onNodeWithText("Cari").performClick()
+        compose.onNodeWithContentDescription("Cari di dokumen").performTextInput("kalimat")
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("1/4").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Hasil berikutnya").performClick()
+        compose.onNodeWithText("2/4").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tutup pencarian").performClick()
         compose.onNodeWithContentDescription("Maju sekitar 10 detik").performClick()
         compose.onNodeWithContentDescription("Simpan markah").performClick()
         compose.waitUntil(15_000) {

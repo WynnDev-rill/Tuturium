@@ -448,14 +448,10 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
         }
     }
     renameFile?.let { book ->
-        var value by remember(book.id) { mutableStateOf(book.title) }
-        TuturiumDialog(onDismissRequest = { renameFile = null },
-            title = { Text("Ubah nama") },
-            text = { OutlinedTextField(value, { value = it.take(200) }, singleLine = true,
-                modifier = Modifier.fillMaxWidth()) },
-            confirmButton = { TextButton(onClick = { model.rename(book, value); renameFile = null },
-                enabled = value.isNotBlank()) { Text("Simpan") } },
-            dismissButton = { TextButton(onClick = { renameFile = null }) { Text("Batal") } })
+        RenameBookSheet(book.title, { renameFile = null }) {
+            model.rename(book, it)
+            renameFile = null
+        }
     }
     deleteFile?.let { book ->
         TuturiumDialog(onDismissRequest = { deleteFile = null },
@@ -475,7 +471,10 @@ private fun LazyListScope.bookRows(
     selecting: Boolean, selected: Set<String>, onClick: (Book) -> Unit, onOptions: (Book) -> Unit
 ) {
     if (layout == "Daftar") items(books, key = { "book:${it.id}" }) { book ->
-        Row(Modifier.fillMaxWidth().heightIn(min = 82.dp).clickable { onClick(book) },
+        Row(Modifier.fillMaxWidth().heightIn(min = 82.dp).combinedClickable(
+            onClick = { onClick(book) },
+            onLongClick = if (selecting) null else ({ onOptions(book) }),
+            onLongClickLabel = "Buka opsi dokumen"),
             verticalAlignment = Alignment.CenterVertically) {
             FileArtwork(book.format, Modifier.size(69.dp, 80.dp))
             Spacer(Modifier.width(9.dp))
@@ -505,7 +504,9 @@ private fun LazyListScope.bookRows(
         items(books.chunked(cols), key = { row -> row.joinToString("-") { it.id } }) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { book ->
-                    Column(Modifier.weight(1f).clickable { onClick(book) }
+                    Column(Modifier.weight(1f).combinedClickable(onClick = { onClick(book) },
+                        onLongClick = if (selecting) null else ({ onOptions(book) }),
+                        onLongClickLabel = "Buka opsi dokumen")
                         .padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         FileArtwork(book.format,
                             Modifier.size(if (cols == 2) 105.dp else 82.dp,

@@ -1,6 +1,9 @@
 package id.tuturium.app
 
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,7 +37,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 private data class ReaderRow(val heading: String?, val text: String,
     val passes: List<IndexedValue<Pass>>, val paragraphEnd: Boolean = false)
@@ -64,7 +71,11 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     val isLoading = playback.bookId == book.id && playback.loading
     var panel by remember { mutableStateOf<String?>(null) }
     var jump by remember { mutableIntStateOf(-1) }
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
+    var matchIndex by remember { mutableIntStateOf(0) }
+    var matches by remember { mutableStateOf(emptyList<ReaderMatch>()) }
+    val searchOpen = panel == "search"
+    BackHandler(searchOpen) { panel = null }
     var preview by remember { mutableStateOf<Float?>(null) }
     var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val marked = model.bookmarks.any { it.index == current }
@@ -107,6 +118,11 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             }
         }
     }
+    LaunchedEffect(query, rows) {
+        matches = withContext(Dispatchers.Default) { findReaderMatches(rows.map { it.text }, query) }
+        matchIndex = 0
+    }
+    val searchMatch = matches.getOrNull(matchIndex).takeIf { searchOpen }
     val locations = remember(rows, document) {
         IntArray(document.passes.size).also { indices ->
             rows.forEachIndexed { row, item -> item.passes.forEach { indices[it.index] = row } }
@@ -122,14 +138,22 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         if (dragging) manualBrowsing = true
     }
     var activeWordOffScreen by remember { mutableStateOf(false) }
+    var activeBelowViewport by remember { mutableStateOf(false) }
     val readingOffScreen by remember(list, locations, current) {
         derivedStateOf {
             list.layoutInfo.visibleItemsInfo.isNotEmpty() &&
                 (activeWordOffScreen || list.layoutInfo.visibleItemsInfo.none { it.index == locations[current] })
         }
     }
-    LaunchedEffect(current, model.follow, jump, manualBrowsing, showPdf) {
-        if (!showPdf && (jump == current ||
+    LaunchedEffect(searchMatch, showPdf) {
+        if (searchMatch != null && !showPdf) {
+            manualBrowsing = true
+            if (list.layoutInfo.visibleItemsInfo.none { it.index == searchMatch.row })
+                list.scrollToItem(searchMatch.row)
+        }
+    }
+    LaunchedEffect(current, model.follow, jump, manualBrowsing, showPdf, searchOpen) {
+        if (!showPdf && !searchOpen && (jump == current ||
             (model.follow && !manualBrowsing && (isPlaying || current != 0)))) {
             val target = locations[current]
             val info = list.layoutInfo
@@ -196,9 +220,11 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 }
             }
         }
-        if (active && !showPdf && manualBrowsing && readingOffScreen) {
+        if ((active || book.position > 0 || book.wordOffset > 0) && !showPdf &&
+            manualBrowsing && readingOffScreen
+        ) {
             val spokenText = document.passes.getOrNull(current)?.text.orEmpty()
-            val range = playback.range
+            val range = playback.range.takeIf { active }
             val snippet = if (range != null && range.first in spokenText.indices) {
                 spokenText.substring(range.first, (range.last + 1).coerceAtMost(spokenText.length))
             } else {
@@ -208,19 +234,23 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 horizontalArrangement = Arrangement.Center) {
                 Surface(onClick = {
                     showPdf = false
+                    if (searchOpen) panel = null
                     manualBrowsing = false
                     jump = current
-                }, shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer) {
+                }, modifier = Modifier.semantics { contentDescription = "Kembali ke kalimat yang dibacakan" },
+                    shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     Row(Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.KeyboardArrowUp, null, Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        val first = list.firstVisibleItemIndex
+                        val below = locations[current] > first ||
+                            (locations[current] == first && activeBelowViewport)
+                        Icon(if (below) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp,
+                            null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(6.dp))
                         Text(snippet.take(30).ifBlank { "Kembali ke bacaan" },
                             style = MaterialTheme.typography.labelMedium,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -250,13 +280,19 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 } else {
                     val pass = row.passes.firstOrNull { it.index == current }?.value
                     val sentenceColor = MaterialTheme.colorScheme.primaryContainer
-                    val wordColor = MaterialTheme.colorScheme.primary
-                    val wordInk = MaterialTheme.colorScheme.onPrimary
+                    val wordColor = when (model.readerHighlight) {
+                        "amber" -> Color(0xFFFFCC73)
+                        "mint" -> Color(0xFF94DED0)
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                    val wordInk = if (model.readerHighlight == "theme") MaterialTheme.colorScheme.onPrimary
+                        else Color(0xFF202020)
+                    val resultRange = searchMatch?.takeIf { it.row == rowIndex }?.range
                     val spokenRange = if (active && pass != null) playback.range
                         else if (!active && pass != null && current == book.position && book.wordOffset in pass.text.indices)
                             book.wordOffset..book.wordOffset
                         else null
-                    val highlighted = remember(row, pass, spokenRange, sentenceColor, wordColor, wordInk) {
+                    val highlighted = remember(row, pass, spokenRange, sentenceColor, wordColor, wordInk, resultRange) {
                         buildAnnotatedString {
                             append(row.text)
                             if (pass != null) {
@@ -271,10 +307,24 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                                     )
                                 }
                             }
+                            if (resultRange != null) addStyle(SpanStyle(background = Color(0xFFFFBC68),
+                                color = Color(0xFF211800)), resultRange.first, resultRange.last + 1)
                         }
                     }
                     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-                    LaunchedEffect(pass, spokenRange, layout, model.follow, isPlaying, manualBrowsing, dragging) {
+                    LaunchedEffect(resultRange, layout) {
+                        val result = resultRange ?: return@LaunchedEffect
+                        val bounds = layout?.getBoundingBox(result.first) ?: return@LaunchedEffect
+                        val item = snapshotFlow {
+                            list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == rowIndex }
+                        }.filterNotNull().first()
+                        val info = list.layoutInfo
+                        val center = item.offset + bounds.center.y
+                        val middle = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                        list.scrollBy(center - middle)
+                    }
+                    LaunchedEffect(pass, spokenRange, layout, model.follow, isPlaying, manualBrowsing, dragging, searchOpen) {
+                        if (searchOpen) return@LaunchedEffect
                         val textLayout = layout ?: return@LaunchedEffect
                         val selected = pass ?: return@LaunchedEffect
                         val word = (selected.offset + (spokenRange?.first ?: 0)).coerceIn(row.text.indices)
@@ -285,9 +335,11 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                                 val item = info.visibleItemsInfo.firstOrNull { it.index == rowIndex }
                                 val visible = item != null && item.offset + bounds.bottom > info.viewportStartOffset &&
                                     item.offset + bounds.top < info.viewportEndOffset
-                                visible to list.isScrollInProgress
-                            }.collect { (visible, scrolling) ->
+                                Triple(visible, list.isScrollInProgress,
+                                    item != null && item.offset + bounds.top >= info.viewportEndOffset)
+                            }.collect { (visible, scrolling, below) ->
                                 activeWordOffScreen = !visible
+                                activeBelowViewport = below
                                 if (visible && !scrolling && !dragging) manualBrowsing = false
                             }
                         } else {
@@ -318,7 +370,12 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                             selectSpokenWord(row.text, row.passes, offset)?.let(latestPlay)
                         }
                     }, onTextLayout = { layout = it },
-                        fontFamily = FontFamily.SansSerif,
+                        fontFamily = when (model.readerFont) {
+                            "serif" -> FontFamily.Serif
+                            "mono" -> FontFamily.Monospace
+                            else -> FontFamily.SansSerif
+                        },
+                        fontWeight = if (model.readerBold) FontWeight.Bold else FontWeight.Normal,
                         fontSize = readableSize.sp,
                         lineHeight = (readableSize * 1.48f).sp,
                         textAlign = TextAlign.Start,
@@ -327,7 +384,14 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             }
         }
         }
-        ReaderPlaybackBar(model, book, document, playback, current, isPlaying, isLoading,
+        if (searchOpen) ReaderSearchBar(query, {
+            query = it
+            matches = emptyList()
+            matchIndex = 0
+        }, matchIndex, matches.size, { delta ->
+            if (matches.isNotEmpty()) matchIndex = (matchIndex + delta + matches.size) % matches.size
+        }, { panel = null })
+        else ReaderPlaybackBar(model, book, document, playback, current, isPlaying, isLoading,
             speedPanel = { panel = "speed" }, voicePanel = { panel = "voices" }, seek = ::seek)
     }
 
@@ -347,56 +411,23 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     } })
             }
         }
-        "search" -> {
-            val matches = remember(query, document) {
-                if (query.isBlank()) emptyList()
-                else document.passes.withIndex().asSequence().filter { it.value.text.contains(query.trim(), true) }.take(100).toList()
-            }
-            ReaderOptions("Cari di dokumen", { panel = null }) {
-                item {
-                    OutlinedTextField(query, { query = it }, singleLine = true, label = { Text("Kata atau frasa") },
-                        modifier = Modifier.fillMaxWidth())
-                }
-                if (query.isNotBlank() && matches.isEmpty()) item { Text("Tidak ditemukan.", Modifier.padding(12.dp)) }
-                itemsIndexed(matches) { _, match ->
-                    ListItem(headlineContent = { Text(match.value.text) }, modifier = Modifier.clickable { seek(match.index) })
-                }
-            }
-        }
         "menu" -> ReaderMenuSheet(model, book, current, marked,
-            dismiss = { panel = null }, navigate = { panel = it })
+            dismiss = { panel = null }, navigate = {
+                if (it == "search") showPdf = false
+                panel = it
+            })
         "voices" -> ReaderVoiceSheet(model) { panel = null }
         "timer" -> ReaderTimerSheet(playback) { panel = null }
         "speed" -> SpeedControlSheet(model, playback) { panel = null }
         "queue" -> ReaderQueueSheet(model) { panel = null }
         "notes" -> ReaderNotesSheet(book, current) { panel = null }
         "skip" -> SkipOptionsSheet(model) { panel = null }
-        "rename" -> {
-            var newTitle by remember(book.id) { mutableStateOf(book.title) }
-            TuturiumDialog(onDismissRequest = { panel = null },
-                title = { Text("Ubah nama") },
-                text = { OutlinedTextField(newTitle, { newTitle = it.take(200) },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true) },
-                confirmButton = { TextButton(onClick = {
-                    model.rename(book, newTitle); panel = null
-                }, enabled = newTitle.isNotBlank()) { Text("Simpan") } },
-                dismissButton = { TextButton(onClick = { panel = null }) { Text("Batal") } })
+        "rename" -> RenameBookSheet(book.title, { panel = null }) {
+            model.rename(book, it)
+            panel = null
         }
-        "display" -> TuturiumDialog(onDismissRequest = { panel = null },
-            title = { Text("Tampilan") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    VoiceSlider("Ukuran teks", "${model.fontSize.toInt()} sp", model.fontSize,
-                        16f..34f, model::changeFont)
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        listOf("system" to "Sistem", "light" to "Terang",
-                            "dark" to "Gelap").forEach { (value, label) ->
-                            FilterChip(model.theme == value, { model.changeTheme(value) },
-                                label = { Text(label) })
-                        }
-                    }
-                }
-            }, confirmButton = { TextButton(onClick = { panel = null }) { Text("Selesai") } })
+        "display" -> ReaderAppearanceSheet(model) { panel = null }
+        "audio" -> ReaderAudioSheet(model) { panel = null }
         "delete" -> TuturiumDialog(onDismissRequest = { panel = null },
             title = { Text("Hapus file?") },
             text = { Text("Dokumen dipindahkan ke File yang Dihapus.") },

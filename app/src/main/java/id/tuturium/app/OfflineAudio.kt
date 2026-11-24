@@ -37,7 +37,7 @@ internal class SupertonicBuffer {
         val minimumClips = if (playbackRate >= 2f) 4 else 2
         return endOfInput || bufferedMs >= targetMs ||
             (count >= minimumClips && inferenceRatio * playbackRate < 0.45) ||
-            count >= 12 || nowMs - firstReadyAt >= 8_000
+            count >= 12 || (playbackRate < 2f && nowMs - firstReadyAt >= 8_000)
     }
 
     fun atCapacity(playbackRate: Float, remainingMs: Long, count: Int): Boolean =
@@ -65,6 +65,10 @@ internal class OfflineAudio(private val context: Context) {
         }
     }
 
+    fun setVolume(volume: Float) {
+        player?.volume = volume.coerceIn(0f, 1f)
+    }
+
     fun stop() {
         val old = player
         player = null
@@ -84,7 +88,7 @@ internal class OfflineAudio(private val context: Context) {
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun play(
         scope: CoroutineScope, voice: OfflineVoice, passages: Sequence<OfflinePass>, speed: Float, pitch: Float,
-        onPass: (OfflinePass) -> Unit, onSpoken: (OfflinePass) -> Unit,
+        volume: Float = 1f, onPass: (OfflinePass) -> Unit, onSpoken: (OfflinePass) -> Unit,
         onRange: (IntRange) -> Unit, onRendering: (Boolean) -> Unit,
         onDone: () -> Unit, onError: (Throwable) -> Unit
     ) {
@@ -102,6 +106,7 @@ internal class OfflineAudio(private val context: Context) {
         engine.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), false)
         setRate(speed, pitch)
+        setVolume(volume)
 
         fun finishPass() {
             val previous = active ?: return
