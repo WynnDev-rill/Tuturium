@@ -1,5 +1,8 @@
-# Tuturium 1.3.6
+## Tuturium 1.3.7
 
-- Tambah pemulihan pemilihan akun saat login Google memerlukan verifikasi ulang, serta petunjuk jika Google Play Services, koneksi, atau konfigurasi OAuth bermasalah.
-- Hubungkan Drive melalui persetujuan terpisah. Tuturium memverifikasi akun pemilik token sebelum membaca atau mengunggah pustaka. Mode tamu dan penyimpanan lokal tetap tersedia.
-- Periksa pembaruan dari dalam aplikasi dan lihat versi terpasang, versi baru, ukuran APK, serta catatan perubahan. Tuturium memeriksa SHA-256 dan sertifikat sebelum membuka pemasang Android.
+- Hapus tab Podcast dan mini player; kembali dari reader menjeda audio dan menyimpan progres sebelum keluar.
+- Filter perpustakaan: belum dibaca, baca nanti, PDF, dokumen, web, pindai, lainnya.
+- Sorotan kata mengikuti tengah viewport dengan toleransi dan menghormati scroll manual.
+- Durasi reader di atas satu jam menggunakan HH:mm:ss; estimasi pustaka tetap menit.
+- Checkpoint kata tersimpan lokal dan termasuk dalam arsip Google Drive; migrasi SQLite menjaga progres lama.
+

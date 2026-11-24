@@ -75,7 +75,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
     val visible = remember(model.books, search, filter, folder, sort, revision) {
         sortBooks(model.books.filter { book ->
             (folder == null || FolderStore.folderOf(context, book.id) == folder) &&
-            (filter != "Nanti" || BookActions.later(context, book.id)) &&
+            matchesLibraryFilter(book, filter, BookActions.later(context, book.id)) &&
             book.title.contains(search.trim(), ignoreCase = true)
         }, sort).sortedWith(compareByDescending<Book> { BookActions.pinned(context, it.id) })
     }
@@ -154,6 +154,21 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                             }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false },
                                 modifier = Modifier.width(275.dp).background(Panel)) {
+                                listOf(
+                                    "Belum dibaca" to Icons.Rounded.AutoStories,
+                                    "Baca nanti" to Icons.Rounded.Schedule,
+                                    "PDF" to Icons.Rounded.PictureAsPdf,
+                                    "Dokumen" to Icons.Rounded.Description,
+                                    "Halaman web" to Icons.Rounded.Language,
+                                    "Pindai" to Icons.Rounded.CameraAlt,
+                                    "Lainnya" to Icons.Rounded.MoreHoriz
+                                ).forEach { (name, icon) ->
+                                    DropdownMenuItem(text = { Text(name) },
+                                        leadingIcon = { Icon(icon, null) },
+                                        trailingIcon = { if (filter == name) Icon(Icons.Rounded.Check, null) },
+                                        onClick = { filter = name; menu = false })
+                                }
+                                HorizontalDivider(color = Color.DarkGray)
                                 DropdownMenuItem(text = { Text("Pilih beberapa") },
                                     leadingIcon = { Icon(Icons.Rounded.Checklist, null) },
                                     onClick = { selecting = true; menu = false })
@@ -204,7 +219,12 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf("Buku", "Podcast", "Folder", "Nanti").forEach { name ->
+                if (filter !in listOf("Buku", "Folder")) {
+                    FilterChip(selected = true, onClick = { filter = "Buku" },
+                        label = { Text(filter) }, trailingIcon = { Icon(Icons.Rounded.Close, "Hapus filter") },
+                        shape = RoundedCornerShape(26.dp), border = null)
+                }
+                listOf("Buku", "Folder").forEach { name ->
                     FilterChip(selected = filter == name, onClick = { filter = name },
                         label = { Text(name) }, shape = RoundedCornerShape(26.dp),
                         border = null, colors = FilterChipDefaults.filterChipColors(
@@ -213,10 +233,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                 }
             }
         }
-        if (filter == "Podcast") {
-            item { Text("Podcast belum tersedia di Tuturium.", color = Secondary,
-                modifier = Modifier.padding(top = 24.dp)) }
-        } else {
+        run {
             if (folder == null && filter in listOf("Buku", "Folder")) {
                 items(shownFolders, key = { "folder:$it" }) { name ->
                     Row(Modifier.fillMaxWidth().height(82.dp)
@@ -251,8 +268,9 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                         }, onOptions = { activeFile = it })
                 }
             }
-            if (visible.isEmpty() && (folder != null || filter == "Nanti" ||
-                (filter == "Buku" && shownFolders.isEmpty()))) item {
+            if ((filter == "Folder" && shownFolders.isEmpty()) ||
+                (filter != "Folder" && visible.isEmpty() &&
+                    (folder != null || filter != "Buku" || shownFolders.isEmpty()))) item {
                 Column(Modifier.fillMaxWidth().padding(top = 65.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(17.dp)) {
@@ -261,7 +279,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                     Text(when {
                         search.isNotBlank() -> "Tidak ada hasil pencarian."
                         folder != null -> "Folder ini kosong. Impor atau pindahkan file ke sini."
-                        filter == "Nanti" -> "Belum ada bacaan untuk nanti."
+                        filter == "Baca nanti" -> "Belum ada bacaan untuk nanti."
                         else -> "Belum ada dokumen."
                     }, color = Secondary)
                     Button(onClick = {

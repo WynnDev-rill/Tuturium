@@ -40,6 +40,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -221,6 +222,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var bookmarks by mutableStateOf<List<Bookmark>>(emptyList())
         private set
+    var savingReader by mutableStateOf(false)
+        private set
     var position by mutableStateOf(0)
         private set
     var status by mutableStateOf<String?>(null)
@@ -301,20 +304,55 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun closeReader() {
+        if (savingReader) return
         openJob?.cancel()
-        reader = null
-        content = null
-        refresh()
+        val book = reader ?: return
+        savingReader = true
+        viewModelScope.launch {
+            try {
+                val state = ReadingService.state.value
+                if (state.bookId == book.id && (state.playing || state.loading)) {
+                    check(ReadingService.command(app, ReadingService.PAUSE)) { "Pemutar tidak dapat dijeda." }
+                    kotlinx.coroutines.withTimeout(5000L) {
+                        ReadingService.state.first { it.bookId != book.id || (!it.playing && !it.loading) }
+                    }
+                }
+                // The service queues its checkpoint before reporting paused.
+                // Read after every pending write; never overwrite a newer service checkpoint.
+                val saved = withContext(ReadingService.positionDispatcher) {
+                    val latest = library.book(book.id) ?: error("Dokumen tidak ditemukan.")
+                    val stopped = ReadingService.state.value
+                    if (stopped.bookId == book.id && stopped.total > 0) {
+                        val index = if (stopped.completed) book.count else stopped.index
+                        val offset = if (stopped.completed) 0 else stopped.range?.first
+                            ?: latest.wordOffset.takeIf { latest.position == index } ?: 0
+                        library.position(book.id, index, offset)
+                    }
+                    library.books()
+                }
+                books = saved
+                reader = null
+                content = null
+            } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                status = "Progres belum berhasil disimpan. Coba kembali lagi."
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                status = "Progres belum berhasil disimpan. Coba kembali lagi."
+            } finally {
+                savingReader = false
+            }
+        }
     }
 
     fun import(uri: Uri) = addDocument {
         DocumentImporter(app).import(uri) { importing = it }
     }
 
-    fun addText(title: String, text: String) = addDocument {
+    fun addText(title: String, text: String, format: String = "TXT") = addDocument {
         require(text.length <= DocumentImporter.MAX_TEXT) { "Teks terlalu panjang." }
         val heading = title.trim().ifBlank { "Teks pribadi" }
-        library.add(heading, "TXT", ReadingDocument(listOf(Section(heading, text.trim()
+        library.add(heading, format, ReadingDocument(listOf(Section(heading, text.trim()
             .replace("\r\n", "\n").replace('\r', '\n')))))
     }
 
@@ -720,6 +758,6 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
-        private val databaseWrites = Dispatchers.IO.limitedParallelism(1)
+        private val databaseWrites = ReadingService.positionDispatcher
     }
 }

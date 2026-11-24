@@ -15,6 +15,8 @@ class DriveArchiveTest {
         val book = library.add("Drive migration check", "TXT",
             ReadingDocument(listOf(Section("Bab 1", "Ini contoh data yang harus pulih."))))
         library.toggleBookmark(book.id, 0, "Ini contoh")
+        library.position(book.id, 0, 4)
+        assertEquals(4, library.book(book.id)?.wordOffset)
         val archive = File.createTempFile("tuturium-drive-", ".zip", context.cacheDir)
         try {
             DriveArchive(context).export(archive)
@@ -27,6 +29,8 @@ class DriveArchiveTest {
             assertEquals("Ini contoh data yang harus pulih.",
                 library.document(book.id).sections.first().text)
             assertEquals(1, library.bookmarks(book.id).size)
+            assertEquals(0, library.book(book.id)?.position)
+            assertEquals(4, library.book(book.id)?.wordOffset)
         } finally {
             archive.delete()
             library.delete(book.id)

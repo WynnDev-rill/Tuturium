@@ -21,13 +21,23 @@ class LibraryV2FlowTest {
     @Test fun menuChangesLayoutAndSearchKeepsLibraryVisible() {
         compose.onNodeWithText("Perpustakaan").performClick()
         compose.onNodeWithContentDescription("Opsi perpustakaan").performClick()
-        compose.onNodeWithText("Kotak Kecil").performClick()
+        compose.onNodeWithText("Kotak Kecil").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Cari dokumen").performClick()
         compose.onNodeWithContentDescription("Tutup pencarian").assertIsDisplayed()
         compose.onNode(hasSetTextAction()).performTextInput("tidak ditemukan 123 xyz")
         compose.onNodeWithText("Tidak ada hasil pencarian.").assertIsDisplayed()
         compose.onNodeWithContentDescription("Tutup pencarian").performClick()
         compose.onAllNodesWithText("Perpustakaan").onFirst().assertIsDisplayed()
+    }
+
+    @Test fun podcastIsRemovedAndLaterFilterCanBeCleared() {
+        compose.onNodeWithText("Perpustakaan").performClick()
+        compose.onNodeWithText("Podcast").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Opsi perpustakaan").performClick()
+        compose.onNodeWithText("Baca nanti").performClick()
+        compose.onNodeWithContentDescription("Hapus filter").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Hapus filter").performClick()
+        compose.onNodeWithText("Baca nanti").assertDoesNotExist()
     }
 
     @Test fun createFolderThroughSheetAndSeeEmptyFolder() {

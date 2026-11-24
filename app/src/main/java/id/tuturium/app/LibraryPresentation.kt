@@ -73,3 +73,17 @@ internal object BookActions {
         TuturiumCloud.markDirty(c)
     }
 }
+
+internal fun matchesLibraryFilter(book: Book, filter: String, later: Boolean): Boolean =
+    when (filter) {
+        "Belum dibaca" -> book.position == 0 && book.wordOffset == 0
+        "Baca nanti" -> later
+        "PDF" -> book.format == "PDF"
+        "Dokumen" -> book.format in setOf("TXT", "DOCX", "EPUB", "DOC", "RTF", "MD") &&
+            !(book.format == "TXT" && book.title == "Hasil pindai")
+        "Halaman web" -> book.format == "WEB"
+        "Pindai" -> book.format in setOf("OCR", "SCAN", "IMAGE", "JPG", "JPEG", "PNG") ||
+            (book.format == "TXT" && book.title == "Hasil pindai")
+        "Lainnya" -> book.format !in setOf("PDF", "TXT", "DOCX", "EPUB", "DOC", "RTF", "MD", "WEB", "OCR", "SCAN", "IMAGE", "JPG", "JPEG", "PNG")
+        else -> true
+    }

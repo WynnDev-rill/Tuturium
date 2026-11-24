@@ -76,5 +76,9 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
     }
 }
 
-private fun formatPlaybackTime(seconds: Int): String =
-    "%02d:%02d".format(Locale.US, seconds / 60, seconds % 60)
+internal fun formatPlaybackTime(seconds: Int): String {
+    val time = seconds.coerceAtLeast(0)
+    return if (time >= 3600)
+        "%02d:%02d:%02d".format(Locale.US, time / 3600, time / 60 % 60, time % 60)
+    else "%02d:%02d".format(Locale.US, time / 60, time % 60)
+}

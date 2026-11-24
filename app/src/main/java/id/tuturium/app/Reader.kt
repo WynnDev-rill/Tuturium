@@ -5,10 +5,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -117,10 +116,11 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     LaunchedEffect(dragging) {
         if (dragging) manualBrowsing = true
     }
+    var activeWordOffScreen by remember { mutableStateOf(false) }
     val readingOffScreen by remember(list, locations, current) {
         derivedStateOf {
             list.layoutInfo.visibleItemsInfo.isNotEmpty() &&
-                list.layoutInfo.visibleItemsInfo.none { it.index == locations[current] }
+                (activeWordOffScreen || list.layoutInfo.visibleItemsInfo.none { it.index == locations[current] })
         }
     }
     LaunchedEffect(current, model.follow, jump, manualBrowsing, showPdf) {
@@ -129,8 +129,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             val target = locations[current]
             val info = list.layoutInfo
             val visible = info.visibleItemsInfo.firstOrNull { it.index == target }
-            if (jump == current || visible == null || visible.offset < 0 ||
-                visible.offset + minOf(visible.size, 140) > info.viewportEndOffset) {
+            if (jump == current || visible == null) {
                 list.scrollToItem(target)
             }
             if (jump == current) jump = -1
@@ -147,8 +146,9 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 17.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = model::closeReader) {
-                Icon(Icons.Rounded.KeyboardArrowDown, "Kembali ke pustaka", Modifier.size(31.dp))
+            IconButton(onClick = model::closeReader, enabled = !model.savingReader) {
+                if (model.savingReader) CircularProgressIndicator(Modifier.size(23.dp), strokeWidth = 2.dp)
+                else Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali ke pustaka", Modifier.size(28.dp))
             }
             Text(book.title, modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleLarge,
@@ -229,7 +229,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             .background(MaterialTheme.colorScheme.background),
             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 17.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            itemsIndexed(rows) { _, row ->
+            itemsIndexed(rows) { rowIndex, row ->
                 if (row.heading != null) {
                     if (book.format == "PDF") {
                         Text(row.heading, modifier = Modifier.padding(top = 18.dp, bottom = 17.dp),
@@ -245,7 +245,10 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     val sentenceColor = MaterialTheme.colorScheme.primaryContainer
                     val wordColor = MaterialTheme.colorScheme.primary
                     val wordInk = MaterialTheme.colorScheme.onPrimary
-                    val spokenRange = playback.range.takeIf { active && pass != null }
+                    val spokenRange = if (active && pass != null) playback.range
+                        else if (!active && pass != null && current == book.position && book.wordOffset in pass.text.indices)
+                            book.wordOffset..book.wordOffset
+                        else null
                     val highlighted = remember(row, pass, spokenRange, sentenceColor, wordColor, wordInk) {
                         buildAnnotatedString {
                             append(row.text)
@@ -264,23 +267,43 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         }
                     }
                     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-                    val bringIntoView = remember { BringIntoViewRequester() }
-                    LaunchedEffect(spokenRange, layout, model.follow, isPlaying, manualBrowsing) {
-                        val word = spokenRange?.first?.plus(pass?.offset ?: 0)
-                        val textLayout = layout
-                        if (model.follow && !manualBrowsing && isPlaying && word != null && word in row.text.indices && textLayout != null) {
-                            bringIntoView.bringIntoView(textLayout.getBoundingBox(word))
+                    LaunchedEffect(pass, spokenRange, layout, model.follow, isPlaying, manualBrowsing, dragging) {
+                        val textLayout = layout ?: return@LaunchedEffect
+                        val selected = pass ?: return@LaunchedEffect
+                        val word = (selected.offset + (spokenRange?.first ?: 0)).coerceIn(row.text.indices)
+                        val bounds = textLayout.getBoundingBox(word)
+                        if (manualBrowsing) {
+                            snapshotFlow {
+                                val info = list.layoutInfo
+                                val item = info.visibleItemsInfo.firstOrNull { it.index == rowIndex }
+                                val visible = item != null && item.offset + bounds.bottom > info.viewportStartOffset &&
+                                    item.offset + bounds.top < info.viewportEndOffset
+                                visible to list.isScrollInProgress
+                            }.collect { (visible, scrolling) ->
+                                activeWordOffScreen = !visible
+                                if (visible && !scrolling && !dragging) manualBrowsing = false
+                            }
+                        } else {
+                            activeWordOffScreen = false
+                            if (model.follow && !dragging && (isPlaying || spokenRange != null)) {
+                                val info = list.layoutInfo
+                                val item = info.visibleItemsInfo.firstOrNull { it.index == rowIndex } ?: return@LaunchedEffect
+                                val center = item.offset + (bounds.top + bounds.bottom) / 2f
+                                val delta = readerCenterDelta(center, info.viewportStartOffset,
+                                    info.viewportEndOffset, 44f, false)
+                                if (delta != 0f) list.scrollBy(delta)
+                            }
                         }
                     }
                     val latestPlay by rememberUpdatedState<(WordSelection) -> Unit>({
                         manualBrowsing = false
                         jump = it.passIndex
-                        model.playFromWord(book, it)
+                        if (!model.savingReader) model.playFromWord(book, it)
                     })
                     val readableSize = (model.fontSize * 0.86f).coerceIn(16f, 29f)
                     Text(highlighted, modifier = Modifier.fillMaxWidth()
                         .padding(bottom = if (row.paragraphEnd) 17.dp else 0.dp)
-                        .bringIntoViewRequester(bringIntoView).pointerInput(row) {
+                        .pointerInput(row) {
                         detectTapGestures { point ->
                             val offset = layout?.getOffsetForPosition(point) ?: return@detectTapGestures
                             selectSpokenWord(row.text, row.passes, offset)?.let(latestPlay)
@@ -383,3 +406,10 @@ private fun ReaderOptions(title: String, dismiss: () -> Unit, content: androidx.
 }
 
 internal fun rate(value: Float) = String.format(Locale.forLanguageTag("id-ID"), "%.2f×", value)
+
+internal fun readerCenterDelta(wordCenter: Float, start: Int, end: Int, tolerance: Float,
+    manualBrowsing: Boolean): Float {
+    if (manualBrowsing || end <= start) return 0f
+    val delta = wordCenter - (start + end) / 2f
+    return if (kotlin.math.abs(delta) > tolerance) delta else 0f
+}
