@@ -249,10 +249,10 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     var modelDownloadError by mutableStateOf<String?>(null)
         private set
     private var modelDownloadJob: Job? = null
-    var failedOfflinePreview by mutableStateOf<String?>(null)
-        private set
 
-    init {
+    init { refreshOfflineModels() }
+
+    fun refreshOfflineModels() {
         viewModelScope.launch {
             val onDisk = withContext(Dispatchers.IO) {
                 OfflineCatalog.models.filter { OfflineModelStore.installed(app, it) }.map { it.id }.toSet()
@@ -284,20 +284,26 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun cancelVoiceDownload() { modelDownloadJob?.cancel() }
 
-    internal fun previewOfflineVoice(voice: OfflineVoice) {
-        if (previewingVoice == voice.id) { stopVoicePreview(); return }
-        stopVoicePreview()
-        if (voice.model !in installedModels) return
+    private fun previewOfflineVoice(voice: OfflineVoice) {
+        if (voice.model !in installedModels) {
+            previewError = "Unduh Supertonic untuk mendengarkan pratinjau."
+            return
+        }
         if (ReadingService.state.value.playing || ReadingService.state.value.loading)
             ReadingService.command(app, ReadingService.PAUSE)
-        previewError = null
-        failedOfflinePreview = null
         previewingVoice = voice.id
         previewLoading = true
-        offlinePreview.play(viewModelScope, voice, "Halo, ini pratinjau suara bahasa Indonesia. Anda dapat mendengarkan buku secara offline di Tuturium.", 1f,
-            onStart = { previewLoading = false },
+        val text = "Halo, ini pratinjau suara bahasa Indonesia. Anda dapat mendengarkan buku secara offline di Tuturium."
+        val speech = PreparedSpeech(text, IntArray(text.length) { it })
+        offlinePreview.play(viewModelScope, voice, sequenceOf(OfflinePass(0, speech)), 1f, 1f,
+            onPass = {}, onSpoken = {}, onRange = {},
+            onRendering = { previewLoading = !it },
             onDone = { previewingVoice = null; previewLoading = false },
-            onError = { failedOfflinePreview = voice.model; previewError = "Pratinjau offline gagal: " + it.message.orEmpty(); previewingVoice = null; previewLoading = false })
+            onError = {
+                previewError = "Pratinjau Supertonic gagal: " + it.message.orEmpty()
+                previewingVoice = null
+                previewLoading = false
+            })
     }
 
     var voices by mutableStateOf<List<VoiceChoice>>(emptyList())
@@ -683,6 +689,11 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         }
         stopVoicePreview()
         previewError = null
+        val offline = OfflineCatalog.voice(name)
+        if (offline != null) {
+            previewOfflineVoice(offline)
+            return
+        }
         val choice = voices.firstOrNull { it.name == name && isIndonesian(it.language) }
         val engine = voiceProbe
         if (choice == null || !voiceReady || engine == null) {
@@ -717,7 +728,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun toggleFavoriteVoice(name: String) {
-        if (voices.none { it.name == name }) return
+        if (OfflineCatalog.voice(name) == null && voices.none { it.name == name }) return
         favoriteVoices = if (name in favoriteVoices) favoriteVoices - name
             else favoriteVoices + name
         prefs.edit().putStringSet("favorite_voices", favoriteVoices.toSet()).apply()

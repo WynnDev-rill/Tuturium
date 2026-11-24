@@ -1,6 +1,7 @@
 package id.tuturium.app
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -118,6 +120,7 @@ fun ListeningSettingsV2(model: TuturiumModel, onBack: () -> Unit) {
 }
 
 private fun voiceSubtitle(voice: VoiceChoice): String = when {
+    OfflineCatalog.voice(voice.name) != null -> "Supertonic 3 · Offline"
     voice.name == GOOGLE_ID_AUTO -> "Google TTS · Pilihan otomatis"
     voice.network -> "Google TTS · Online"
     else -> "Google TTS · Offline"
@@ -140,14 +143,26 @@ fun VoiceLibraryV2(model: TuturiumModel, onBack: () -> Unit) {
 
 @Composable
 fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
-    val voices = googleIndonesianVoices(model.voices)
-    val selected = if (OfflineCatalog.voice(model.settings.voice) == null)
-        resolveIndonesianVoice(voices, model.settings.voice) else null
-    var openedName by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(model) { model.refreshOfflineModels() }
+    val google = googleIndonesianVoices(model.voices)
+    val pack = OfflineCatalog.models.single()
+    val installed = pack.id in model.installedModels
+    val supertonic = if (installed) pack.voices.map {
+        VoiceChoice(it.id, "id", it.label, quality = 0)
+    } else emptyList()
+    val voices = google + supertonic
+    val selected = voices.firstOrNull { it.name == model.settings.voice }
+        ?: resolveIndonesianVoice(google, model.settings.voice)
+    var openedName by rememberSaveable { mutableStateOf<String?>(null) }
     val opened = voices.firstOrNull { it.name == openedName }
+    val closeDetails = {
+        model.stopVoicePreview()
+        openedName = null
+    }
+    BackHandler(opened != null, onBack = closeDetails)
     DisposableEffect(model) { onDispose { model.stopVoicePreview() } }
     if (opened != null) {
-        VoiceDetailPanel(model, opened, voices, modifier) { openedName = null }
+        VoiceDetailPanel(model, opened, google, modifier, closeDetails)
         return
     }
     val shortcuts = (voices.filter { it.name in model.favoriteVoices } +
@@ -180,7 +195,7 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
                                     tint = SpeechifyAccent)
                         }
                         Spacer(Modifier.height(7.dp))
-                        Text(indonesianVoiceLabel(voice, voices),
+                        Text(voiceLabel(voice, google),
                             maxLines = 1, style = MaterialTheme.typography.labelSmall)
                     }
                 }
@@ -193,7 +208,7 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
             Text("Suara Google Speech Services berbahasa Indonesia",
                 color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
         }
-        if (voices.isEmpty()) item {
+        if (google.isEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(model.voiceStatus.ifBlank {
                     "Tidak ada suara Indonesia yang dilaporkan oleh Google TTS."
@@ -210,45 +225,50 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
                     Text("Periksa suara lagi")
                 }
             }
-        } else items(voices, key = { it.name }) { voice ->
-            val active = selected?.name == voice.name
-            Row(Modifier.fillMaxWidth().clickable { openedName = voice.name }
-                .heightIn(min = 83.dp).padding(vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                IndonesianVoiceAvatar(Modifier.size(61.dp))
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(indonesianVoiceLabel(voice, voices),
-                        style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.height(4.dp))
-                    Text(voiceSubtitle(voice), color = SpeechifyMuted,
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                if (active) Icon(Icons.Rounded.CheckCircle, "Terpilih",
-                    tint = SpeechifyAccent, modifier = Modifier.size(23.dp))
-                else Icon(Icons.Rounded.ChevronRight, "Buka detail suara",
-                    tint = SpeechifyMuted)
-            }
+        } else items(google, key = { it.name }) { voice ->
+            VoiceLibraryRow(voice, google, selected?.name == voice.name) { openedName = voice.name }
         }
         item {
             Spacer(Modifier.height(14.dp))
-            Text("Suara neural offline", style = MaterialTheme.typography.titleLarge)
-            Text("Unduh model sekali. Pembacaan berikutnya berjalan di perangkat tanpa kuota API.",
+            Text("Supertonic 3", style = MaterialTheme.typography.titleLarge)
+            Text("Suara bahasa Indonesia di perangkat",
                 color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
         }
-        items(OfflineCatalog.models, key = { it.id }) { pack ->
-            OfflineModelCard(model, pack)
-        }
+        if (installed) items(supertonic, key = { it.name }) { voice ->
+            VoiceLibraryRow(voice, google, selected?.name == voice.name) { openedName = voice.name }
+        } else item { OfflineModelCard(model, pack) }
         if (model.voiceStatus.isNotBlank() && voices.isNotEmpty()) item {
             Text(model.voiceStatus, style = MaterialTheme.typography.bodySmall, color = SpeechifyMuted)
         }
     }
 }
 
+private fun voiceLabel(voice: VoiceChoice, google: List<VoiceChoice>): String =
+    OfflineCatalog.voice(voice.name)?.label ?: indonesianVoiceLabel(voice, google)
+
+@Composable
+private fun VoiceLibraryRow(voice: VoiceChoice, google: List<VoiceChoice>, selected: Boolean,
+    openDetails: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = openDetails)
+        .heightIn(min = 83.dp).padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        IndonesianVoiceAvatar(Modifier.size(61.dp))
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(voiceLabel(voice, google), style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(voiceSubtitle(voice), color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
+        }
+        if (selected) Icon(Icons.Rounded.CheckCircle, "Terpilih",
+            tint = SpeechifyAccent, modifier = Modifier.size(23.dp))
+        else Icon(Icons.Rounded.ChevronRight, "Buka detail suara", tint = SpeechifyMuted)
+    }
+}
+
 @Composable
 private fun VoiceDetailPanel(model: TuturiumModel, voice: VoiceChoice, all: List<VoiceChoice>,
     modifier: Modifier, onBack: () -> Unit) {
-    val name = indonesianVoiceLabel(voice, all)
+    val name = voiceLabel(voice, all)
     val selected = model.settings.voice == voice.name ||
         (model.settings.voice == null &&
             resolveIndonesianVoice(all, null)?.name == voice.name)
@@ -258,13 +278,9 @@ private fun VoiceDetailPanel(model: TuturiumModel, voice: VoiceChoice, all: List
         .padding(horizontal = 23.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = {
-                model.stopVoicePreview()
-                onBack()
-            }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali ke pustaka suara") }
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali ke pustaka suara") }
             Spacer(Modifier.weight(1f))
-            Text(if (voice.network && voice.name != GOOGLE_ID_AUTO) "Online" else
-                if (voice.name == GOOGLE_ID_AUTO) "Google TTS" else "Offline",
+            Text(voiceSubtitle(voice),
                 style = MaterialTheme.typography.labelMedium, color = SpeechifyMuted)
         }
         Spacer(Modifier.height(18.dp))
@@ -358,7 +374,7 @@ fun IndonesianVoiceAvatar(modifier: Modifier = Modifier) {
 fun SpeedControlSheet(model: TuturiumModel, playback: Playback, dismiss: () -> Unit) {
     val p = model.listeningOptions
     val speed = model.settings.speed
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
@@ -417,7 +433,7 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, dismiss: () -> U
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SkipOptionsSheet(model: TuturiumModel, dismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Box(Modifier.fillMaxWidth().heightIn(max = 690.dp)) {
             ListeningSettingsV2(model, onBack = dismiss)
         }
@@ -426,21 +442,20 @@ fun SkipOptionsSheet(model: TuturiumModel, dismiss: () -> Unit) {
 
 @Composable
 private fun OfflineModelCard(model: TuturiumModel, pack: OfflineModel) {
-    val installed = pack.id in model.installedModels
     val downloading = model.downloadingModel == pack.id
     Surface(color = Color(0xFF252525), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(pack.label, style = MaterialTheme.typography.titleMedium, color = Color.White)
-                    Text(if (installed) "Terpasang · Offline" else if (pack.bytes > 0)
-                        "±${(pack.bytes / 1_000_000L).coerceAtLeast(1)} MB · ${pack.voices.size} suara"
-                        else "±94 MB · ${pack.voices.size} suara",
+                    Text("Unduh paket suara", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                    Text("${pack.bytes / 1_000_000L} MB · ${pack.voices.size} suara",
                         color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
                 }
-                if (!installed && !downloading) IconButton(onClick = { model.downloadVoiceModel(pack.id) },
-                    enabled = model.downloadingModel == null) { Icon(Icons.Rounded.Download, "Unduh " + pack.label) }
-                if (downloading) IconButton(onClick = model::cancelVoiceDownload) { Icon(Icons.Rounded.Close, "Batalkan unduhan") }
+                if (!downloading) IconButton(onClick = { model.downloadVoiceModel(pack.id) },
+                    enabled = model.downloadingModel == null) { Icon(Icons.Rounded.Download, "Unduh Supertonic 3") }
+                if (downloading) IconButton(onClick = model::cancelVoiceDownload) {
+                    Icon(Icons.Rounded.Close, "Batalkan unduhan")
+                }
             }
             if (downloading) {
                 val progress = model.modelDownloadProgress
@@ -450,29 +465,9 @@ private fun OfflineModelCard(model: TuturiumModel, pack: OfflineModel) {
                     Text("Mengunduh ${(progress * 100).toInt()}%", color = SpeechifyMuted)
                 }
             }
-            if (installed) pack.voices.forEach { voice ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(voice.label, Modifier.weight(1f), color = Color.White)
-                    IconButton(onClick = { model.previewOfflineVoice(voice) }) {
-                        if (model.previewingVoice == voice.id && model.previewLoading)
-                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        else Icon(if (model.previewingVoice == voice.id) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            "Pratinjau " + voice.label)
-                    }
-                    IconButton(onClick = {
-                        model.stopVoicePreview()
-                        model.changeSettings(model.settings.copy(voice = voice.id, pitch = 1f))
-                    }) {
-                        Icon(if (model.settings.voice == voice.id) Icons.Rounded.CheckCircle else Icons.Rounded.Check,
-                            "Pilih " + voice.label, tint = if (model.settings.voice == voice.id) SpeechifyAccent else Color.White)
-                    }
-                }
-            }
-            if (!installed && model.failedModelId == pack.id && model.downloadingModel == null) model.modelDownloadError?.let {
+            if (model.failedModelId == pack.id && !downloading) model.modelDownloadError?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            if (installed && model.failedOfflinePreview == pack.id)
-                model.previewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
 }

@@ -59,7 +59,8 @@ data class Playback(
 data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Float) {
     companion object {
         fun read(context: Context): ReadingSettings = context.getSharedPreferences("settings", 0).let {
-            ReadingSettings(it.getString("voice", null), it.getFloat("speed", 1f), it.getFloat("pitch", 1f))
+            ReadingSettings(OfflineCatalog.supportedSelection(it.getString("voice", null)),
+                it.getFloat("speed", 1f), it.getFloat("pitch", 1f))
         }
     }
     fun save(context: Context) {
@@ -131,6 +132,9 @@ class ReadingService : Service() {
     private var request = 0
     private var utterance = 0
     private var activeUtterance: String? = null
+    private var offlineSession: OfflineSession? = null
+
+    private data class OfflineSession(var settings: ReadingSettings, var options: ListeningOptions)
     private var speechOffset = 0
     private var lastCheckpoint = 0L
     private var resumeOnFocus = false
@@ -261,9 +265,20 @@ class ReadingService : Service() {
             PREVIOUS -> seek(current.index - 1)
             SEEK -> seek(intent.getIntExtra("index", 0), offset = intent.getIntExtra("offset", 0).coerceAtLeast(0))
             SETTINGS -> if (current.playing || current.loading) {
-                speechOffset = current.range?.first ?: speechOffset
-                stopUtterance()
-                startCurrent()
+                val nextSettings = ReadingSettings.read(this)
+                val nextOptions = ListeningOptions.read(this)
+                val session = offlineSession
+                if (session != null && session.settings.voice == nextSettings.voice &&
+                    session.options.copy(autoRamp = nextOptions.autoRamp) == nextOptions
+                ) {
+                    session.settings = nextSettings
+                    session.options = nextOptions
+                    applyOfflineRate(session)
+                } else {
+                    speechOffset = current.range?.first ?: speechOffset
+                    stopUtterance()
+                    startCurrent()
+                }
             }
             TIMER -> setTimer(intent.getIntExtra("minutes", 0))
         }
@@ -328,6 +343,7 @@ class ReadingService : Service() {
     }
 
     private fun startCurrentInternal() {
+        if (offlineSession != null) return
         startupStage = "menyiapkan dokumen"
         val document = document ?: return
         val pass = document.passes.getOrNull(current.index) ?: return
@@ -347,15 +363,7 @@ class ReadingService : Service() {
         startupStage = "membaca pengaturan"
         val options = ListeningOptions.read(this)
         startupStage = "menyiapkan teks"
-        val location = pass.section to pass.paragraph
-        val prepared = if (options.skipEnabled) {
-            if (location != preparedLocation || options != preparedOptions || preparedParagraph == null) {
-                preparedParagraph = safePreparedSpeech(document.paragraphs[pass.section][pass.paragraph], options)
-                preparedLocation = location
-                preparedOptions = options
-            }
-            checkNotNull(preparedParagraph).forPass(pass)
-        } else prepareSpeech(pass.text, options)
+        val prepared = preparePass(document, pass, options)
         val from = if (speechOffset <= 0) 0 else prepared.offsets.indexOfFirst { it >= speechOffset }
         if (prepared.text.isBlank() || from < 0) {
             speechOffset = 0
@@ -429,23 +437,7 @@ class ReadingService : Service() {
         val requestedSpeed = if (normalSpeedRetryPass == current.index) 1f
             else rampedSpeed(settings.speed, listenedWords, options.autoRamp)
         if (offline != null) {
-            runCatching { lock.acquire(300_000) }
-            val token = (++utterance).toString()
-            activeUtterance = token
-            current = current.copy(playing = false, loading = true, completed = false,
-                effectiveSpeed = requestedSpeed, range = null, error = null)
-            publish()
-            offlineAudio.play(scope, offline, prepared.text.substring(preparedStart), requestedSpeed,
-                pitch = settings.pitch, onRange = { start, end -> listener.onRangeStart(token, start, end, 0) },
-                onStart = {
-                    if (activeUtterance == token) {
-                        runCatching { lock.acquire(300_000) }
-                        current = current.copy(playing = true, loading = false)
-                        publish()
-                    }
-                },
-                onDone = { listener.onDone(token) },
-                onError = { if (activeUtterance == token) fail("Suara offline gagal: " + it.message.orEmpty()) })
+            startOffline(document, offline, settings, options, prepared, from)
             return
         }
         val engine = tts ?: return
@@ -477,6 +469,78 @@ class ReadingService : Service() {
             startupStage = "memperbarui pemutar"
             publish()
         }
+    }
+
+    private fun preparePass(document: ReadingDocument, pass: Pass, options: ListeningOptions): PreparedSpeech {
+        val location = pass.section to pass.paragraph
+        return if (options.skipEnabled) {
+            if (location != preparedLocation || options != preparedOptions || preparedParagraph == null) {
+                preparedParagraph = safePreparedSpeech(document.paragraphs[pass.section][pass.paragraph], options)
+                preparedLocation = location
+                preparedOptions = options
+            }
+            checkNotNull(preparedParagraph).forPass(pass)
+        } else prepareSpeech(pass.text, options)
+    }
+
+    private fun applyOfflineRate(session: OfflineSession) {
+        val speed = rampedSpeed(session.settings.speed, listenedWords, session.options.autoRamp)
+        if (current.playing && current.effectiveSpeed != speed) recordListeningTime()
+        offlineAudio.setRate(speed, session.settings.pitch)
+        current = current.copy(effectiveSpeed = speed)
+    }
+
+    private fun startOffline(
+        document: ReadingDocument, voice: OfflineVoice, settings: ReadingSettings, options: ListeningOptions,
+        initial: PreparedSpeech, offset: Int
+    ) {
+        val session = OfflineSession(settings, options)
+        offlineSession = session
+        val startIndex = current.index
+        val first = PreparedSpeech(initial.text.substring(offset),
+            initial.offsets.copyOfRange(offset, initial.offsets.size))
+        val passages = sequence {
+            yield(OfflinePass(startIndex, first))
+            for (index in startIndex + 1 until document.passes.size) {
+                val speech = preparePass(document, document.passes[index], options)
+                if (speech.text.isNotBlank()) yield(OfflinePass(index, speech))
+            }
+        }
+        val speed = rampedSpeed(settings.speed, listenedWords, options.autoRamp)
+        current = current.copy(playing = false, loading = true, completed = false,
+            effectiveSpeed = speed, range = null, error = null)
+        runCatching { lock.acquire(300_000) }
+        publish()
+        offlineAudio.play(scope, voice, passages, speed, settings.pitch,
+            onPass = { pass ->
+                speechOffset = pass.speech.offsets.first()
+                current = current.copy(index = pass.index, range = null)
+                applyOfflineRate(session)
+                persist(pass.index, speechOffset)
+                runCatching { lock.acquire(300_000) }
+            },
+            onSpoken = { pass ->
+                val words = countDocumentWords(pass.speech.text)
+                val rate = current.effectiveSpeed
+                val context = applicationContext
+                listenedWords += words
+                positionWrites.launch { ListeningStats.recordUtterance(context, words, rate) }
+            },
+            onRange = { range ->
+                current = current.copy(range = range)
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastCheckpoint >= 2_000L) {
+                    lastCheckpoint = now
+                    persist(current.index, range.first)
+                }
+            },
+            onRendering = { rendering ->
+                current = current.copy(playing = rendering, loading = !rendering)
+                publish()
+            },
+            onDone = { offlineSession = null; completeBook() },
+            onError = { fail("Suara Supertonic gagal: " + it.message.orEmpty()) }
+        )
     }
 
     private fun seek(index: Int, keepPlaying: Boolean = true, offset: Int = 0) {
@@ -642,6 +706,7 @@ class ReadingService : Service() {
 
     private fun stopUtterance() {
         activeUtterance = null
+        offlineSession = null
         offlineAudio.stop()
         runCatching { tts?.stop() }.onFailure {
             android.util.Log.w("TuturiumPlayback", "TTS stop failed", it)

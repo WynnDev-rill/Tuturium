@@ -126,7 +126,7 @@ fun StorageV2(model: TuturiumModel, onBack: () -> Unit) {
             }
         }
     }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false },
+    if (confirm) TuturiumDialog(onDismissRequest = { confirm = false },
         title = { Text("Kosongkan cache?") },
         text = { Text("Hanya unduhan pembaruan dan salinan berbagi sementara yang dihapus. Dokumen tetap aman.") },
         confirmButton = { TextButton(onClick = {

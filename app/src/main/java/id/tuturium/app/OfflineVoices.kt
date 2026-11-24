@@ -21,9 +21,6 @@ internal data class OfflineModel(val id: String, val label: String, val files: L
 
 internal object OfflineCatalog {
     private const val SHERPA = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/"
-    private const val ARBO = "https://github.com/ARBO-TEAM/arboTTS/releases/download/"
-    private const val ARBO_RAW = "https://raw.githubusercontent.com/ARBO-TEAM/arboTTS/f628060f0a3afdf86019c99eb057dcecb824d294/"
-    private const val KOKORO = "https://huggingface.co/onnx-community/Kokoro-82M-ONNX/resolve/f46687f7e41512228ae953af24a11b2640ea0f22/"
     private fun file(name: String, base: String, sha: String, size: Long) = ModelFile(name, base + name, sha, size)
     private fun tar(id: String, label: String, name: String, sha: String, size: Long,
         labels: List<String>, required: List<String>) =
@@ -34,38 +31,13 @@ internal object OfflineCatalog {
             "82fa96f91c4ef8abaae3a14a3f4153facf88bed821d1f7331cec2700f432c427", 128774318,
             (1..5).map { "Supertonic F$it" } + (1..5).map { "Supertonic M$it" },
             listOf("duration_predictor.int8.onnx", "text_encoder.int8.onnx", "vector_estimator.int8.onnx",
-                "vocoder.int8.onnx", "tts.json", "unicode_indexer.bin", "voice.bin")),
-        tar("piper", "Piper · News TTS", "vits-piper-id_ID-news_tts-medium.tar.bz2",
-            "634b0169fe41c368e9fafe128f30647f9e0301e852ce503cd78146db524f1f12", 67243848,
-            listOf("Piper News Indonesia"), listOf("id_ID-news_tts-medium.onnx", "tokens.txt", "espeak-ng-data")),
-        OfflineModel("arbo-nano", "ArboTTS · Paradee Nano",
-            listOf(
-                file("arbo_paradee_8m.onnx", ARBO + "v2.4.0/", "0a858866e77923cc2f8f18dbcad2c398db4c99d60d39725ffd544f5f829d418c", 9037971),
-                file("vocab.json", ARBO + "v2.4.0/", "2f463e209782e9a97c84c29bb7e6267a5eb9569db525e6b83d170d4a5ff73721", 1489)),
-            listOf("Ardi"), listOf("arbo_paradee_8m.onnx", "vocab.json")),
-        OfflineModel("arbo-small", "ArboTTS · Small",
-            listOf(
-                file("arbotts_small.onnx", ARBO + "v2.1.0/", "8fe4f5e9edf68f5c758ba7e4e45c817a6669ea602a1b4afe3495e1bfc1b0feb8", 32806261),
-                file("arbotts_small.onnx.json", ARBO + "v2.1.0/", "747d9326512a9ffdae36fb4115b127df4391b89353b0f33759ba56ab2ad204f1", 5878)),
-            listOf("Arbo Small", "Arba Small"), listOf("arbotts_small.onnx", "arbotts_small.onnx.json")),
-        OfflineModel("arbo-standard", "ArboTTS · Standard",
-            listOf(
-                file("arbotts_v1.onnx", ARBO + "v2.0.0/", "752ead6795d369064fd957ff0aeed62d851f559289d30c0fe73bf70f2632192b", 63516051),
-                file("arbotts_v1.onnx.json", ARBO + "v2.0.0/", "cadd94c06f27a201dc5174f07a5f4887a24f88b5f182cec055c6beba0b5ed51b", 7994)),
-            listOf("Arbo Standard"), listOf("arbotts_v1.onnx", "arbotts_v1.onnx.json")),
-        OfflineModel("arbo-kokoro", "ArboTTS · Kokoro",
-            listOf(
-                ModelFile("model_quantized.onnx", KOKORO + "onnx/model_quantized.onnx",
-                    "0d55b15d4b735d61a21b0105136bc81b8768c4db94753193c19354fa863cd556", 92360543),
-                file("tokenizer.json", KOKORO, "ee301fc39cf903ddbb463564630a28767785e3a11edd6d8226e92d4b4ef131bb", 4608),
-                file("id_arbo.bin", ARBO_RAW + "arbotts/voices/", "83549e23f9f89f0006d5403fd1e0ceb928661a06159c80819feb93693319d895", 524288),
-                file("id_arba.bin", ARBO_RAW + "arbotts/voices/", "70cb0982718e82dbca56bd44fe79bb23d9b936ae4c42c3c7691d8f417dadcd27", 524288)),
-            listOf("Arbo Kokoro", "Arba Kokoro"),
-            listOf("model_quantized.onnx", "tokenizer.json", "id_arbo.bin", "id_arba.bin"))
+                "vocoder.int8.onnx", "tts.json", "unicode_indexer.bin", "voice.bin"))
     )
     private val voicesById = models.flatMap { it.voices }.associateBy { it.id }
     private val modelsById = models.associateBy { it.id }
     fun voice(id: String?): OfflineVoice? = voicesById[id]
+    fun supportedSelection(id: String?): String? =
+        id?.takeUnless { it.startsWith("offline:") && voice(it) == null }
     fun model(id: String): OfflineModel = modelsById.getValue(id)
 }
 

@@ -178,7 +178,7 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
                 IconButton(onClick = { searchOpen = !searchOpen }) { Icon(Icons.Rounded.Search, "Cari dokumen") }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreHoriz, "Opsi perpustakaan") }
-                    DropdownMenu(menu, { menu = false }) {
+                    TuturiumMenu(menu, { menu = false }) {
                         DropdownMenuItem(text = { Text(if (sortTitle) "Urutkan terbaru" else "Urutkan A–Z") },
                             onClick = { sortTitle = !sortTitle; menu = false })
                     }
@@ -265,7 +265,7 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
                 var options by remember { mutableStateOf(false) }
                 Box {
                     IconButton(onClick = { options = true }) { Icon(Icons.Rounded.MoreVert, "Opsi ${book.title}", tint = Muted) }
-                    DropdownMenu(options, onDismissRequest = { options = false }) {
+                    TuturiumMenu(options, onDismissRequest = { options = false }) {
                         DropdownMenuItem(text = { Text("Ganti judul") }, onClick = { options = false; rename = book })
                         folders.forEach { folder ->
                             DropdownMenuItem(text = { Text("Pindah ke: $folder") }, onClick = {
@@ -287,7 +287,7 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
             }
         }
     }
-    if (createFolder) AlertDialog(
+    if (createFolder) TuturiumDialog(
         onDismissRequest = { createFolder = false },
         title = { Text("Folder baru") },
         text = { OutlinedTextField(folderDraft, { folderDraft = it.take(60) },
@@ -306,14 +306,14 @@ fun ModernLibrary(model: TuturiumModel, playback: Playback, onFolder: () -> Unit
     )
     rename?.let { book ->
         var title by remember(book.id) { mutableStateOf(book.title) }
-        AlertDialog(onDismissRequest = { rename = null }, title = { Text("Ganti judul") },
+        TuturiumDialog(onDismissRequest = { rename = null }, title = { Text("Ganti judul") },
             text = { OutlinedTextField(title, { title = it.take(200) }, singleLine = true) },
             confirmButton = { TextButton(onClick = { model.rename(book, title); rename = null },
                 enabled = title.isNotBlank()) { Text("Simpan") } },
             dismissButton = { TextButton(onClick = { rename = null }) { Text("Batal") } })
     }
     remove?.let { book ->
-        AlertDialog(onDismissRequest = { remove = null }, title = { Text("Pindahkan ke sampah?") },
+        TuturiumDialog(onDismissRequest = { remove = null }, title = { Text("Pindahkan ke sampah?") },
             text = { Text("Dokumen dapat dipulihkan melalui Profil → File yang Dihapus.") },
             confirmButton = { TextButton(onClick = { model.remove(book); remove = null }) { Text("Pindahkan") } },
             dismissButton = { TextButton(onClick = { remove = null }) { Text("Batal") } })
@@ -477,7 +477,7 @@ fun ModernTrash(model: TuturiumModel, onBack: () -> Unit) {
                                 TextButton(onClick = { model.restore(book) }) { Text("Pulihkan") }
                                 var confirm by remember { mutableStateOf(false) }
                                 TextButton(onClick = { confirm = true }) { Text("Hapus permanen") }
-                                if (confirm) AlertDialog(onDismissRequest = { confirm = false },
+                                if (confirm) TuturiumDialog(onDismissRequest = { confirm = false },
                                     title = { Text("Hapus permanen?") }, text = { Text("Tindakan ini tidak dapat dibatalkan.") },
                                     confirmButton = { TextButton(onClick = {
                                         model.deletePermanently(book); confirm = false

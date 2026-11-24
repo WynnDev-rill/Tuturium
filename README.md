@@ -8,11 +8,15 @@ Unduh `Tuturium.apk` dari [GitHub Releases](https://github.com/WynnDev-rill/Tutu
 
 - Impor PDF, EPUB, DOCX atau TXT dari pemilih dokumen, atau tambahkan teks dari clipboard dan menu Berbagi.
 - Buka dokumen di Pustaka untuk membaca, memutar, mencari teks, melompat ke bagian, atau menyimpan markah.
-- Atur suara, kecepatan, nada, ukuran teks, dan tema dari Setelan. Pilih suara Google Indonesia online atau offline, dengarkan pratinjaunya, kemudian simpan sebagai suara aktif. Mode otomatis memprioritaskan suara Indonesia lokal jika tersedia. Pilihan online memerlukan internet, dan pilihan suara bergantung pada paket mesin Google TTS pada perangkat.
+- Atur suara, kecepatan, nada, ukuran teks, dan tema dari Setelan. Pilih Google TTS atau unduh Supertonic 3 untuk menggunakan sepuluh suara bahasa Indonesia secara luring. Setiap suara bisa dibuka untuk pratinjau, favorit, dan pemilihan. Mode otomatis memprioritaskan suara Indonesia lokal jika tersedia. Pilihan online memerlukan internet, dan pilihan suara bergantung pada paket mesin Google TTS pada perangkat.
 - Lanjutkan audio ketika layar terkunci. Gunakan putar/jeda dan tombol lompat dari notifikasi media atau dari pembaca. Pengatur waktu tidur tersedia melalui menu pembaca.
 - Tuturium memeriksa rilis stabil di GitHub saat aplikasi dibuka dan menyediakan pemeriksaan manual di Setelan. Pengunduhan dan pemasangan dimulai dengan tindakan pengguna. Android meminta konfirmasi pemasangan.
 
 Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine, DOCX mengambil isi utama, dan PDF menyediakan pilihan **PDF** (halaman asli jika berkasnya tersimpan) atau **Teks** (paragraf rapi dengan sorotan dan pemilihan kata yang langsung dibacakan). Tampilan Teks mengikuti tema gelap/terang aplikasi, dan tombol kata aktif memudahkan kembali ke posisi narasi setelah menggulir jauh. Untuk halaman PDF tanpa teks, model OCR lokal mengenali tulisan Latin. Kuota perangkat dan keterbacaan gambar memengaruhi OCR. Jumlah maksimum dokumen impor adalah 100 MB, hingga 1.500 halaman PDF atau bagian EPUB, dan hingga dua juta karakter hasil ekstraksi. Mesin TTS yang menyediakan rentang ucapan memungkinkan sorotan kata. Mesin lain menggunakan sorotan kalimat.
+
+## Supertonic 3
+
+Tuturium menyintesis teks pada 1×, lalu Media3 mengubah kecepatan pemutaran. Saat membaca, aplikasi menyiapkan hingga 12 potongan audio dengan sasaran sekitar satu menit audio pada laju asli. Waktu penyiapan awal dan isi antrean bergantung pada panjang kalimat, kecepatan pilihan, serta kinerja perangkat.
 
 ## Aktivasi rilis otomatis (sekali saja)
 

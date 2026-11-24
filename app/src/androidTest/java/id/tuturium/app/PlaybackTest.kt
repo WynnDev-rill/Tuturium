@@ -28,7 +28,7 @@ class PlaybackTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val original = ReadingSettings.read(context)
-        val pack = if (offline) OfflineCatalog.model("arbo-nano") else null
+        val pack = if (offline) OfflineCatalog.model("supertonic3") else null
         if (pack != null) OfflineModelStore.install(context, pack) {}
         val library = Library.get(context)
         val book = library.add("Uji pemutar", "TXT", ReadingDocument(listOf(
@@ -36,7 +36,7 @@ class PlaybackTest {
                 "dengan jalan setapak yang menghubungkan rumah warga ").repeat(5) + ".")
         )))
         try {
-            if (pack != null) ReadingSettings(pack.voices.single().id, 1f, 1f).save(context)
+            if (pack != null) ReadingSettings(pack.voices.first().id, 1f, 1f).save(context)
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { ReadingService.command(it, ReadingService.PLAY, book.id, 0) }
                 val started = withTimeout(30_000) {

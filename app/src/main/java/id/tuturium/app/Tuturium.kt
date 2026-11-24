@@ -187,7 +187,7 @@ fun Tuturium(model: TuturiumModel) {
             }
         }
         if (showAddSheet) {
-            ModalBottomSheet(onDismissRequest = { showAddSheet = false },
+            TuturiumSheet(onDismissRequest = { showAddSheet = false },
                 containerColor = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
                     Text("Tambahkan bacaan", style = MaterialTheme.typography.titleLarge)
@@ -211,7 +211,7 @@ fun Tuturium(model: TuturiumModel) {
             }
         }
         if (showLinkDialog) {
-            AlertDialog(onDismissRequest = { showLinkDialog = false },
+            TuturiumDialog(onDismissRequest = { showLinkDialog = false },
                 title = { Text("Dengarkan tautan") },
                 text = { OutlinedTextField(linkDraft, { linkDraft = it.take(2048) },
                     singleLine = true, label = { Text("URL HTTPS halaman web") }) },
@@ -226,7 +226,7 @@ fun Tuturium(model: TuturiumModel) {
         }
         if (model.showPaste) PasteDialog(model)
         model.importing?.let { progress ->
-            AlertDialog(onDismissRequest = {}, title = { Text("Mengimpor dokumen") },
+            TuturiumDialog(onDismissRequest = {}, title = { Text("Mengimpor dokumen") },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(progress)
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -354,13 +354,13 @@ private fun LibraryScreen(model: TuturiumModel, playback: Playback, openFile: ()
     }
     rename?.let { book ->
         var title by remember(book.id) { mutableStateOf(book.title) }
-        AlertDialog(onDismissRequest = { rename = null }, title = { Text("Ganti judul") },
+        TuturiumDialog(onDismissRequest = { rename = null }, title = { Text("Ganti judul") },
             text = { OutlinedTextField(title, { title = it.take(200) }, label = { Text("Judul") }, singleLine = true) },
             confirmButton = { TextButton({ model.rename(book, title); rename = null }, enabled = title.isNotBlank()) { Text("Simpan") } },
             dismissButton = { TextButton({ rename = null }) { Text("Batal") } })
     }
     remove?.let { book ->
-        AlertDialog(onDismissRequest = { remove = null }, title = { Text("Hapus dari pustaka?") },
+        TuturiumDialog(onDismissRequest = { remove = null }, title = { Text("Hapus dari pustaka?") },
             text = { Text("Dokumen “${book.title}” beserta progres dan markahnya akan dihapus dari Tuturium.") },
             confirmButton = { TextButton({ model.remove(book); remove = null }) { Text("Hapus") } },
             dismissButton = { TextButton({ remove = null }) { Text("Batal") } })
@@ -395,7 +395,7 @@ private fun BookRow(book: Book, playback: Playback, open: () -> Unit, rename: ()
             }
             Box {
                 IconButton({ menu = true }) { Icon(Icons.Rounded.MoreVert, "Opsi ${book.title}") }
-                DropdownMenu(menu, { menu = false }) {
+                TuturiumMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text("Ganti judul") }, onClick = { menu = false; rename() })
                     DropdownMenuItem(text = { Text("Hapus") }, onClick = { menu = false; remove() })
                 }
@@ -407,7 +407,7 @@ private fun BookRow(book: Book, playback: Playback, open: () -> Unit, rename: ()
 @Composable
 private fun PasteDialog(model: TuturiumModel) {
     var title by rememberSaveable { mutableStateOf("") }
-    AlertDialog(onDismissRequest = { model.showPaste = false }, title = { Text("Tambah teks") }, text = {
+    TuturiumDialog(onDismissRequest = { model.showPaste = false }, title = { Text("Tambah teks") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(title, { title = it.take(200) }, label = { Text("Judul (opsional)") }, singleLine = true)
             OutlinedTextField(model.textDraft, { model.textDraft = it.take(DocumentImporter.MAX_TEXT) },

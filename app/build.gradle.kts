@@ -1,8 +1,5 @@
 import java.net.URI
 import java.security.MessageDigest
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
-import java.util.zip.ZipEntry
 
 plugins {
     id("com.android.application") version "8.9.2"
@@ -12,7 +9,7 @@ plugins {
 
 val keyPath = providers.environmentVariable("TUTURIUM_KEYSTORE")
 // Pinned runtime only; model weights are never bundled in the APK.
-val sherpaAar = layout.buildDirectory.file("offline-runtime/sherpa-onnx-1.13.4.aar")
+val sherpaAar = layout.buildDirectory.file("offline-runtime/sherpa-onnx-static-1.13.4.aar")
 val fetchSherpa = tasks.register("fetchSherpaRuntime") {
     outputs.file(sherpaAar)
     doLast {
@@ -25,28 +22,7 @@ val fetchSherpa = tasks.register("fetchSherpaRuntime") {
             val sha = MessageDigest.getInstance("SHA-256")
                 .digest(temporary.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
             check(sha == "dc5ac19a28dee3bffc5e5a5d50cb6afa977703fc4a7ee535a308506990fdd295")
-            // Both JNI bridges must see a single ONNX Runtime library.
-            // Sherpa v1.13.4 builds against ORT 1.27.0. Keep the Maven runtime
-            // (with the Java JNI bridge) and remove duplicate shared ORT files from the AAR.
-            val filtered = File(destination.parentFile, destination.name + ".filtered")
-            try {
-                ZipInputStream(temporary.inputStream().buffered()).use { input ->
-                    ZipOutputStream(filtered.outputStream().buffered()).use { output ->
-                        while (true) {
-                            val entry = input.nextEntry ?: break
-                            if (!entry.name.endsWith("/libonnxruntime.so") &&
-                                !entry.name.endsWith("/libonnxruntime4j_jni.so")) {
-                                output.putNextEntry(ZipEntry(entry.name))
-                                if (!entry.isDirectory) input.copyTo(output)
-                                output.closeEntry()
-                            }
-                            input.closeEntry()
-                        }
-                    }
-                }
-                if (destination.exists()) destination.delete()
-                check(filtered.renameTo(destination))
-            } finally { filtered.delete() }
+            check(temporary.renameTo(destination))
         } finally { temporary.delete() }
     }
 }
@@ -59,8 +35,8 @@ android {
         resourceConfigurations += listOf("en", "id")
         minSdk = 26
         targetSdk = 35
-        versionCode = 10309
-        versionName = "1.3.9"
+        versionCode = 10310
+        versionName = "1.3.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Client IDs are public identifiers, not OAuth client secrets.
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID",
@@ -105,7 +81,7 @@ android {
 kotlin { compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 dependencies {
     implementation(files(sherpaAar).builtBy(fetchSherpa))
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation(platform("androidx.compose:compose-bom:2025.05.01"))
     implementation("androidx.activity:activity-compose:1.10.1")

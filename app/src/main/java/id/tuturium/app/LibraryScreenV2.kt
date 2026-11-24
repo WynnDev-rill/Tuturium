@@ -153,7 +153,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                             IconButton(onClick = { if (folder == null) menu = true else folderOptions = folder }) {
                                 Icon(Icons.Rounded.MoreHoriz, "Opsi perpustakaan")
                             }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false },
+                            TuturiumMenu(expanded = menu, onDismissRequest = { menu = false },
                                 modifier = Modifier.width(275.dp).background(Panel)) {
                                 DropdownMenuItem(text = { Text("Pilih beberapa") },
                                     leadingIcon = { Icon(Icons.Rounded.Checklist, null) },
@@ -212,7 +212,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                             containerColor = Panel, contentColor = Color.White)) {
                         Icon(Icons.Rounded.FilterList, "Filter perpustakaan")
                     }
-                    DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false },
+                    TuturiumMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false },
                         modifier = Modifier.width(240.dp),
                         shape = RoundedCornerShape(20.dp),
                         containerColor = Color(0xFF2D2D2D)) {
@@ -325,7 +325,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
             })
     }
     deleteFolder?.let { name ->
-        AlertDialog(onDismissRequest = { deleteFolder = null },
+        TuturiumDialog(onDismissRequest = { deleteFolder = null },
             title = { Text("Hapus folder?") },
             text = { Text("Folder “$name” dihapus, tetapi semua dokumen tetap tersedia di Perpustakaan.") },
             confirmButton = { TextButton(onClick = {
@@ -336,7 +336,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
             dismissButton = { TextButton(onClick = { deleteFolder = null }) { Text("Batal") } })
     }
     folderOptions?.let { name ->
-        ModalBottomSheet(onDismissRequest = { folderOptions = null }, containerColor = Panel) {
+        TuturiumSheet(onDismissRequest = { folderOptions = null }, containerColor = Panel) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp)) {
                 SheetHeadline(Icons.Rounded.Folder, name)
                 Spacer(Modifier.height(14.dp))
@@ -355,7 +355,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
         }
     }
     activeFile?.let { book ->
-        ModalBottomSheet(onDismissRequest = { activeFile = null }, containerColor = Panel) {
+        TuturiumSheet(onDismissRequest = { activeFile = null }, containerColor = Panel) {
             Column(Modifier.fillMaxWidth().heightIn(max = 680.dp)
                 .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -413,7 +413,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
     }
     if (moveFile != null || chooseTargetForSelection || choosingForFolder) {
         val moving = moveFile
-        ModalBottomSheet(onDismissRequest = {
+        TuturiumSheet(onDismissRequest = {
             moveFile = null; chooseTargetForSelection = false; choosingForFolder = false
         }, containerColor = Panel) {
             Column(Modifier.fillMaxWidth().heightIn(max = 680.dp)
@@ -449,7 +449,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
     }
     renameFile?.let { book ->
         var value by remember(book.id) { mutableStateOf(book.title) }
-        AlertDialog(onDismissRequest = { renameFile = null },
+        TuturiumDialog(onDismissRequest = { renameFile = null },
             title = { Text("Ubah nama") },
             text = { OutlinedTextField(value, { value = it.take(200) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth()) },
@@ -458,7 +458,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
             dismissButton = { TextButton(onClick = { renameFile = null }) { Text("Batal") } })
     }
     deleteFile?.let { book ->
-        AlertDialog(onDismissRequest = { deleteFile = null },
+        TuturiumDialog(onDismissRequest = { deleteFile = null },
             title = { Text("Hapus dokumen?") },
             text = { Text("Bacaan dipindahkan ke File yang Dihapus dan dapat dipulihkan.") },
             confirmButton = { TextButton(onClick = { model.remove(book); deleteFile = null }) {
@@ -572,7 +572,7 @@ private fun SheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, t
 private fun FolderEditorV2(value: String, onChange: (String) -> Unit, title: String,
     onDismiss: () -> Unit, onSave: (String) -> Unit) {
     val requester = remember { FocusRequester() }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Panel) {
+    TuturiumSheet(onDismissRequest = onDismiss, containerColor = Panel) {
         Column(Modifier.fillMaxWidth().imePadding()
             .padding(horizontal = 24.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)) {

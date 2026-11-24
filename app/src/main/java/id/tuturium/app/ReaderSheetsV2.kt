@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 fun ReaderMenuSheet(model: TuturiumModel, book: Book, index: Int, marked: Boolean,
     dismiss: () -> Unit, navigate: (String) -> Unit) {
     val p = model.listeningOptions
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Column(Modifier.fillMaxWidth().heightIn(max = 740.dp).verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -121,7 +121,7 @@ private fun ReaderMenuToggle(icon: androidx.compose.ui.graphics.vector.ImageVect
 @Composable
 fun ReaderVoiceSheet(model: TuturiumModel, dismiss: () -> Unit) {
     LaunchedEffect(Unit) { model.loadVoices() }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Text("Pustaka Suara", modifier = Modifier.padding(start = 22.dp, top = 7.dp, bottom = 13.dp),
             style = MaterialTheme.typography.titleLarge)
         VoiceLibraryContent(model, modifier = Modifier.heightIn(max = 610.dp))
@@ -133,7 +133,7 @@ fun ReaderVoiceSheet(model: TuturiumModel, dismiss: () -> Unit) {
 fun ReaderTimerSheet(playback: Playback, dismiss: () -> Unit) {
     val context = LocalContext.current
     val remaining = (playback.timerUntil - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(27.dp)) {
@@ -169,7 +169,7 @@ fun ReaderQueueSheet(model: TuturiumModel, dismiss: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
     val queued = remember(revision) { BookActions.queue(context) }
     var adding by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Column(Modifier.fillMaxWidth().heightIn(max = 660.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
             Text("Antrian", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(15.dp))
@@ -225,7 +225,7 @@ fun ReaderNotesSheet(book: Book, index: Int, dismiss: () -> Unit) {
     var value by remember(book.id, index) {
         mutableStateOf(preferences.getString("${book.id}:$index", "").orEmpty())
     }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Column(Modifier.fillMaxWidth().padding(22.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Text("Catatan & Sorotan", style = MaterialTheme.typography.titleLarge)

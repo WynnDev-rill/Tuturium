@@ -1,6 +1,6 @@
-## Tuturium 1.3.9
+## Tuturium 1.3.10
 
-- Foto Google tampil di beranda dan profil. Sesi Google tetap terlihat saat Drive meminta izin lagi.
-- Lewati URL, kutipan, dan elemen halaman sebelum teks dipecah untuk dibacakan. Posisi sorotan tetap mengikuti dokumen.
-- Enam paket suara neural Indonesia tersedia untuk diunduh. Perekaman statistik mengikuti audio, dengan pengelolaan memori suara dan render PDF yang lebih hemat.
-- Cadangan Drive mempertahankan progres, markah, dan riwayat penghapusan permanen. Tabel kriptografi yang tidak dipakai dikeluarkan dari APK.
+- Pustaka Suara menampilkan Google TTS dan Supertonic 3. Detail Supertonic memakai tampilan pratinjau, favorit, dan pemilihan yang sama.
+- Supertonic menyiapkan beberapa kalimat di depan dan menerapkan kecepatan 0,5–4× pada pemutar, dengan sintesis tetap pada 1×.
+- Menu, dialog, dan lembar bawah memakai permintaan refresh rate tinggi pada Android 15 ke atas. Android menentukan refresh rate aktif.
+- Paket APK menghapus runtime tambahan yang sebelumnya dipakai ArboTTS.

@@ -3,6 +3,9 @@ package id.tuturium.app
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.onNode
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -11,7 +14,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
@@ -52,6 +58,10 @@ class ReaderFlowTest {
             "Kalimat pertama. Kalimat kedua. Kalimat ketiga. Kalimat keempat.")
         compose.onNodeWithText("Simpan").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText(EXAMPLE).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Opsi pembaca").performClick()
+        compose.onNodeWithText("Tampilan").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Tampilan").assertIsDisplayed()
+        compose.onNodeWithText("Selesai").performClick()
         compose.onNodeWithContentDescription("Maju sekitar 10 detik").performClick()
         compose.onNodeWithContentDescription("Simpan markah").performClick()
         compose.waitUntil(15_000) {
@@ -61,6 +71,21 @@ class ReaderFlowTest {
         compose.onNodeWithContentDescription("Kembali ke pustaka").performClick()
         compose.waitUntil(15_000) { compose.onAllNodes(hasText(EXAMPLE)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(EXAMPLE).assertIsDisplayed()
+    }
+
+    @Test fun supertonicOpensTheSharedVoiceDetail() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") == "true")
+        val context = compose.activity.applicationContext
+        val pack = OfflineCatalog.models.single()
+        runBlocking { OfflineModelStore.install(context, pack) {} }
+        compose.onNodeWithContentDescription("Buka profil").performClick()
+        compose.onNodeWithText("Pustaka Suara").performClick()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Supertonic F1"))
+        compose.onNodeWithText("Supertonic F1").performClick()
+        compose.onNodeWithText("Pratinjau suara").assertIsDisplayed()
+        compose.onNodeWithText("Pilih Supertonic F1").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Kembali ke pustaka suara").performClick()
+        compose.onNodeWithText("Pustaka Suara").assertIsDisplayed()
     }
 
     companion object { private const val EXAMPLE = "Sepucuk surat untuk pembaca" }

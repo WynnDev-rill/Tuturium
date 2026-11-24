@@ -16,7 +16,6 @@
 
 # Native ONNX runtimes use JNI names and reflection.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
--keep class ai.onnxruntime.** { *; }
 -dontwarn org.apache.commons.compress.compressors.zstandard.**
 -dontwarn com.github.luben.zstd.**
 -dontwarn org.tukaani.xz.**

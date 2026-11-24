@@ -368,7 +368,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         "skip" -> SkipOptionsSheet(model) { panel = null }
         "rename" -> {
             var newTitle by remember(book.id) { mutableStateOf(book.title) }
-            AlertDialog(onDismissRequest = { panel = null },
+            TuturiumDialog(onDismissRequest = { panel = null },
                 title = { Text("Ubah nama") },
                 text = { OutlinedTextField(newTitle, { newTitle = it.take(200) },
                     modifier = Modifier.fillMaxWidth(), singleLine = true) },
@@ -377,7 +377,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 }, enabled = newTitle.isNotBlank()) { Text("Simpan") } },
                 dismissButton = { TextButton(onClick = { panel = null }) { Text("Batal") } })
         }
-        "display" -> AlertDialog(onDismissRequest = { panel = null },
+        "display" -> TuturiumDialog(onDismissRequest = { panel = null },
             title = { Text("Tampilan") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -392,7 +392,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     }
                 }
             }, confirmButton = { TextButton(onClick = { panel = null }) { Text("Selesai") } })
-        "delete" -> AlertDialog(onDismissRequest = { panel = null },
+        "delete" -> TuturiumDialog(onDismissRequest = { panel = null },
             title = { Text("Hapus file?") },
             text = { Text("Dokumen dipindahkan ke File yang Dihapus.") },
             confirmButton = { TextButton(onClick = {
@@ -404,7 +404,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
 
 @Composable
 private fun ReaderOptions(title: String, dismiss: () -> Unit, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) },
+    TuturiumDialog(onDismissRequest = dismiss, title = { Text(title) },
         text = { LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), content = content) },
         confirmButton = { TextButton(onClick = dismiss) { Text("Tutup") } })
 }
