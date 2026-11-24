@@ -399,31 +399,39 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Kecepatan", style = MaterialTheme.typography.titleLarge)
-                        TextButton(onClick = dismiss) { Text("Selesai") }
+                Column(Modifier.weight(1f).heightIn(min = 260.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(when {
+                            speed <= 0.9f -> "Lambat"
+                            speed <= 1.5f -> "Normal"
+                            speed <= 2.5f -> "Cepat"
+                            else -> "Sangat cepat"
+                        }, style = MaterialTheme.typography.titleLarge)
+                        Text("Durasi: ~${formatPlaybackTime(seconds)}",
+                            color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
-                    Text("Perkiraan sisa · ${formatPlaybackTime(seconds)}",
-                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp),
+                    Row(Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedIconButton(onClick = { setSpeed(speed - SPEED_STEP) },
+                        IconButton(onClick = { setSpeed(speed - SPEED_STEP) },
                             enabled = speed > PLAYBACK_SPEED_RANGE.start) {
                             Icon(Icons.Rounded.Remove, "Perlambat")
                         }
                         Text(formatPlaybackSpeed(speed), style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold, color = colors.primary)
-                        OutlinedIconButton(onClick = { setSpeed(speed + SPEED_STEP) },
+                            fontWeight = FontWeight.Bold, color = colors.onSurface)
+                        IconButton(onClick = { setSpeed(speed + SPEED_STEP) },
                             enabled = speed < PLAYBACK_SPEED_RANGE.endInclusive) {
                             Icon(Icons.Rounded.Add, "Percepat")
                         }
                     }
-                    if (options.autoRamp && currentSession && speed != base && dragSpeed == null) {
-                        Text("Kecepatan awal ${formatPlaybackSpeed(base)}",
-                            color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        for (preset in listOf(0.8f, 1f, 1.25f)) {
+                            TextButton(onClick = { setSpeed(preset) }) {
+                                Text(formatPlaybackSpeed(preset), color = colors.onSurface)
+                            }
+                        }
                     }
                 }
                 VerticalSpeedSlider(speed, onPreview = { dragSpeed = it }, onCommit = {
@@ -432,7 +440,7 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                 })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                for (preset in listOf(0.8f, 1f, 1.25f, 2f, 3f, 4f)) {
+                for (preset in listOf(2f, 3f, 4f)) {
                     val selected = kotlin.math.abs(speed - preset) < 0.01f
                     Surface(onClick = { setSpeed(preset) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics {
                             contentDescription = "Pilih ${formatPlaybackSpeed(preset)}"
@@ -456,6 +464,7 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                     onCheckedChange = { model.changeListeningOptions(options.copy(autoRamp = it)) },
                     modifier = Modifier.semantics { contentDescription = "Tingkatkan kecepatan otomatis" })
             }
+            TextButton(onClick = dismiss, modifier = Modifier.align(Alignment.End)) { Text("Selesai") }
         }
     }
 }
@@ -468,7 +477,7 @@ private fun VerticalSpeedSlider(value: Float, onPreview: (Float?) -> Unit, onCom
     val preview by rememberUpdatedState(onPreview)
     val commit by rememberUpdatedState(onCommit)
     val colors = MaterialTheme.colorScheme
-    Box(Modifier.size(56.dp, 182.dp)
+    Box(Modifier.size(58.dp, 260.dp)
         .clip(RoundedCornerShape(22.dp)).background(colors.surface)
         .semantics {
             contentDescription = "Penggeser kecepatan"
@@ -519,11 +528,16 @@ private fun VerticalSpeedSlider(value: Float, onPreview: (Float?) -> Unit, onCom
         }.padding(8.dp)) {
         BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
             .background(colors.surfaceContainerHighest)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly,
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                repeat(11) { i -> Box(Modifier.width(if (i % 3 == 0) 30.dp else 18.dp)
+                    .height(2.dp).background(colors.outlineVariant)) }
+            }
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(fraction)
                 .background(colors.primary))
             Box(Modifier.align(Alignment.BottomCenter)
                 .offset(y = -(maxHeight - 7.dp) * fraction).width(26.dp).height(7.dp)
-                .clip(CircleShape).background(if (fraction > 0.1f) colors.onPrimary else colors.primary))
+                .clip(CircleShape).background(colors.onPrimary))
         }
     }
 }
