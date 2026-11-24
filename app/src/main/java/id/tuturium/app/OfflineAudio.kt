@@ -19,7 +19,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-internal data class OfflinePass(val index: Int, val speech: PreparedSpeech, val pauseAfterMs: Int = 0)
+internal data class OfflinePass(
+    val index: Int, val speech: PreparedSpeech, val pauseAfterMs: Int = 0, val extraPauseMs: Int = 0
+)
 
 internal class SupertonicBuffer {
     private var inferenceRatio = 0.0

@@ -17,21 +17,21 @@ internal fun readingPosition(model: TuturiumModel, book: Book, index: Int, offse
     if (book.count > 0 && index >= book.count && (document == null || index >= document.passes.size)) {
         return ReadingPosition(1f, 0)
     }
-    if (atStart && book.words > 0 && !options.skipEnabled &&
-        options.sentencePauseMs == 0 && options.paragraphPauseMs == 0) {
-        return ReadingPosition(0f, book.words)
-    }
+    val initial = if (atStart && book.words > 0 && !options.skipEnabled &&
+        options.sentencePauseMs == 0 && options.paragraphPauseMs == 0
+    ) ReadingPosition(0f, book.words) else null
+    if (document == null && initial != null) return initial
     var timeline by remember(book.id, book.updated, options, document) { mutableStateOf<ReadingTimeline?>(null) }
     LaunchedEffect(book.id, book.updated, options, document) {
         timeline = model.readingTimeline(book, document, options)
     }
-    return timeline?.position(index, offset)
+    return timeline?.position(index, offset) ?: initial
 }
 
 internal fun Playback.hasPosition(book: Book): Boolean = bookId == book.id && total > 0
 
 internal fun Playback.readingSpeed(book: Book, preferred: Float): Float =
-    if (hasPosition(book) && (playing || loading)) effectiveSpeed else preferred
+    if (hasPosition(book) && !completed) effectiveSpeed else preferred
 
 @Composable
 internal fun narrationMillisPerWord(model: TuturiumModel, speed: Float): Double {

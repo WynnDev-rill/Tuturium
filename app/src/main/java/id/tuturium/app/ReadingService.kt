@@ -361,7 +361,7 @@ class ReadingService : Service() {
                     .coerceIn(0, content.passes.lastIndex)
                 speechOffset = (if (offset >= 0) offset else if (start == book.position) book.wordOffset else 0)
                     .coerceIn(0, content.passes[start].text.lastIndex.coerceAtLeast(0))
-                current = current.copy(title = book.title, index = start, total = content.passes.size)
+                current = current.copy(title = book.title, index = start, offset = speechOffset, total = content.passes.size)
                 persist(start, speechOffset)
                 if (current.loading) startCurrent() else publish()
             } catch (error: CancellationException) {
@@ -552,13 +552,18 @@ class ReadingService : Service() {
         val session = OfflineSession(settings, options)
         offlineSession = session
         val startIndex = current.index
+        val paceProfile = PaceProfile.forPlayback(settings, options, 1f)
         val first = PreparedSpeech(initial.text.substring(offset),
             initial.offsets.copyOfRange(offset, initial.offsets.size))
         val passages = sequence {
-            yield(OfflinePass(startIndex, first, document.pauseAfter(startIndex, options).totalMs))
+            val initialPause = document.pauseAfter(startIndex, options)
+            yield(OfflinePass(startIndex, first, initialPause.totalMs, initialPause.extraMs))
             for (index in startIndex + 1 until document.passes.size) {
                 val speech = preparePass(document, document.passes[index], options)
-                if (speech.text.isNotBlank()) yield(OfflinePass(index, speech, document.pauseAfter(index, options).totalMs))
+                if (speech.text.isNotBlank()) {
+                    val pause = document.pauseAfter(index, options)
+                    yield(OfflinePass(index, speech, pause.totalMs, pause.extraMs))
+                }
             }
         }
         val speed = automaticSpeed.rate
@@ -569,7 +574,7 @@ class ReadingService : Service() {
         offlineAudio.play(scope, voice, passages, speed, settings.pitch, volume = settings.volume,
             onPass = { pass ->
                 speechOffset = pass.speech.offsets.first()
-                current = current.copy(index = pass.index, range = null)
+                current = current.copy(index = pass.index, offset = speechOffset, range = null)
                 applyOfflineRate(session)
                 persist(pass.index, speechOffset)
                 runCatching { lock.acquire(300_000) }
@@ -578,9 +583,7 @@ class ReadingService : Service() {
                 val words = countDocumentWords(pass.speech.text)
                 val rate = current.effectiveSpeed
                 val context = applicationContext
-                val extra = document.pauseAfter(pass.index, options).extraMs
-                ReadingPace.record(context, PaceProfile.forPlayback(settings, options, rate),
-                    words, (audioMs - extra).toDouble())
+                ReadingPace.record(context, paceProfile, words, (audioMs - pass.extraPauseMs).toDouble())
                 automaticSpeed.spoken(words)
                 positionWrites.launch { ListeningStats.recordUtterance(context, words, rate) }
             },
@@ -609,7 +612,7 @@ class ReadingService : Service() {
         normalSpeedRetryPass = -1
         speechOffset = offset.coerceIn(0,
             (document?.passes?.getOrNull(next)?.text?.lastIndex ?: 0).coerceAtLeast(0))
-        current = current.copy(index = next, completed = false, range = null, error = null)
+        current = current.copy(index = next, offset = speechOffset, completed = false, range = null, error = null)
         persist(next, speechOffset)
         if (active) startCurrent() else publish()
     }
@@ -671,7 +674,7 @@ class ReadingService : Service() {
                     val advance = Runnable {
                         if (current.index == finishedIndex && activeUtterance == utteranceId &&
                             (current.playing || current.loading)) {
-                            current = current.copy(index = current.index + 1, range = null)
+                            current = current.copy(index = current.index + 1, offset = 0, range = null)
                             persist(current.index)
                             startCurrent()
                         }
@@ -696,7 +699,7 @@ class ReadingService : Service() {
         persist(current.total)
         normalSpeedRetryPass = -1
         speechOffset = 0
-        current = current.copy(index = 0, completed = true, range = null)
+        current = current.copy(index = 0, offset = 0, completed = true, range = null)
         pause()
         val completed = current
         continuation = scope.launch {
@@ -760,7 +763,6 @@ class ReadingService : Service() {
 
     private fun persist(index: Int, offset: Int = 0) {
         val id = current.bookId ?: return
-        if (current.offset != offset) current = current.copy(offset = offset)
         val context = applicationContext
         positionWrites.launch {
             runCatching { Library.get(context).position(id, index, offset) }
