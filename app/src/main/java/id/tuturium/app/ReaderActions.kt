@@ -104,7 +104,7 @@ internal fun RenameBookSheet(title: String, onDismiss: () -> Unit, onSave: (Stri
 
 @Composable
 internal fun ReaderAudioSheet(model: TuturiumModel, dismiss: () -> Unit) {
-    val volume = model.settings.volume
+    val volume = model.settings.volume.coerceIn(0.01f, 1f)
     val options = model.listeningOptions
     TuturiumSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 24.dp),
@@ -116,7 +116,10 @@ internal fun ReaderAudioSheet(model: TuturiumModel, dismiss: () -> Unit) {
             }
             Text("Volume narasi ${(volume * 100).toInt()}%", style = MaterialTheme.typography.titleMedium)
             Slider(volume, { model.changeSettings(model.settings.copy(volume = it), persist = false) },
+                valueRange = 0.01f..1f,
                 onValueChangeFinished = { model.changeSettings(model.settings) })
+            Text("100% menggunakan level narasi penuh. Volume media tetap diatur oleh perangkat.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
