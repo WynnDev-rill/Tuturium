@@ -1,5 +1,8 @@
 import java.net.URI
 import java.security.MessageDigest
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import java.util.zip.ZipEntry
 
 plugins {
     id("com.android.application") version "8.9.2"
@@ -22,7 +25,28 @@ val fetchSherpa = tasks.register("fetchSherpaRuntime") {
             val sha = MessageDigest.getInstance("SHA-256")
                 .digest(temporary.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
             check(sha == "dc5ac19a28dee3bffc5e5a5d50cb6afa977703fc4a7ee535a308506990fdd295")
-            check(temporary.renameTo(destination))
+            // Both JNI bridges must see a single ONNX Runtime library.
+            // Sherpa v1.13.4 builds against ORT 1.27.0. Keep the Maven runtime
+            // (with the Java JNI bridge) and remove duplicate shared ORT files from the AAR.
+            val filtered = File(destination.parentFile, destination.name + ".filtered")
+            try {
+                ZipInputStream(temporary.inputStream().buffered()).use { input ->
+                    ZipOutputStream(filtered.outputStream().buffered()).use { output ->
+                        while (true) {
+                            val entry = input.nextEntry ?: break
+                            if (!entry.name.endsWith("/libonnxruntime.so") &&
+                                !entry.name.endsWith("/libonnxruntime4j_jni.so")) {
+                                output.putNextEntry(ZipEntry(entry.name))
+                                if (!entry.isDirectory) input.copyTo(output)
+                                output.closeEntry()
+                            }
+                            input.closeEntry()
+                        }
+                    }
+                }
+                if (destination.exists()) destination.delete()
+                check(filtered.renameTo(destination))
+            } finally { filtered.delete() }
         } finally { temporary.delete() }
     }
 }
@@ -74,7 +98,7 @@ android {
 kotlin { compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 dependencies {
     implementation(files(sherpaAar).builtBy(fetchSherpa))
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     implementation("org.apache.commons:commons-compress:1.27.1")
     implementation(platform("androidx.compose:compose-bom:2025.05.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
