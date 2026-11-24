@@ -88,15 +88,18 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val marked = model.bookmarks.any { it.index == current }
     val offlineVoice = OfflineCatalog.voice(model.settings.voice)
-    LaunchedEffect(book.id, offlineVoice?.id, current, isPlaying, isLoading, model.listeningOptions) {
+    LaunchedEffect(book.id, offlineVoice?.id, current, isPlaying, isLoading, model.listeningOptions,
+        model.settings.speed) {
         val voice = offlineVoice ?: return@LaunchedEffect
+        delay(250)
         if (isPlaying || isLoading || ReadingService.state.value.playing || ReadingService.state.value.loading)
             return@LaunchedEffect
         val options = model.listeningOptions
         val offset = if (active) playback.range?.first ?: book.wordOffset.takeIf { current == book.position } ?: 0
             else book.wordOffset.takeIf { current == book.position } ?: 0
         try {
-            OfflineSynth.prepareOpeningAudio(context.applicationContext, voice, document, current, offset, options)
+            OfflineSynth.prepareOpeningAudio(context.applicationContext, voice, document, current, offset,
+                options, model.settings.speed)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (error: Exception) {

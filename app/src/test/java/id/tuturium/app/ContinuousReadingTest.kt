@@ -10,15 +10,15 @@ class ContinuousReadingTest {
         val buffer = SupertonicBuffer()
         assertFalse(buffer.atCapacity(4f, 60_000, 12))
         assertFalse(buffer.atCapacity(4f, 192_000, 56))
-        assertTrue(buffer.atCapacity(4f, 720_000, 110))
+        assertTrue(buffer.atCapacity(4f, 360_000, 110))
         assertTrue(buffer.atCapacity(4f, 10_000, 384))
         assertTrue(buffer.atCapacity(1f, 180_000, 28))
         buffer.generated(5_000, 2_000, 0)
         buffer.generated(5_000, 1, 1, cacheHit = true)
         assertFalse(buffer.atCapacity(4f, 720_000, 100))
-        assertTrue(buffer.atCapacity(4f, 1_200_000, 180))
-        assertTrue(buffer.atCapacity(4f, 720_000, 100, thermal = 2))
-        assertTrue(buffer.atCapacity(4f, 240_000, 40, thermal = 3))
+        assertTrue(buffer.atCapacity(4f, 750_000, 180))
+        assertTrue(buffer.atCapacity(4f, 360_000, 100, thermal = 2))
+        assertTrue(buffer.atCapacity(4f, 180_000, 40, thermal = 3))
     }
 
     @Test fun slowerSynthesisBuildsAnInitialReserveButDoesNotWaitIndefinitely() {
@@ -37,6 +37,20 @@ class ContinuousReadingTest {
         assertTrue(buffer.recoveryReady(4f, 32_000L, 4, false))
         assertTrue(buffer.recoveryReady(4f, 1_000L, 1, true))
         assertFalse(buffer.recoveryReady(4f, 0L, 0, true))
+    }
+
+    @Test fun inferenceTradesHeadroomForQualityWithoutOscillatingAtTheBoundary() {
+        val buffer = SupertonicBuffer()
+        assertEquals(5, buffer.inferenceSteps(4f, 0, filling = true, thermal = 0))
+        buffer.generated(5_000, 700, 0, steps = 5)
+        assertEquals(5, buffer.inferenceSteps(4f, 48_000, filling = false, thermal = 0))
+        assertEquals(6, buffer.inferenceSteps(4f, 80_000, filling = false, thermal = 0))
+        assertEquals(8, buffer.inferenceSteps(2f, 90_000, filling = false, thermal = 0))
+        assertEquals(6, buffer.inferenceSteps(2f, 90_000, filling = false, thermal = 2))
+        assertEquals(5, buffer.inferenceSteps(1f, 90_000, filling = false, thermal = 3))
+        assertEquals(1, synthesisThreadCount(1))
+        assertEquals(2, synthesisThreadCount(3))
+        assertEquals(3, synthesisThreadCount(8))
     }
 
     @Test fun originalPageNumbersSurviveBlankPagesAndOldImports() {

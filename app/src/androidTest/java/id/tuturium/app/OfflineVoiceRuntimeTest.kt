@@ -94,6 +94,52 @@ class OfflineVoiceRuntimeTest {
         }
     }
 
+    @Test(timeout = 240_000L)
+    fun opusCacheKeepsNarrationCuesAndPlaysThroughMedia3AtFourTimesSpeed() = runBlocking {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") == "true")
+        assumeTrue(android.os.Build.VERSION.SDK_INT >= 29)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val pack = OfflineCatalog.models.single()
+        OfflineModelStore.install(context, pack) {}
+        val voice = pack.voices.first()
+        val text = "Di dermaga, penjaga kapal menyerahkan daftar penumpang kepada petugas. " +
+            "Setelah memeriksa karcis, ia membuka pintu peron dan mendampingi keluarga dengan kursi roda " +
+            "sampai mereka menemukan tempat duduk di dekat jendela yang menghadap laut."
+        val wav = File.createTempFile("codec-smoke-", ".wav", context.cacheDir)
+        try {
+            val firstAt = android.os.SystemClock.elapsedRealtime()
+            val fresh = OfflineSynth.write(context, voice, text, wav, steps = 5, compressCache = true)
+            val firstMs = android.os.SystemClock.elapsedRealtime() - firstAt
+            assertFalse(fresh.opus)
+            val pcmSize = wav.length()
+            val replayAt = android.os.SystemClock.elapsedRealtime()
+            val cached = OfflineSynth.write(context, voice, text, wav, steps = 5)
+            val replayMs = android.os.SystemClock.elapsedRealtime() - replayAt
+            android.util.Log.i("TuturiumVoiceBenchmark", "opus_first_ms=$firstMs opus_cache_ms=$replayMs " +
+                "pcm_bytes=$pcmSize opus_bytes=${wav.length()} duration_ms=${fresh.durationMs}")
+            assertEquals(fresh.copy(cacheHit = true, opus = true), cached)
+            assertEquals("OggS", wav.inputStream().use { String(ByteArray(4).also { header -> java.io.DataInputStream(it).readFully(header) }, Charsets.US_ASCII) })
+            assertTrue("Opus should use less than one fifth of PCM storage", wav.length() * 5 < pcmSize)
+            withContext(Dispatchers.Main) {
+                val engine = OfflineAudio(context)
+                val pass = OfflinePass(0, PreparedSpeech(text, IntArray(text.length) { it }))
+                val done = CompletableDeferred<Unit>()
+                var completed = 0
+                try {
+                    engine.play(this, voice, sequenceOf(pass), 4f, 1f, onPass = {}, onRange = {},
+                        onSpoken = { completed++ }, onRendering = {},
+                        onDone = { done.complete(Unit) }, onError = { done.completeExceptionally(it) })
+                    withTimeout(40_000L) { done.await() }
+                    assertEquals(1, completed)
+                } finally {
+                    engine.stop()
+                }
+            }
+        } finally {
+            wav.delete()
+        }
+    }
+
     @Test(timeout = 30_000L)
     fun recoversFromAnExhaustedQueueWithoutSkippingOrRepeating() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -108,7 +154,7 @@ class OfflineVoiceRuntimeTest {
             OfflinePass(index, PreparedSpeech(text, IntArray(text.length) { it }))
         }
         withContext(Dispatchers.Main) {
-            val engine = OfflineAudio(context) { _, _, text, target ->
+            val engine = OfflineAudio(context) { _, _, text, target, _, _ ->
                 if (text == texts[4]) delay(3_000)
                 target.writeBytes(pcm)
                 SynthesizedAudio(listOf(AudioCue(0, text.indices)), 1_000)

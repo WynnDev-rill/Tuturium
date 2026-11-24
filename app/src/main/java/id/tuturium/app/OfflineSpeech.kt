@@ -9,9 +9,9 @@ import java.nio.ByteOrder
 
 /** Sherpa has its own statically linked ONNX runtime. Inference stays on one worker. */
 internal object OfflineSynth {
-    private const val INFERENCE_STEPS = 8
     private val dispatcher = Dispatchers.IO.limitedParallelism(1)
     private var sherpa: OfflineTts? = null
+    private var retryOpusAfter = 0L
 
     private fun load(context: Context): OfflineTts {
         sherpa?.let { return it }
@@ -26,7 +26,7 @@ internal object OfflineSynth {
                 vectorEstimator = path("vector_estimator.int8.onnx"),
                 vocoder = path("vocoder.int8.onnx"), ttsJson = path("tts.json"),
                 unicodeIndexer = path("unicode_indexer.bin"), voiceStyle = path("voice.bin")),
-            numThreads = 3))).also { sherpa = it }
+            numThreads = synthesisThreadCount(Runtime.getRuntime().availableProcessors())))).also { sherpa = it }
     }
 
     private val lifetime = CoroutineScope(SupervisorJob() + dispatcher)
@@ -79,11 +79,12 @@ internal object OfflineSynth {
     /** Prepare only a small startup window while the reader is paused. The normal
      * playback pipeline reuses the exact same cache, without starting a player. */
     suspend fun prepareOpeningAudio(context: Context, voice: OfflineVoice, document: ReadingDocument,
-        index: Int, offset: Int, options: ListeningOptions) = withContext(Dispatchers.IO) {
+        index: Int, offset: Int, options: ListeningOptions, playbackRate: Float) = withContext(Dispatchers.IO) {
         if (!OfflineModelStore.installed(context, OfflineCatalog.model(voice.model))) return@withContext
         if (android.os.Build.VERSION.SDK_INT >= 29 &&
             context.getSystemService(android.os.PowerManager::class.java).currentThermalStatus >=
             android.os.PowerManager.THERMAL_STATUS_MODERATE) return@withContext
+        val steps = SupertonicBuffer().inferenceSteps(playbackRate, 0, filling = true, thermal = 0)
         withWarmModel {
             for (i in index until minOf(index + 2, document.passes.size)) {
                 ensureActive()
@@ -97,20 +98,28 @@ internal object OfflineSynth {
                 val text = prepared.text.substring(start)
                 if (text.isBlank()) continue
                 val temp = File.createTempFile("prefetch-", ".wav", context.cacheDir)
-                try { write(context, voice, text, temp) } finally { temp.delete() }
+                try {
+                    write(context, voice, text, temp, steps)
+                } finally {
+                    temp.delete()
+                }
             }
         }
     }
 
-    suspend fun write(context: Context, voice: OfflineVoice, text: String, target: File): SynthesizedAudio =
+    suspend fun write(context: Context, voice: OfflineVoice, text: String, target: File,
+        steps: Int = 8, compressCache: Boolean = false): SynthesizedAudio =
         withContext(dispatcher) {
             releaseJob?.cancel()
             try {
                 val cache = NarrationAudioCache(File(context.cacheDir, "supertonic-audio"))
                 val model = OfflineCatalog.model(voice.model)
-                val key = "${model.files.single().sha256}/${voice.id}/id/$INFERENCE_STEPS/gain-v2"
+                fun key(quality: Int) = "${model.files.single().sha256}/${voice.id}/id/$quality/gain-v2"
                 if (OfflineModelStore.installed(context, model)) {
-                    cache.restore(text, key, target)?.let { return@withContext it }
+                    for (candidate in listOf(8, 6, 5)) {
+                        if (candidate < steps) break
+                        cache.restore(text, key(candidate), target)?.let { return@withContext it }
+                    }
                 }
                 var rate = 0
                 var bytes = 0L
@@ -125,7 +134,7 @@ internal object OfflineSynth {
                         ensureActive()
                         // Synthesize at the model's baseline. The player controls listening speed.
                         val pcm = engine.generateWithConfig(text.substring(range), GenerationConfig(
-                            sid = voice.speaker, speed = 1f, numSteps = INFERENCE_STEPS, extra = mapOf("lang" to "id")))
+                            sid = voice.speaker, speed = 1f, numSteps = steps, extra = mapOf("lang" to "id")))
                         ensureActive()
                         check(pcm.samples.isNotEmpty() && pcm.sampleRate > 0)
                         if (rate == 0) rate = pcm.sampleRate
@@ -155,15 +164,48 @@ internal object OfflineSynth {
                 }
                 SynthesizedAudio(cues, bytes * 500L / rate).also {
                     ensureActive()
-                    cache.save(text, key, target, it)
+                    if (!compressCache || it.durationMs !in 2_000L..30_000L ||
+                        !saveOpus(context, cache, key(steps), text, target, rate, it) { ensureActive() }) {
+                        cache.save(text, key(steps), target, it)
+                    }
                 }
             } finally {
                 releaseWhenIdle()
             }
         }
+    private fun saveOpus(context: Context, cache: NarrationAudioCache, key: String, text: String,
+        wav: File, rate: Int, audio: SynthesizedAudio, checkActive: () -> Unit): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 29 ||
+            android.os.SystemClock.elapsedRealtime() < retryOpusAfter) return false
+        var temporary: File? = null
+        return try {
+            val opus = File.createTempFile("narration-", ".ogg", context.cacheDir)
+            temporary = opus
+            encodeNarrationOpus(wav, opus, rate, checkActive)
+            checkActive()
+            check(opus.length() in 45 until wav.length())
+            cache.save(text, key, opus, audio.copy(opus = true))
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            retryOpusAfter = android.os.SystemClock.elapsedRealtime() + 600_000L
+            android.util.Log.w("TuturiumVoice", "Cache Opus sementara memakai PCM", error)
+            false
+        } finally {
+            temporary?.delete()
+        }
+    }
+
 }
 
-internal data class SynthesizedAudio(val cues: List<AudioCue>, val durationMs: Long, val cacheHit: Boolean = false)
+internal fun synthesisThreadCount(available: Int): Int = when {
+    available <= 1 -> 1
+    available <= 3 -> 2
+    else -> 3
+}
+
+internal data class SynthesizedAudio(val cues: List<AudioCue>, val durationMs: Long, val cacheHit: Boolean = false, val opus: Boolean = false)
 
 internal data class AudioCue(val startMs: Long, val range: IntRange)
 

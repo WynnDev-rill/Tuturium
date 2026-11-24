@@ -29,16 +29,20 @@ internal fun amplifyNarration(sample: Float, gain: Float): Float {
 internal class NarrationAudioCache(private val directory: File, private val budget: Long = 96L * 1024 * 1024) {
     private val maxAge = 7L * 24 * 60 * 60 * 1000
 
-    private fun entry(text: String, configuration: String): File {
+    private fun entry(text: String, configuration: String, opus: Boolean): File {
         val key = MessageDigest.getInstance("SHA-256")
         key.update(configuration.toByteArray())
         key.update(0)
         val hex = key.digest(text.toByteArray()).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
-        return File(directory, "$hex.pcmcache")
+        return File(directory, hex + if (opus) ".opuscache" else ".pcmcache")
     }
 
     fun restore(text: String, configuration: String, target: File): SynthesizedAudio? {
-        val entry = entry(text, configuration)
+        return restore(entry(text, configuration, opus = true), text, target, opus = true)
+            ?: restore(entry(text, configuration, opus = false), text, target, opus = false)
+    }
+
+    private fun restore(entry: File, text: String, target: File, opus: Boolean): SynthesizedAudio? {
         if (!entry.isFile || System.currentTimeMillis() - entry.lastModified() > maxAge) return null
         return runCatching {
             java.io.DataInputStream(entry.inputStream().buffered()).use { input ->
@@ -54,9 +58,17 @@ internal class NarrationAudioCache(private val directory: File, private val budg
                 }
                 val size = input.readLong()
                 check(size > 44 && size == entry.length() - (20L + 16L * count))
-                target.outputStream().buffered().use { output -> check(input.copyTo(output) == size) }
+                target.outputStream().buffered().use { output ->
+                    if (opus) {
+                        val magic = ByteArray(4)
+                        input.readFully(magic)
+                        check(magic.contentEquals("OggS".toByteArray()))
+                        output.write(magic)
+                    }
+                    check(input.copyTo(output) + (if (opus) 4 else 0) == size)
+                }
                 entry.setLastModified(System.currentTimeMillis())
-                SynthesizedAudio(cues, duration, cacheHit = true)
+                SynthesizedAudio(cues, duration, cacheHit = true, opus = opus)
             }
         }.getOrElse {
             entry.delete()
@@ -65,7 +77,7 @@ internal class NarrationAudioCache(private val directory: File, private val budg
     }
 
     fun save(text: String, configuration: String, source: File, audio: SynthesizedAudio) {
-        val entry = entry(text, configuration)
+        val entry = entry(text, configuration, audio.opus)
         val size = source.length() + 20L + 16L * audio.cues.size
         if (size > budget || (!directory.isDirectory && !directory.mkdirs())) return
         runCatching {

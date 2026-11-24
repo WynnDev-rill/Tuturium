@@ -23,44 +23,83 @@ internal data class OfflinePass(val index: Int, val speech: PreparedSpeech)
 
 internal class SupertonicBuffer {
     private var inferenceRatio = 0.0
+    private var measuredSteps = 8
     private var firstReadyAt = -1L
+    private var previousSteps = 8
 
-    fun generated(durationMs: Long, elapsedMs: Long, nowMs: Long, cacheHit: Boolean = false) {
+    fun generated(durationMs: Long, elapsedMs: Long, nowMs: Long, cacheHit: Boolean = false,
+        steps: Int = 8) {
         if (firstReadyAt < 0) firstReadyAt = nowMs
         if (cacheHit) return
         val sample = elapsedMs.toDouble() / durationMs.coerceAtLeast(1L)
-        inferenceRatio = if (inferenceRatio == 0.0) sample else inferenceRatio * 0.75 + sample * 0.25
+        val expected = estimate(steps)
+        inferenceRatio = if (expected == 0.0) sample else expected * 0.70 + sample * 0.30
+        measuredSteps = steps
+    }
+
+    // The duration predictor, encoder and vocoder also run at lower step counts.
+    private fun estimate(steps: Int): Double =
+        inferenceRatio * (0.25 + 0.75 * steps / 8.0) / (0.25 + 0.75 * measuredSteps / 8.0)
+
+    fun inferenceSteps(playbackRate: Float, remainingMs: Long, filling: Boolean, thermal: Int): Int {
+        val runway = remainingMs / playbackRate
+        val sixStepDemand = estimate(6) * playbackRate
+        val eightStepDemand = estimate(8) * playbackRate
+        val fastPlayback = playbackRate >= 2f
+        previousSteps = when {
+            thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE -> 5
+            fastPlayback && (filling || runway < if (previousSteps == 5) 16_000 else 8_000) -> 5
+            fastPlayback && sixStepDemand >= if (previousSteps == 5) 0.86 else 1.0 -> 5
+            thermal >= android.os.PowerManager.THERMAL_STATUS_MODERATE -> 6
+            fastPlayback && (runway < if (previousSteps < 8) 36_000 else 20_000) -> 6
+            eightStepDemand >= if (previousSteps < 8) 0.74 else 0.88 -> 6
+            else -> 8
+        }
+        return previousSteps
     }
 
     fun ready(playbackRate: Float, bufferedMs: Long, count: Int, endOfInput: Boolean, nowMs: Long): Boolean {
         if (count == 0) return false
-        val targetMs = if (playbackRate >= 2f || inferenceRatio * playbackRate > 0.75)
-            (playbackRate * 12_000).toLong() else (playbackRate * 6_000).toLong()
+        val demand = inferenceRatio * playbackRate
+        val targetSeconds = when {
+            demand >= 0.95 -> 12
+            demand >= 0.65 || playbackRate >= 2f -> 6
+            else -> 3
+        }
         val minimumClips = if (playbackRate >= 2f) 4 else 2
-        return endOfInput || bufferedMs >= targetMs ||
-            (count >= minimumClips && inferenceRatio * playbackRate < 0.45) ||
+        return endOfInput || bufferedMs >= playbackRate * targetSeconds * 1_000 ||
+            (count >= minimumClips && demand < 0.45) ||
             count >= 12 || (playbackRate < 2f && nowMs - firstReadyAt >= 8_000)
     }
 
     fun atCapacity(playbackRate: Float, remainingMs: Long, count: Int, thermal: Int = 0): Boolean {
+        val demand = inferenceRatio * playbackRate
         val target = when {
-            thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE -> 60_000L
-            thermal >= android.os.PowerManager.THERMAL_STATUS_MODERATE -> 180_000L
-            inferenceRatio * playbackRate >= 0.75 -> 300_000L
-            else -> 180_000L
+            thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE -> 45_000L
+            thermal >= android.os.PowerManager.THERMAL_STATUS_MODERATE -> 90_000L
+            demand >= 0.85 -> 300_000L
+            demand >= 0.55 -> 180_000L
+            else -> 90_000L
         }
-        // At most roughly 58 MB of 24 kHz mono PCM at 4×, plus the last clip.
-        return count >= 384 || (count > 1 && remainingMs >= (playbackRate * target).toLong())
+        // The current model outputs 44.1 kHz PCM. Bound disk lookahead to about 63 MiB plus one clip.
+        val limit = minOf((playbackRate * target).toLong(), 750_000L)
+        return count >= 384 || (count > 1 && remainingMs >= limit)
     }
 
-    fun recoveryReady(playbackRate: Float, bufferedMs: Long, count: Int, finished: Boolean): Boolean =
-        count > 0 && (finished || bufferedMs >= (playbackRate * 8_000).toLong() || count >= 10)
+    fun compressionFits(playbackRate: Float, remainingMs: Long, thermal: Int): Boolean =
+        thermal < android.os.PowerManager.THERMAL_STATUS_MODERATE &&
+            remainingMs >= playbackRate * 18_000 && inferenceRatio * playbackRate < 0.8
+
+    fun recoveryReady(playbackRate: Float, bufferedMs: Long, count: Int, finished: Boolean): Boolean {
+        val reserve = if (inferenceRatio * playbackRate >= 0.9) 12_000 else 6_000
+        return count > 0 && (finished || bufferedMs >= playbackRate * reserve || count >= 10)
+    }
 }
 
 /** Maintains one Media3 playlist for narration, with bounded PCM lookahead. */
 internal class OfflineAudio(
     private val context: Context,
-    private val synthesize: suspend (Context, OfflineVoice, String, File) -> SynthesizedAudio = OfflineSynth::write
+    private val synthesize: suspend (Context, OfflineVoice, String, File, Int, Boolean) -> SynthesizedAudio = OfflineSynth::write
 ) {
     private var player: ExoPlayer? = null
     private var enhancer: android.media.audiofx.LoudnessEnhancer? = null
@@ -313,10 +352,14 @@ internal class OfflineAudio(
                         val file = File.createTempFile("offline-voice-", ".wav", context.cacheDir)
                         try {
                             val startMs = SystemClock.elapsedRealtime()
-                            val audio = synthesize(context, voice, pass.speech.text, file)
+                            val rate = engine.playbackParameters.speed
+                            val remaining = (queuedMs - engine.currentPosition).coerceAtLeast(0)
+                            val steps = buffer.inferenceSteps(rate, remaining, !started || recovering, thermal)
+                            val compress = started && !recovering && buffer.compressionFits(rate, remaining, thermal)
+                            val audio = synthesize(context, voice, pass.speech.text, file, steps, compress)
                             ensureActive()
                             val finishedMs = SystemClock.elapsedRealtime()
-                            buffer.generated(audio.durationMs, finishedMs - startMs, finishedMs, audio.cacheHit)
+                            buffer.generated(audio.durationMs, finishedMs - startMs, finishedMs, audio.cacheHit, steps)
                             clips[id] = Clip(id, pass, file, audio)
                             queuedMs += audio.durationMs
                             if (engine.playbackState == Player.STATE_ENDED && !recovering) {
@@ -325,8 +368,9 @@ internal class OfflineAudio(
                                 engine.pause()
                             }
                             if (recovering && recoveryStart == null) recoveryStart = id
-                            val item = MediaItem.Builder().setMediaId(id).setUri(android.net.Uri.fromFile(file)).build()
-                            engine.addMediaItem(item)
+                            val item = MediaItem.Builder().setMediaId(id).setUri(android.net.Uri.fromFile(file))
+                            if (audio.opus) item.setMimeType("audio/ogg")
+                            engine.addMediaItem(item.build())
                             prepareWhenBuffered()
                         } finally {
                             if (clips[id]?.file != file) file.delete()
