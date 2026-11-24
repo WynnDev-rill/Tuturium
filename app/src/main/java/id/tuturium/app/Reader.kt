@@ -54,9 +54,12 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     val pdfSource = remember(book.id) {
         if (book.format == "PDF") Library.get(context).originalPdf(book.id) else null
     }
-    var showPdf by rememberSaveable(book.id) { mutableStateOf(false) }
+    var showPdf by rememberSaveable(book.id) { mutableStateOf(pdfSource != null) }
     val active = playback.bookId == book.id && playback.total > 0
     val current = (if (active) playback.index else model.position).coerceIn(0, document.passes.lastIndex)
+    val pdfPasses = remember(document) {
+        if (pdfSource != null) document.firstPassByPdfPage() else emptyMap()
+    }
     val isPlaying = active && playback.playing
     val isLoading = playback.bookId == book.id && playback.loading
     var panel by remember { mutableStateOf<String?>(null) }
@@ -193,9 +196,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 }
             }
         }
-        // When the user browses away (or opens the original PDF), this returns to
-        // the exact passage the narrator is reading without interrupting audio.
-        if (active && (showPdf || (manualBrowsing && readingOffScreen))) {
+        if (active && !showPdf && manualBrowsing && readingOffScreen) {
             val spokenText = document.passes.getOrNull(current)?.text.orEmpty()
             val range = playback.range
             val snippet = if (range != null && range.first in spokenText.indices) {
@@ -225,7 +226,11 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             }
         }
         if (showPdf && pdfSource != null) {
-            Box(Modifier.weight(1f)) { OriginalPdfPages(pdfSource) }
+            Box(Modifier.weight(1f)) {
+                OriginalPdfPages(pdfSource, document.pdfPageForPass(current), model.follow,
+                    reading = isPlaying || isLoading, firstPassByPage = pdfPasses,
+                    onReadPage = { model.playFromWord(book, WordSelection(it, 0)) })
+            }
         } else {
         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth()
             .background(MaterialTheme.colorScheme.background),

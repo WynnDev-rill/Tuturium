@@ -19,7 +19,9 @@ import androidx.credentials.ClearCredentialStateRequest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import androidx.credentials.exceptions.GetCredentialException
@@ -42,6 +44,7 @@ import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,6 +53,7 @@ class MainActivity : ComponentActivity() {
     private val model by lazy { ViewModelProvider(this)[TuturiumModel::class.java] }
     private var pendingDriveEmail: String? = null
     private var accountOperation: Job? = null
+    private var driveCheckedAt = -1L
 
     private val driveConsent = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -57,9 +61,9 @@ class MainActivity : ComponentActivity() {
         val email = pendingDriveEmail
         pendingDriveEmail = null
         if (email == null) {
-            TuturiumCloud.message("Sesi izin Drive berakhir. Hubungkan kembali akun.")
+            TuturiumCloud.driveFailure("Sesi izin berakhir. Buka status Drive untuk mencoba lagi.")
         } else if (result.resultCode != Activity.RESULT_OK) {
-            TuturiumCloud.message("Izin Google Drive dibatalkan. Pustaka lokal tetap tersedia.")
+            TuturiumCloud.driveFailure("Izin Drive dibatalkan. Buka status Drive jika ingin mencoba lagi.")
         } else {
             runAccountOperation(drive = true) {
                 val authorized = Identity.getAuthorizationClient(this)
@@ -76,6 +80,14 @@ class MainActivity : ComponentActivity() {
         TuturiumCloud.restoreIdentity(applicationContext)
         if (savedInstanceState == null) handle(intent)
         setContent { Tuturium(model) }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    restoreDriveConnection()
+                    delay(60_000L)
+                }
+            }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -109,14 +121,25 @@ class MainActivity : ComponentActivity() {
             credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL)
         val account = GoogleIdTokenCredential.createFrom(credential.data)
         TuturiumCloud.signIn(applicationContext, account.id, account.displayName, account.profilePictureUri?.toString())
+        authorizeDrive(account.id, allowConsent = true)
     }
 
-    fun syncGoogleDrive() = runAccountOperation(drive = true) {
+    fun retryGoogleDrive() = runAccountOperation(drive = true) {
         val email = TuturiumCloud.state.value.email ?: return@runAccountOperation
+        authorizeDrive(email, allowConsent = true)
+    }
+
+    private suspend fun authorizeDrive(email: String, allowConsent: Boolean) {
+        driveCheckedAt = android.os.SystemClock.elapsedRealtime()
         val client = Identity.getAuthorizationClient(this)
         TuturiumCloud.waiting("Memeriksa izin Google Drive…")
         val authorized = client.authorize(driveAuthorization(email)).await()
         if (authorized.hasResolution()) {
+            if (!allowConsent) {
+                TuturiumCloud.driveFailure("Google Drive memerlukan izin. Buka status Drive untuk melanjutkan.")
+                return
+            }
+            TuturiumCloud.rememberDriveConsentAttempt(applicationContext)
             val intent = authorized.pendingIntent ?: error("Dialog izin Drive tidak tersedia.")
             pendingDriveEmail = email
             try {
@@ -133,7 +156,7 @@ class MainActivity : ComponentActivity() {
     private suspend fun completeAuthorization(email: String, token: String?, scopes: List<String>) {
         check(TuturiumCloud.state.value.email == email) { "Sesi akun berubah. Coba lagi." }
         if (token.isNullOrBlank() || DRIVE_APPDATA_SCOPE !in scopes) {
-            TuturiumCloud.message("Izin penyimpanan aplikasi belum diberikan. Hubungkan Google Drive untuk mencoba lagi.")
+            TuturiumCloud.driveFailure("Izin penyimpanan Drive belum diberikan.")
             return
         }
         TuturiumCloud.connect(applicationContext, email, token)
@@ -147,15 +170,17 @@ class MainActivity : ComponentActivity() {
             try {
                 block()
             } catch (error: CancellationException) {
-                if (pendingDriveEmail == null) TuturiumCloud.message("Operasi Google terhenti. Coba lagi.")
+                if (pendingDriveEmail == null) {
+                    if (TuturiumCloud.state.value.email != null) TuturiumCloud.driveFailure("Pemeriksaan Google terhenti.")
+                    else TuturiumCloud.message("Operasi Google terhenti. Coba lagi.")
+                }
                 throw error
             } catch (error: Exception) {
                 android.util.Log.w("TuturiumCloud", "Google operation failed: ${error.javaClass.simpleName}")
+                val driveOperation = drive || TuturiumCloud.state.value.email != null
                 val message = if (error is CloudAccessException) error.message.orEmpty()
-                    else googleAccessMessage(error, drive)
-                if (error is DriveHttpException && error.status in listOf(401, 403)) {
-                    TuturiumCloud.needsAuthorization(message)
-                } else TuturiumCloud.message(message)
+                    else googleAccessMessage(error, driveOperation)
+                if (driveOperation) TuturiumCloud.driveFailure(message) else TuturiumCloud.message(message)
             }
         }
     }
@@ -179,6 +204,16 @@ class MainActivity : ComponentActivity() {
         model.refresh()
         model.reloadVoicesIfOpened()
         model.returnFromInstallerSettings(this)
+    }
+
+    private fun restoreDriveConnection() {
+        val email = TuturiumCloud.state.value.email ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (TuturiumCloud.shouldReconnect && (driveCheckedAt < 0 || now - driveCheckedAt >= 30_000L)) {
+            runAccountOperation(drive = true) {
+                authorizeDrive(email, allowConsent = !TuturiumCloud.hasAttemptedDriveConsent(applicationContext))
+            }
+        }
     }
 
     private fun handle(intent: Intent) {

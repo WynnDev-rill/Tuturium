@@ -1,6 +1,7 @@
 package id.tuturium.app
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -19,19 +20,49 @@ import kotlinx.coroutines.launch
 
 internal data class OfflinePass(val index: Int, val speech: PreparedSpeech)
 
+internal class SupertonicBuffer {
+    private var inferenceRatio = 0.0
+    private var firstReadyAt = -1L
+
+    fun generated(durationMs: Long, elapsedMs: Long, nowMs: Long) {
+        val sample = elapsedMs.toDouble() / durationMs.coerceAtLeast(1L)
+        inferenceRatio = if (firstReadyAt < 0) sample else inferenceRatio * 0.75 + sample * 0.25
+        if (firstReadyAt < 0) firstReadyAt = nowMs
+    }
+
+    fun ready(playbackRate: Float, bufferedMs: Long, count: Int, endOfInput: Boolean, nowMs: Long): Boolean {
+        if (count == 0) return false
+        val targetMs = if (playbackRate >= 2f || inferenceRatio * playbackRate > 0.75)
+            (playbackRate * 12_000).toLong() else (playbackRate * 6_000).toLong()
+        val minimumClips = if (playbackRate >= 2f) 4 else 2
+        return endOfInput || bufferedMs >= targetMs ||
+            (count >= minimumClips && inferenceRatio * playbackRate < 0.45) ||
+            count >= 12 || nowMs - firstReadyAt >= 8_000
+    }
+
+    fun atCapacity(playbackRate: Float, remainingMs: Long, count: Int): Boolean =
+        count >= 56 || (count > 1 && remainingMs >= maxOf(90_000L, (playbackRate * 48_000).toLong()))
+}
+
 /** Maintains one Media3 playlist for narration, with bounded PCM lookahead. */
 internal class OfflineAudio(private val context: Context) {
     private var player: ExoPlayer? = null
     private var producer: Job? = null
     private var progress: Job? = null
     private var rebuffering: Job? = null
+    private var bufferChanged: (() -> Unit)? = null
     private val clips = linkedMapOf<String, Clip>()
     private var active: Clip? = null
 
     private data class Clip(val id: String, val pass: OfflinePass, val file: File, val audio: SynthesizedAudio)
 
     fun setRate(speed: Float, pitch: Float) {
-        player?.playbackParameters = PlaybackParameters(speed.coerceIn(0.5f, 4f), pitch.coerceIn(0.5f, 2f))
+        val player = player ?: return
+        val parameters = PlaybackParameters(speed.coerceIn(0.5f, 4f), pitch.coerceIn(0.5f, 2f))
+        if (player.playbackParameters != parameters) {
+            player.playbackParameters = parameters
+            bufferChanged?.invoke()
+        }
     }
 
     fun stop() {
@@ -41,6 +72,7 @@ internal class OfflineAudio(private val context: Context) {
         progress?.cancel()
         rebuffering?.cancel()
         rebuffering = null
+        bufferChanged = null
         producer = null
         progress = null
         active = null
@@ -49,6 +81,7 @@ internal class OfflineAudio(private val context: Context) {
         clips.clear()
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun play(
         scope: CoroutineScope, voice: OfflineVoice, passages: Sequence<OfflinePass>, speed: Float, pitch: Float,
         onPass: (OfflinePass) -> Unit, onSpoken: (OfflinePass) -> Unit,
@@ -58,7 +91,11 @@ internal class OfflineAudio(private val context: Context) {
         stop()
         val engine = ExoPlayer.Builder(context).build()
         player = engine
+        // Hold CPU while Media3 renders or buffers, including when the display sleeps.
+        engine.setWakeMode(C.WAKE_MODE_LOCAL)
         val room = Channel<Unit>(Channel.CONFLATED)
+        val buffer = SupertonicBuffer()
+        bufferChanged = { room.trySend(Unit) }
         var sourceDone = false
         var started = false
         var rendering = false
@@ -139,10 +176,9 @@ internal class OfflineAudio(private val context: Context) {
             }
         })
         fun prepareWhenBuffered() {
-            val minimumClips = if (speed >= 2f) 4 else 2
-            val minimumAudioMs = if (speed >= 2f) (speed * 8_000).toLong() else 8_000L
-            if (!started && clips.isNotEmpty() && (sourceDone || clips.size >= minimumClips ||
-                    clips.values.sumOf { it.audio.durationMs } >= minimumAudioMs)
+            if (!started && buffer.ready(engine.playbackParameters.speed,
+                    clips.values.sumOf { it.audio.durationMs }, clips.size, sourceDone,
+                    SystemClock.elapsedRealtime())
             ) {
                 started = true
                 engine.prepare()
@@ -154,6 +190,7 @@ internal class OfflineAudio(private val context: Context) {
             var lastClip: Clip? = null
             var lastRange: IntRange? = null
             while (player === engine) {
+                if (!started) prepareWhenBuffered()
                 val clip = active
                 if (clip != lastClip) { lastClip = clip; lastRange = null }
                 if (clip != null && engine.isPlaying && engine.currentMediaItem?.mediaId == clip.id) {
@@ -171,35 +208,40 @@ internal class OfflineAudio(private val context: Context) {
         }
         fun bufferAtCapacity(): Boolean {
             val remainingMs = clips.values.sumOf { it.audio.durationMs } - engine.currentPosition
-            return clips.size >= MAX_CLIPS || (clips.size > 1 && remainingMs >= LOOKAHEAD_MS)
+            return buffer.atCapacity(engine.playbackParameters.speed, remainingMs, clips.size)
         }
 
         producer = scope.launch {
             try {
-                for (pass in passages) {
-                    while (bufferAtCapacity()) {
-                        room.receive()
+                OfflineSynth.withWarmModel {
+                    for (pass in passages) {
+                        while (bufferAtCapacity()) {
+                            room.receive()
+                        }
+                        val id = pass.index.toString()
+                        val file = File.createTempFile("offline-voice-", ".wav", context.cacheDir)
+                        try {
+                            val startMs = SystemClock.elapsedRealtime()
+                            val audio = OfflineSynth.write(context, voice, pass.speech.text, file)
+                            ensureActive()
+                            val finishedMs = SystemClock.elapsedRealtime()
+                            buffer.generated(audio.durationMs, finishedMs - startMs, finishedMs)
+                            clips[id] = Clip(id, pass, file, audio)
+                            val restart = engine.playbackState == Player.STATE_ENDED
+                            val item = MediaItem.Builder().setMediaId(id).setUri(android.net.Uri.fromFile(file)).build()
+                            engine.addMediaItem(item)
+                            if (restart) engine.seekToDefaultPosition(engine.mediaItemCount - 1)
+                            prepareWhenBuffered()
+                        } finally {
+                            if (clips[id]?.file != file) file.delete()
+                        }
                     }
-                    val id = pass.index.toString()
-                    val file = File.createTempFile("offline-voice-", ".wav", context.cacheDir)
-                    try {
-                        val audio = OfflineSynth.write(context, voice, pass.speech.text, file)
-                        ensureActive()
-                        clips[id] = Clip(id, pass, file, audio)
-                        val restart = engine.playbackState == Player.STATE_ENDED
-                        val item = MediaItem.Builder().setMediaId(id).setUri(android.net.Uri.fromFile(file)).build()
-                        engine.addMediaItem(item)
-                        if (restart) engine.seekToDefaultPosition(engine.mediaItemCount - 1)
-                        prepareWhenBuffered()
-                    } finally {
-                        if (clips[id]?.file != file) file.delete()
+                    sourceDone = true
+                    prepareWhenBuffered()
+                    if (clips.isEmpty() || engine.playbackState == Player.STATE_ENDED) {
+                        finishPass()
+                        done()
                     }
-                }
-                sourceDone = true
-                prepareWhenBuffered()
-                if (clips.isEmpty() || engine.playbackState == Player.STATE_ENDED) {
-                    finishPass()
-                    done()
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -207,10 +249,5 @@ internal class OfflineAudio(private val context: Context) {
                 fail(error)
             }
         }
-    }
-
-    private companion object {
-        const val MAX_CLIPS = 12
-        const val LOOKAHEAD_MS = 60_000L
     }
 }

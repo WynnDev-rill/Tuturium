@@ -1,6 +1,10 @@
 package id.tuturium.app
 
 import android.content.Context
+import android.os.SystemClock
+import com.google.android.gms.auth.api.identity.ClearTokenRequest
+import com.google.android.gms.auth.api.identity.Identity
+import kotlinx.coroutines.tasks.await
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -34,8 +38,18 @@ data class TuturiumCloudState(
     val connected: Boolean = false,
     val busy: Boolean = false,
     val message: String = "Masuk dengan Google untuk menggunakan penyimpanan Drive.",
-    val lastSynced: Long = 0L
-)
+    val lastSynced: Long = 0L,
+    val failed: Boolean = false
+) {
+    val driveStatus: String get() = when {
+        email == null -> "Belum terhubung"
+        busy && connected -> "Menyinkronkan…"
+        busy -> "Menghubungkan…"
+        failed -> "Gagal"
+        connected -> "Terhubung"
+        else -> "Menunggu"
+    }
+}
 
 internal object TuturiumCloud {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -48,16 +62,28 @@ internal object TuturiumCloud {
     private var pending: Job? = null
     private var firstDirtyAt = 0L
     private var lastDirtyAt = 0L
+    @Volatile private var retryAfter = 0L
+    @Volatile private var requiresConsent = false
+
+    val shouldReconnect: Boolean get() = state.value.email != null && !state.value.busy &&
+        (!state.value.connected || tokenExpired())
+
+    private fun tokenExpired() = token == null || SystemClock.elapsedRealtime() - authorizedAt >= 45 * 60_000L
+
+    fun hasAttemptedDriveConsent(context: Context) = prefs(context).getBoolean("drive_consent_attempted", false)
+    fun rememberDriveConsentAttempt(context: Context) {
+        prefs(context).edit().putBoolean("drive_consent_attempted", true).apply()
+    }
 
     fun message(text: String) { mutable.update { it.copy(message = text, busy = false) } }
-    fun waiting(text: String) { mutable.update { it.copy(message = text, busy = true) } }
+    fun waiting(text: String) { mutable.update { it.copy(message = text, busy = true, failed = false) } }
 
     fun restoreIdentity(context: Context) {
         if (state.value.email != null) return
         val saved = prefs(context)
         val account = saved.getString("session_email", null) ?: return
         mutable.value = TuturiumCloudState(account, saved.getString("display_name", null),
-            saved.getString("photo_url", null), message = "Hubungkan Google Drive untuk melanjutkan sinkronisasi.",
+            saved.getString("photo_url", null), message = "Google Drive akan diperiksa otomatis.",
             lastSynced = saved.getLong("last_synced", 0L))
     }
 
@@ -72,7 +98,7 @@ internal object TuturiumCloud {
         prefs(context).edit().putString("session_email", account)
             .putString("display_name", name).putString("photo_url", photo).apply()
         mutable.value = TuturiumCloudState(account, name, photo,
-            message = "Akun Google siap. Hubungkan Drive untuk mengaktifkan sinkronisasi.")
+            message = "Memeriksa Google Drive…", lastSynced = previous?.lastSynced ?: 0L)
     }
 
     suspend fun connect(context: Context, account: String, accessToken: String) =
@@ -92,17 +118,21 @@ internal object TuturiumCloud {
                 if (!saved.edit().putString("account_email", account).commit()) {
                     throw CloudAccessException("Akun Drive tidak dapat disimpan di perangkat.")
                 }
-                sync(context, api)
-                token = accessToken
-                authorizedAt = android.os.SystemClock.elapsedRealtime()
-                mutable.update { it.copy(connected = true) }
+                syncWithRenewal(context, account, accessToken)
+                requiresConsent = false
+                retryAfter = 0L
+                rememberDriveConsentAttempt(context)
+                mutable.update { it.copy(connected = true, failed = false) }
             }
         }
 
     @Synchronized
     fun markDirty(context: Context) {
-        if (token == null || !state.value.connected) return
-        lastDirtyAt = android.os.SystemClock.elapsedRealtime()
+        val account = state.value
+        if (account.email == null || (token == null && account.lastSynced == 0L) || requiresConsent ||
+            SystemClock.elapsedRealtime() < retryAfter
+        ) return
+        lastDirtyAt = SystemClock.elapsedRealtime()
         if (pending?.isActive == true) return
         firstDirtyAt = lastDirtyAt
         pending = scope.launch {
@@ -117,25 +147,61 @@ internal object TuturiumCloud {
                 if (waitMs > 0) delay(waitMs)
             } while (waitMs > 0)
             mutex.withLock {
-                val currentToken = token ?: return@withLock
-                if (android.os.SystemClock.elapsedRealtime() - authorizedAt >= 45 * 60_000L) {
-                    needsAuthorization("Sesi Drive berakhir. Hubungkan kembali Drive untuk menyinkronkan perubahan.")
-                    return@withLock
-                }
+                val email = state.value.email ?: return@withLock
                 try {
-                    sync(context.applicationContext, DriveAppDataClient(currentToken))
+                    val currentToken = if (tokenExpired()) renewToken(context, email) else checkNotNull(token)
+                    syncWithRenewal(context, email, currentToken)
+                    retryAfter = 0L
                 } catch (error: CancellationException) {
                     throw error
+                } catch (error: DriveConsentRequired) {
+                    requiresConsent = true
+                    driveFailure(error.message.orEmpty())
                 } catch (error: DriveHttpException) {
-                    if (error.status == 401 || error.status == 403) needsAuthorization(error.message.orEmpty())
-                    else message(error.message.orEmpty())
-                } catch (_: Exception) {
-                    message("Sinkronisasi Drive gagal. Pustaka lokal tetap tersedia.")
+                    if (error.status == 401 || error.status == 403) token = null
+                    retryAfter = SystemClock.elapsedRealtime() + 60_000L
+                    driveFailure(error.message.orEmpty())
+                } catch (error: Exception) {
+                    retryAfter = SystemClock.elapsedRealtime() + 60_000L
+                    driveFailure(googleAccessMessage(error, drive = true))
                 } finally {
                     mutable.update { it.copy(busy = false) }
                 }
             }
         }
+    }
+
+    private suspend fun syncWithRenewal(context: Context, email: String, accessToken: String) {
+        try {
+            sync(context.applicationContext, DriveAppDataClient(accessToken))
+            if (token != accessToken) {
+                token = accessToken
+                authorizedAt = SystemClock.elapsedRealtime()
+            }
+        } catch (error: DriveHttpException) {
+            if (error.status != 401) throw error
+            token = null
+            val client = Identity.getAuthorizationClient(context.applicationContext)
+            client.clearToken(ClearTokenRequest.builder().setToken(accessToken).build()).await()
+            sync(context.applicationContext, DriveAppDataClient(renewToken(context, email)))
+        }
+    }
+
+    private class DriveConsentRequired : CloudAccessException(
+        "Google Drive memerlukan izin. Buka status Drive untuk melanjutkan.")
+
+    private suspend fun renewToken(context: Context, email: String): String {
+        val client = Identity.getAuthorizationClient(context.applicationContext)
+        val granted = client.authorize(driveAuthorization(email)).await()
+        val accessToken = granted.accessToken
+        if (granted.hasResolution() || accessToken.isNullOrBlank() ||
+            DRIVE_APPDATA_SCOPE !in granted.grantedScopes
+        ) throw DriveConsentRequired()
+        if (!isMatchingDriveAccount(email, DriveAppDataClient(accessToken).accountEmail()))
+            throw CloudAccessException("Izin Drive diberikan untuk akun berbeda.")
+        token = accessToken
+        authorizedAt = SystemClock.elapsedRealtime()
+        return accessToken
     }
 
     private fun sync(context: Context, api: DriveAppDataClient) {
@@ -162,17 +228,15 @@ internal object TuturiumCloud {
             }
             val syncedAt = System.currentTimeMillis()
             saved.edit().putString("last_remote_md5", digest).putLong("last_synced", syncedAt).apply()
-            mutable.update { it.copy(busy = false, message = "Tersinkronisasi ke Google Drive",
-                lastSynced = syncedAt) }
+            mutable.update { it.copy(busy = false, connected = true, failed = false,
+                message = "Tersinkronisasi ke Google Drive", lastSynced = syncedAt) }
         } finally {
             snapshot.delete()
         }
     }
 
-    fun needsAuthorization(text: String) {
-        token = null
-        authorizedAt = 0L
-        mutable.update { it.copy(connected = false, busy = false, message = text) }
+    fun driveFailure(text: String) {
+        mutable.update { it.copy(connected = false, busy = false, failed = true, message = text) }
     }
 
     @Synchronized
@@ -186,6 +250,8 @@ internal object TuturiumCloud {
         mutex.withLock {
             token = null
             authorizedAt = 0L
+            retryAfter = 0L
+            requiresConsent = false
             prefs(context).edit().remove("session_email").remove("display_name").remove("photo_url").apply()
             mutable.value = TuturiumCloudState()
         }

@@ -175,7 +175,7 @@ fun Tuturium(model: TuturiumModel) {
                     "account" -> TuturiumAccountScreen(
                         onBack = { tab = "profile" },
                         onSignIn = { (context as? MainActivity)?.startGoogleSignIn() },
-                        onSync = { (context as? MainActivity)?.syncGoogleDrive() },
+                        onRetryDrive = { (context as? MainActivity)?.retryGoogleDrive() },
                         onSignOut = { (context as? MainActivity)?.signOutGoogle() })
                     "stats" -> ModernStatistics(model, { tab = "profile" })
                     "settings" -> ListeningSettingsV2(model) { tab = "profile" }

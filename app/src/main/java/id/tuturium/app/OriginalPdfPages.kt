@@ -7,8 +7,14 @@ import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,32 +34,75 @@ import kotlinx.coroutines.withContext
 
 /** Genuine PDF page rendering. Text extraction is retained separately for narration. */
 @Composable
-fun OriginalPdfPages(source: File) {
+internal fun OriginalPdfPages(
+    source: File, readingPage: Int, follow: Boolean, reading: Boolean,
+    firstPassByPage: Map<Int, Int>, onReadPage: (Int) -> Unit
+) {
     val session = remember(source.path) { PdfPageSession(source) }
     DisposableEffect(session) {
         onDispose { CoroutineScope(Dispatchers.IO).launch { session.close() } }
     }
     val count by produceState<Int?>(initialValue = null, key1 = session) {
         value = withContext(Dispatchers.IO) {
-            runCatching { session.pageCount() }.getOrDefault(-1)
+            runCatching { session.pageCount() }.getOrDefault(0)
         }
     }
-    when (val total = count) {
-        null -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        0, -1 -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center) {
-            Text("Halaman PDF tidak dapat dibuka. Pilih mode Teks.",
+    val total = count
+    if (total == null || total <= 0) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (total == null) CircularProgressIndicator()
+            else Text("Halaman PDF tidak dapat dibuka. Pilih mode Teks.",
                 color = MaterialTheme.colorScheme.onBackground)
         }
-        else -> LazyColumn(
-            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            items(total, key = { it }) { index ->
-                PdfPageImage(session, index)
+        return
+    }
+
+    val target = readingPage.coerceIn(0, total - 1)
+    val pager = rememberPagerState(initialPage = target) { total }
+    val scope = rememberCoroutineScope()
+    var browsing by rememberSaveable(source.path) { mutableStateOf(false) }
+    val dragging by pager.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(dragging) { if (dragging) browsing = true }
+    LaunchedEffect(target, follow, browsing) {
+        if (follow && !browsing && pager.currentPage != target) pager.scrollToPage(target)
+    }
+    val visiblePage = pager.settledPage
+    val pass = firstPassByPage[visiblePage]
+
+    Column(Modifier.fillMaxSize()) {
+        HorizontalPager(pager, modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+            pageSpacing = 10.dp, beyondViewportPageCount = 1,
+            key = { it }) { index ->
+            PdfPageImage(session, index)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            IconButton(enabled = visiblePage > 0, onClick = {
+                browsing = true
+                scope.launch { pager.animateScrollToPage(visiblePage - 1) }
+            }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Halaman sebelumnya") }
+            Text("Halaman ${visiblePage + 1} dari $total", style = MaterialTheme.typography.labelMedium)
+            IconButton(enabled = visiblePage < total - 1, onClick = {
+                browsing = true
+                scope.launch { pager.animateScrollToPage(visiblePage + 1) }
+            }) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Halaman berikutnya") }
+        }
+        if (reading && visiblePage != target) {
+            TextButton(onClick = {
+                browsing = false
+                scope.launch { pager.scrollToPage(target) }
+            }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text("Kembali ke halaman bacaan")
+            }
+        }
+        if (pass != null && (!reading || visiblePage != target)) {
+            TextButton(onClick = {
+                browsing = false
+                onReadPage(pass)
+            }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Icon(Icons.Rounded.PlayArrow, null)
+                Text("Baca halaman ini")
             }
         }
     }
@@ -72,15 +121,15 @@ private fun PdfPageImage(session: PdfPageSession, index: Int) {
         }
     }
     val bitmap = result.first
-    Surface(color = Color.White, modifier = Modifier.fillMaxWidth(), shadowElevation = 2.dp) {
-        val shown = bitmap
-        if (shown != null) {
-            Image(shown.asImageBitmap(), "Halaman PDF ${index + 1}",
-                modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
-        } else Box(Modifier.fillMaxWidth().height(450.dp), contentAlignment = Alignment.Center) {
-            Text(if (result.second) "Halaman ${index + 1} gagal dirender."
-                else "Memuat halaman ${index + 1}", fontSize = 14.sp, color = Color.Gray)
-        }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (bitmap != null) {
+            val shown = bitmap
+            val image = remember(shown) { shown.asImageBitmap() }
+            Image(image, "Halaman PDF ${index + 1}", modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit)
+        } else Text(if (result.second) "Halaman ${index + 1} gagal dirender."
+            else "Memuat halaman ${index + 1}", fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -97,8 +146,10 @@ private class PdfPageSession(private val source: File) {
         val key = index to width
         pages.get(key)?.let { return it }
         return open().openPage(index).use { page ->
-            val height = (width.toFloat() / page.width * page.height).toInt().coerceIn(1, 3500)
-            val image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val scale = minOf(width.toFloat() / page.width, 3500f / page.height)
+            val bitmapWidth = (page.width * scale).toInt().coerceAtLeast(1)
+            val bitmapHeight = (page.height * scale).toInt().coerceAtLeast(1)
+            val image = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
             try {
                 image.eraseColor(android.graphics.Color.WHITE)
                 page.render(image, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)

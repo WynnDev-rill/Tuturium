@@ -90,15 +90,20 @@ class LibraryV2FlowTest {
         try {
             compose.runOnIdle {
                 TuturiumCloud.signIn(context, "example@example.invalid", "Pembaca", photo)
-                TuturiumCloud.needsAuthorization("Hubungkan kembali Drive")
+                TuturiumCloud.driveFailure("Google Drive memerlukan izin.")
                 TuturiumCloud.signIn(context, "example@example.invalid", null, null)
+                TuturiumCloud.driveFailure("Google Drive memerlukan izin.")
             }
             org.junit.Assert.assertEquals(photo, TuturiumCloud.state.value.photoUrl)
             compose.onNodeWithContentDescription("Buka profil").performClick()
             compose.onNodeWithText("Pembaca").assertIsDisplayed()
             compose.onNodeWithContentDescription("Foto profil Google").assertIsDisplayed()
             compose.onNodeWithText("Akun").performClick()
-            compose.onNodeWithText("Belum terhubung").assertIsDisplayed()
+            compose.onNodeWithText("Gagal").assertIsDisplayed()
+            compose.onNodeWithText("Hubungkan Google Drive").assertDoesNotExist()
+            compose.onNodeWithText("Penyimpanan Google Drive").performClick()
+            compose.onNodeWithText("Google Drive memerlukan izin.", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("Coba lagi").assertIsDisplayed()
         } finally {
             kotlinx.coroutines.runBlocking { TuturiumCloud.disconnect(context) }
         }

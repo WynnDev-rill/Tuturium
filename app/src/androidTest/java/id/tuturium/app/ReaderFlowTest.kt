@@ -87,5 +87,45 @@ class ReaderFlowTest {
         compose.onNodeWithText("Pustaka Suara").assertIsDisplayed()
     }
 
+    @Test fun originalPdfTurnsPagesAndSwitchesToReadableText() {
+        val context = compose.activity.applicationContext
+        val library = Library.get(context)
+        val book = library.add("Tata letak halaman", "PDF", ReadingDocument(listOf(
+            Section("Halaman 1", "Teks halaman pertama."),
+            Section("Halaman 3", "Teks halaman ketiga.")
+        )))
+        val file = java.io.File.createTempFile("original-pages-", ".pdf", context.cacheDir)
+        try {
+            android.graphics.pdf.PdfDocument().use { pdf ->
+                repeat(3) { index ->
+                    val page = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(300, 440, index + 1).create())
+                    page.canvas.drawText("Original ${index + 1}", 18f, 30f, android.graphics.Paint())
+                    pdf.finishPage(page)
+                }
+                file.outputStream().use(pdf::writeTo)
+            }
+            library.saveOriginalPdf(book.id, file)
+            compose.onNodeWithText("Perpustakaan").performClick()
+            compose.waitUntil(15_000) { compose.onAllNodesWithText(book.title).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(book.title).performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("Halaman 1 dari 3").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Halaman 1 dari 3").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Halaman berikutnya").performClick()
+            compose.onNodeWithText("Halaman 2 dari 3").assertIsDisplayed()
+            compose.onNodeWithText("Baca halaman ini").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Halaman berikutnya").performClick()
+            compose.onNodeWithText("Halaman 3 dari 3").assertIsDisplayed()
+            compose.onNodeWithText("Baca halaman ini").assertIsDisplayed()
+            compose.onNodeWithText("Teks").performClick()
+            compose.onNodeWithText("Teks halaman pertama.").assertIsDisplayed()
+        } finally {
+            file.delete()
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     companion object { private const val EXAMPLE = "Sepucuk surat untuk pembaca" }
 }

@@ -62,7 +62,8 @@ class DocumentImporter(private val context: Context) {
                 }
                 else -> defaultTitle to listOf(Section(defaultTitle, plainText(file)))
             }
-            val readable = sections.map { it.copy(text = it.text.trim()) }.filter { it.text.isNotBlank() }
+            val readable = sections.map { it.copy(text = it.text.trim()) }
+                .filter { format == "pdf" || it.text.isNotBlank() }
             require(readable.sumOf { it.text.length.toLong() } <= MAX_TEXT) { "Teks dokumen terlalu panjang." }
             ensureActive()
             val library = Library.get(context)
@@ -98,7 +99,10 @@ class DocumentImporter(private val context: Context) {
             .use { pdf ->
                 require(pdf.numberOfPages <= 1500) { "PDF melebihi 1.500 halaman." }
                 require(pdf.currentAccessPermission.canExtractContent()) { "PDF membatasi ekstraksi teks." }
-                val stripper = PDFTextStripper().apply { sortByPosition = true }
+                val stripper = PDFTextStripper().apply {
+                    sortByPosition = true
+                    paragraphEnd = "\n\n"
+                }
                 var total = 0L
                 List(pdf.numberOfPages) { page ->
                     kotlin.coroutines.coroutineContext.ensureActive()

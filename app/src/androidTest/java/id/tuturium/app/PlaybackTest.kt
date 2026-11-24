@@ -57,6 +57,7 @@ class PlaybackTest {
                 }
                 val controls = MediaController(instrumentation.targetContext, token).transportControls
                 shell("input keyevent KEYCODE_HOME")
+                shell("input keyevent KEYCODE_SLEEP")
                 delay(1800)
                 assertTrue("Playback stopped when the activity left the foreground", ReadingService.state.value.playing)
                 controls.pause()
@@ -65,6 +66,8 @@ class PlaybackTest {
                 withTimeout(30_000) { ReadingService.state.first { it.bookId == book.id && it.playing } }
             }
         } finally {
+            shell("input keyevent KEYCODE_WAKEUP")
+            shell("wm dismiss-keyguard")
             context.stopService(Intent(context, ReadingService::class.java))
             if (pack != null) original.save(context)
             library.delete(book.id)

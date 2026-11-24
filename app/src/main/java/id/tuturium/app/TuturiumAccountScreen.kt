@@ -1,6 +1,7 @@
 package id.tuturium.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,9 +80,10 @@ internal fun GoogleAvatar(photoUrl: String?, size: Dp, description: String = "Fo
 @Composable
 internal fun TuturiumAccountScreen(
     onBack: () -> Unit, onSignIn: () -> Unit,
-    onSync: () -> Unit, onSignOut: () -> Unit
+    onRetryDrive: () -> Unit, onSignOut: () -> Unit
 ) {
     val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
+    var showDrive by remember { mutableStateOf(false) }
     val name = if (cloud.email != null) {
         cloud.displayName?.takeIf { it.isNotBlank() }
             ?: cloud.email?.substringBefore('@')
@@ -112,48 +116,59 @@ internal fun TuturiumAccountScreen(
             Column {
                 AccountDetailRow("Email", cloud.email ?: "Belum masuk")
                 HorizontalDivider(color = Color.White.copy(alpha = 0.09f))
-                AccountDetailRow("Penyimpanan Google Drive",
-                    if (cloud.connected) "Aktif" else "Belum terhubung")
+                AccountDetailRow("Penyimpanan Google Drive", cloud.driveStatus,
+                    modifier = Modifier.clickable { showDrive = true })
             }
         }
         Spacer(Modifier.height(24.dp))
-        Button(onClick = if (cloud.email != null) onSync else onSignIn,
-            enabled = !cloud.busy,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = accountAccent)) {
-            if (cloud.busy) {
-                CircularProgressIndicator(Modifier.size(20.dp),
-                    color = Color.White, strokeWidth = 2.dp)
-                Spacer(Modifier.width(10.dp))
+        if (cloud.email == null) {
+            Button(onClick = onSignIn, enabled = !cloud.busy,
+                modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = accountAccent)) {
+                if (cloud.busy) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text("Masuk dengan Google", color = Color.White)
             }
-            Text(when {
-                cloud.connected -> "Sinkronkan Google Drive"
-                cloud.email != null -> "Hubungkan Google Drive"
-                else -> "Masuk dengan Google"
-            },
-                color = Color.White)
         }
         if (cloud.email != null) {
             TextButton(onClick = onSignOut, enabled = !cloud.busy, modifier = Modifier.fillMaxWidth()) {
                 Text("Keluar akun", color = accountMuted)
             }
         }
-        Spacer(Modifier.height(14.dp))
-        Text(if (!cloud.connected &&
-                cloud.message == TuturiumCloudState().message)
-                "Masuk bersifat opsional. Buku akun tamu tetap disimpan di perangkat."
-            else cloud.message,
-            color = accountMuted,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.bodySmall)
+        if (cloud.email == null) {
+            Spacer(Modifier.height(14.dp))
+            Text(if (cloud.message == TuturiumCloudState().message)
+                "Masuk bersifat opsional. Buku akun tamu tetap disimpan di perangkat." else cloud.message,
+                color = accountMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall)
+        }
     }
+    if (showDrive) TuturiumDialog(onDismissRequest = { showDrive = false },
+        title = { Text("Penyimpanan Google Drive") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(cloud.driveStatus, style = MaterialTheme.typography.titleMedium)
+                Text(cloud.message)
+                if (cloud.lastSynced > 0) {
+                    val date = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(cloud.lastSynced))
+                    Text("Sinkronisasi terakhir: $date", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { showDrive = false }) { Text("Tutup") }
+        },
+        dismissButton = if (cloud.email != null && cloud.failed && !cloud.busy) {
+            { TextButton(onClick = onRetryDrive) { Text("Coba lagi") } }
+        } else null)
+
 }
 
 @Composable
-private fun AccountDetailRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 69.dp)
+private fun AccountDetailRow(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().heightIn(min = 69.dp)
         .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f),

@@ -24,3 +24,9 @@ Perbandingan didasarkan pada dokumentasi publik. Target kualitas yang diterapkan
 - Supertonic 3: https://k2-fsa.github.io/sherpa/onnx/tts/supertonic.html — 10 speaker, Indonesian lang=id, INT8. Sherpa AAR pinned v1.13.4.
 - Piper News TTS Indonesia: https://k2-fsa.github.io/sherpa/onnx/tts/all/Indonesian/vits-piper-id_ID-news_tts-medium.html — one speaker, original medium model.
 - ArboTTS: https://github.com/ARBO-TEAM/arboTTS — official release assets Nano Ardi, Small Arbo/Arba, Standard Arbo; Kokoro packs id_arbo/id_arba. G2P adapted from MIT upstream. Studio voice cloning, derived personas using other engines, and MCU binaries are not represented as separate ready-to-use voices. Runtime model smoke tests still necessary on Android.
+
+## Pembaca dan koneksi Drive 1.3.11
+
+- Supertonic memakai sintesis 1× dan delapan langkah seperti contoh resmi. Cadangan mengikuti kecepatan pemutaran Media3, sehingga perubahan kecepatan tidak memerlukan sintesis ulang. Media3 menjaga CPU aktif selama pemutaran latar. [Supertonic](https://github.com/supertone-inc/supertonic/blob/main/py/example_onnx.py) · [Media3](https://developer.android.com/media/media3/exoplayer)
+- Mode PDF mengikuti pola halaman asli dan mode teks dari referensi NaturalReader. Tuturium merender halaman dengan Android PdfRenderer dan memakai teks per halaman untuk narasi serta tampilan Teks. [PdfRenderer](https://developer.android.com/reference/android/graphics/pdf/PdfRenderer)
+- Google Identity Services meminta persetujuan saat izin belum tersedia. Sesudah diberikan, aplikasi memperoleh token secara diam-diam dan dapat menghapus token yang kedaluwarsa sebelum mencoba lagi. [Otorisasi Android](https://developer.android.com/identity/authorization)

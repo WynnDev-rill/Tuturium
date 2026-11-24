@@ -16,7 +16,7 @@ Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine,
 
 ## Supertonic 3
 
-Tuturium menyintesis teks pada 1×, lalu Media3 mengubah kecepatan pemutaran. Saat membaca, aplikasi menyiapkan hingga 12 potongan audio dengan sasaran sekitar satu menit audio pada laju asli. Waktu penyiapan awal dan isi antrean bergantung pada panjang kalimat, kecepatan pilihan, serta kinerja perangkat.
+Tuturium menyintesis teks pada 1×, lalu Media3 mengubah kecepatan pemutaran. Saat membaca, aplikasi menyiapkan cadangan yang mengikuti laju baca dan kecepatan sintesis. Audio dan model tetap siap selama pembacaan latar. Waktu penyiapan awal dan isi antrean bergantung pada panjang kalimat, kecepatan pilihan, serta kinerja perangkat.
 
 ## Aktivasi rilis otomatis (sekali saja)
 
@@ -34,7 +34,7 @@ Setelah berhasil, rilis terbaru ada di [GitHub Releases](https://github.com/Wynn
 
 ## Akun Google dan pembaruan 1.3.6
 
-Di **Profil → Akun**, pilih **Masuk dengan Google**, lalu **Hubungkan Google Drive**. Tuturium tetap dapat membaca dan menyimpan buku sebagai tamu. Gunakan akun yang membuat proyek jika audience OAuth masih Personal. Lihat [audit OAuth dan pengujian perangkat](docs/google-oauth-audit.md).
+Di **Profil → Akun**, pilih **Masuk dengan Google**. Tuturium meminta izin Google Drive saat diperlukan dan memeriksa koneksi secara otomatis. Ketuk **Penyimpanan Google Drive** untuk melihat status dan waktu sinkronisasi terakhir. Tuturium tetap dapat membaca dan menyimpan buku sebagai tamu. Gunakan akun yang membuat proyek jika audience OAuth masih Personal. Lihat [audit OAuth dan pengujian perangkat](docs/google-oauth-audit.md).
 
 ## Pembaruan 1.3.5 — Cloud-first Google Drive
 

@@ -30,6 +30,32 @@ internal object OfflineSynth {
 
     private val lifetime = CoroutineScope(SupervisorJob() + dispatcher)
     private var releaseJob: Job? = null
+    private var sessions = 0
+
+    suspend fun withWarmModel(block: suspend () -> Unit) {
+        withContext(dispatcher + NonCancellable) {
+            sessions++
+            releaseJob?.cancel()
+        }
+        try {
+            block()
+        } finally {
+            withContext(dispatcher + NonCancellable) {
+                sessions--
+                releaseWhenIdle()
+            }
+        }
+    }
+
+    private fun releaseWhenIdle() {
+        if (sessions != 0) return
+        releaseJob?.cancel()
+        releaseJob = lifetime.launch {
+            delay(45_000)
+            runCatching { sherpa?.release() }
+            sherpa = null
+        }
+    }
 
     suspend fun write(context: Context, voice: OfflineVoice, text: String, target: File): SynthesizedAudio =
         withContext(dispatcher) {
@@ -77,11 +103,7 @@ internal object OfflineSynth {
                 }
                 SynthesizedAudio(cues, bytes * 500L / rate)
             } finally {
-                releaseJob = lifetime.launch {
-                    delay(45_000)
-                    runCatching { sherpa?.release() }
-                    sherpa = null
-                }
+                releaseWhenIdle()
             }
         }
 }

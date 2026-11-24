@@ -13,6 +13,24 @@ data class ReadingDocument(val sections: List<Section>) {
     }
 }
 
+/** PDF section labels preserve page numbers even in old imports that omitted empty pages. */
+internal fun ReadingDocument.pdfPageForPass(index: Int): Int {
+    val section = passes.getOrNull(index)?.section ?: return 0
+    return pdfPageForSection(section)
+}
+
+internal fun ReadingDocument.firstPassByPdfPage(): Map<Int, Int> =
+    buildMap {
+        for ((index, pass) in passes.withIndex()) {
+            val page = pdfPageForSection(pass.section)
+            if (!containsKey(page)) put(page, index)
+        }
+    }
+
+private fun ReadingDocument.pdfPageForSection(index: Int): Int =
+    sections[index].title.removePrefix("Halaman ").toIntOrNull()
+        ?.takeIf { it > 0 }?.minus(1) ?: index
+
 fun splitSpeech(text: String, section: Int = 0, paragraph: Int = 0, limit: Int = 1200): List<Pass> {
     require(limit >= 2)
     val iterator = BreakIterator.getSentenceInstance(Locale.forLanguageTag("id-ID"))
