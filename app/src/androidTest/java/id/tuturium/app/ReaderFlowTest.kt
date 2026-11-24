@@ -69,10 +69,12 @@ class ReaderFlowTest {
                 compose.onAllNodesWithText("40% · ≈1 menit · TXT").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText(book.title).performClick()
+            val remainingInReader = hasText("40% · ≈", substring = true) and
+                hasText(" tersisa", substring = true)
             compose.waitUntil(15_000) {
-                compose.onAllNodesWithText("40% · ≈", substring = true).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodes(remainingInReader).fetchSemanticsNodes().isNotEmpty()
             }
-            val readerLabel = compose.onNodeWithText("40% · ≈", substring = true).fetchSemanticsNode()
+            val readerLabel = compose.onNode(remainingInReader).fetchSemanticsNode()
                 .config[androidx.compose.ui.semantics.SemanticsProperties.Text].single().text
             val remaining = readerLabel.removePrefix("40% · ")
             assertTrue(remaining.endsWith(" tersisa"))
