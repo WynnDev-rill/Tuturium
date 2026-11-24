@@ -45,9 +45,10 @@ internal class ReadingTimeline(document: ReadingDocument, options: ListeningOpti
         val pass = index.coerceIn(0, sourceEnds.size)
         val read = sourceWords[pass] + (sourceEnds.getOrNull(pass)?.wordsBefore(offset) ?: 0)
         val spoken = spokenWords[pass] + (spokenEnds.getOrNull(pass)?.wordsBefore(offset) ?: 0)
-        if (pass == sourceEnds.size && pass > 0) return ReadingPosition(1f, 0)
+        if (pass == sourceEnds.size && pass > 0) return ReadingPosition(1f, 0, 0, spokenWords.last(), extraPauses.last())
         val progress = (read.toFloat() / sourceWords.last().coerceAtLeast(1)).coerceAtMost(0.999999f)
-        return ReadingPosition(progress, spokenWords.last() - spoken, extraPauses.last() - extraPauses[pass])
+        return ReadingPosition(progress, spokenWords.last() - spoken, extraPauses.last() - extraPauses[pass],
+            spokenWords.last(), extraPauses.last())
     }
 
     private fun IntArray.wordsBefore(offset: Int): Int {
@@ -65,12 +66,18 @@ internal class ReadingTimeline(document: ReadingDocument, options: ListeningOpti
 internal data class ReadingPosition(
     val fraction: Float,
     val remainingWords: Int,
-    val remainingPauseMs: Long = 0
+    val remainingPauseMs: Long = 0,
+    val totalWords: Int = remainingWords,
+    val totalPauseMs: Long = remainingPauseMs
 ) {
     val percent: Int get() = (fraction * 100).toInt().coerceIn(0, 100)
 
     fun remainingSeconds(millisPerWord: Double, speed: Float): Int =
         ceil((remainingWords * millisPerWord + remainingPauseMs) /
+            (1_000.0 * speed.coerceIn(PLAYBACK_SPEED_RANGE))).toInt()
+
+    fun totalSeconds(millisPerWord: Double, speed: Float): Int =
+        ceil((totalWords * millisPerWord + totalPauseMs) /
             (1_000.0 * speed.coerceIn(PLAYBACK_SPEED_RANGE))).toInt()
 
     fun remainingMinutes(millisPerWord: Double, speed: Float): Int =
