@@ -84,7 +84,8 @@ class LibraryV2FlowTest {
         compose.onNodeWithContentDescription("Opsi perpustakaan").performClick()
         compose.onNodeWithText("Ubah Nama Folder").assertIsDisplayed()
         compose.onNodeWithText("Kelompokkan berdasarkan tanggal").performScrollTo().assertIsDisplayed()
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
         compose.onNodeWithContentDescription("Daftar folder").performClick()
         compose.onNodeWithContentDescription("Opsi folder $folderName").performClick()
         compose.onNodeWithText("Sematkan di atas").performClick()
@@ -108,6 +109,7 @@ class LibraryV2FlowTest {
             compose.onNodeWithText("Perpustakaan").performClick()
             compose.onNodeWithText(book.title).assertDoesNotExist()
             compose.onNodeWithText(folderName).performClick()
+            compose.waitUntil(15_000) { compose.onAllNodesWithText(book.title).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(book.title).performTouchInput { longClick() }
             compose.onNodeWithText("Pindahkan ke folder").performScrollTo().performClick()
             compose.onNodeWithText("Pindahkan").performClick()
