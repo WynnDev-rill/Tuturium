@@ -33,16 +33,20 @@ internal object OfflineSynth {
     private var sessions = 0
 
     suspend fun withWarmModel(block: suspend () -> Unit) {
-        withContext(dispatcher + NonCancellable) {
-            sessions++
-            releaseJob?.cancel()
-        }
+        var retained = false
         try {
+            withContext(dispatcher) {
+                sessions++
+                retained = true
+                releaseJob?.cancel()
+            }
             block()
         } finally {
-            withContext(dispatcher + NonCancellable) {
-                sessions--
-                releaseWhenIdle()
+            if (retained) withContext(NonCancellable) {
+                withContext(dispatcher) {
+                    sessions--
+                    releaseWhenIdle()
+                }
             }
         }
     }
