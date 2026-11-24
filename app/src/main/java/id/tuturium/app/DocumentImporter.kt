@@ -64,7 +64,7 @@ class DocumentImporter(private val context: Context) {
             }
             val readable = sections.map { it.copy(text = it.text.trim()) }
                 .filter { format == "pdf" || it.text.isNotBlank() }
-            require(readable.sumOf { it.text.length.toLong() } <= MAX_TEXT) { "Teks dokumen terlalu panjang." }
+            require(format == "pdf" || readable.sumOf { it.text.length.toLong() } <= MAX_TEXT) { "Teks dokumen terlalu panjang." }
             ensureActive()
             val library = Library.get(context)
             val book = library.add(title, format.uppercase(Locale.ROOT), ReadingDocument(readable))
@@ -97,22 +97,17 @@ class DocumentImporter(private val context: Context) {
         PDFBoxResourceLoader.init(context)
         val extracted = PDDocument.load(file, com.tom_roush.pdfbox.io.MemoryUsageSetting.setupTempFileOnly())
             .use { pdf ->
-                require(pdf.numberOfPages <= 1500) { "PDF melebihi 1.500 halaman." }
                 require(pdf.currentAccessPermission.canExtractContent()) { "PDF membatasi ekstraksi teks." }
                 val stripper = PDFTextStripper().apply {
                     sortByPosition = true
                     paragraphEnd = "\n\n"
                 }
-                var total = 0L
                 List(pdf.numberOfPages) { page ->
                     kotlin.coroutines.coroutineContext.ensureActive()
                     progress("Membaca halaman ${page + 1} dari ${pdf.numberOfPages}")
                     stripper.startPage = page + 1
                     stripper.endPage = page + 1
-                    normalizePdf(stripper.getText(pdf)).also {
-                        total += it.length
-                        require(total <= MAX_TEXT) { "Teks PDF terlalu panjang." }
-                    }
+                    normalizePdf(stripper.getText(pdf))
                 }
             }
         if (extracted.all { it.any(Char::isLetterOrDigit) }) {
@@ -122,7 +117,6 @@ class DocumentImporter(private val context: Context) {
         try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                 PdfRenderer(descriptor).use { renderer ->
-                    var total = 0L
                     return extracted.mapIndexed { index, text ->
                         kotlin.coroutines.coroutineContext.ensureActive()
                         val detected = if (text.any(Char::isLetterOrDigit)) text else {
@@ -148,8 +142,6 @@ class DocumentImporter(private val context: Context) {
                                 }
                             }
                         }
-                        total += detected.length
-                        require(total <= MAX_TEXT) { "Teks PDF terlalu panjang." }
                         Section("Halaman ${index + 1}", detected)
                     }
                 }
