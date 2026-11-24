@@ -29,13 +29,12 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            adb shell settings put secure show_ime_with_hard_keyboard 1
-            if ! ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.ReaderFlowTest,id.tuturium.app.LibraryV2FlowTest,id.tuturium.app.OfflineVoiceRuntimeTest -Pandroid.testInstrumentationRunnerArguments.offlineVoiceSmoke=true; then
-              adb logcat -d -s AndroidRuntime:E TuturiumPlayback:V TuturiumVoice:V
-              python3 -c 'from pathlib import Path; from xml.etree import ElementTree as E; print(*[f.text for p in Path("app/build/outputs/androidTest-results").rglob("TEST-*.xml") for f in E.parse(p).iter("failure")],sep="\n")'
-              exit 1
-            fi
+          script: >-
+            bash -c 'adb shell settings put secure show_ime_with_hard_keyboard 1;
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.ReaderFlowTest,id.tuturium.app.LibraryV2FlowTest,id.tuturium.app.OfflineVoiceRuntimeTest -Pandroid.testInstrumentationRunnerArguments.offlineVoiceSmoke=true;
+            result=$?; if [ "$result" -ne 0 ]; then adb logcat -d -s AndroidRuntime:E TuturiumPlayback:V TuturiumVoice:V;
+            find app/build/outputs/androidTest-results -name "TEST-*.xml" -exec sed -n "/<failure/,/<\/failure>/p" {} +; fi;
+            exit "$result"'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
