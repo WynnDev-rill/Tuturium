@@ -168,7 +168,10 @@ class ReadingService : Service() {
     private var mediaSpeechBook: String? = null
     private var publishedMediaText: Pair<String, String>? = null
     private var lastMediaTextUpdate = -1_000L
-    private val mediaTextUpdate = Runnable {
+    private val mediaTextUpdate = Runnable { refreshMediaText() }
+
+    @SuppressLint("NotificationPermission")
+    private fun refreshMediaText() {
         if (foreground && (current.playing || current.loading)) {
             runCatching {
                 if (updateMediaMetadata()) {
