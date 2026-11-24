@@ -1,3 +1,6 @@
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application") version "8.9.2"
     id("org.jetbrains.kotlin.android") version "2.1.20"
@@ -14,9 +17,9 @@ val fetchSherpa = tasks.register("fetchSherpaRuntime") {
         destination.parentFile.mkdirs()
         val temporary = File(destination.parentFile, destination.name + ".tmp")
         try {
-            java.net.URI("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.4/sherpa-onnx-static-link-onnxruntime-1.13.4.aar")
+            URI("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.4/sherpa-onnx-static-link-onnxruntime-1.13.4.aar")
                 .toURL().openStream().use { input -> temporary.outputStream().use { input.copyTo(it) } }
-            val sha = java.security.MessageDigest.getInstance("SHA-256")
+            val sha = MessageDigest.getInstance("SHA-256")
                 .digest(temporary.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
             check(sha == "dc5ac19a28dee3bffc5e5a5d50cb6afa977703fc4a7ee535a308506990fdd295")
             check(temporary.renameTo(destination))

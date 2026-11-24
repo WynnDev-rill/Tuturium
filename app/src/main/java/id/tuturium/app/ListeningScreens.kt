@@ -467,10 +467,10 @@ private fun OfflineModelCard(model: TuturiumModel, pack: OfflineModel) {
                     }
                 }
             }
-            if (!installed && model.downloadingModel == null) model.modelDownloadError?.let {
+            if (!installed && model.failedModelId == pack.id && model.downloadingModel == null) model.modelDownloadError?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            if (installed && OfflineCatalog.voice(model.previewingVoice)?.model == pack.id)
+            if (installed && model.failedOfflinePreview == pack.id)
                 model.previewError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }

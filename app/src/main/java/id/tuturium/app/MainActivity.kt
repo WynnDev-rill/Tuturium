@@ -244,9 +244,13 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var modelDownloadProgress by mutableStateOf<Float?>(null)
         private set
+    var failedModelId by mutableStateOf<String?>(null)
+        private set
     var modelDownloadError by mutableStateOf<String?>(null)
         private set
     private var modelDownloadJob: Job? = null
+    var failedOfflinePreview by mutableStateOf<String?>(null)
+        private set
 
     fun downloadVoiceModel(id: String) {
         if (downloadingModel != null) return
@@ -254,6 +258,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         downloadingModel = id
         modelDownloadProgress = 0f
         modelDownloadError = null
+        failedModelId = null
         modelDownloadJob = viewModelScope.launch {
             try {
                 OfflineModelStore.install(app, model) { progress ->
@@ -262,6 +267,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
                 installedModels = installedModels + id
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
+                failedModelId = id
                 modelDownloadError = "Unduhan gagal: " + error.message.orEmpty()
             } finally { downloadingModel = null; modelDownloadProgress = null }
         }
@@ -269,19 +275,20 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun cancelVoiceDownload() { modelDownloadJob?.cancel() }
 
-    fun previewOfflineVoice(voice: OfflineVoice) {
+    internal fun previewOfflineVoice(voice: OfflineVoice) {
         if (previewingVoice == voice.id) { stopVoicePreview(); return }
         stopVoicePreview()
         if (voice.model !in installedModels) return
         if (ReadingService.state.value.playing || ReadingService.state.value.loading)
             ReadingService.command(app, ReadingService.PAUSE)
         previewError = null
+        failedOfflinePreview = null
         previewingVoice = voice.id
         previewLoading = true
         offlinePreview.play(viewModelScope, voice, "Halo, ini pratinjau suara bahasa Indonesia. Anda dapat mendengarkan buku secara offline di Tuturium.", 1f,
             onStart = { previewLoading = false },
             onDone = { previewingVoice = null; previewLoading = false },
-            onError = { previewError = "Pratinjau offline gagal: " + it.message.orEmpty(); previewingVoice = null; previewLoading = false })
+            onError = { failedOfflinePreview = voice.model; previewError = "Pratinjau offline gagal: " + it.message.orEmpty(); previewingVoice = null; previewLoading = false })
     }
 
     var voices by mutableStateOf<List<VoiceChoice>>(emptyList())
