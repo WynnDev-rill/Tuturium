@@ -76,7 +76,7 @@ class ReaderFlowTest {
         compose.onNodeWithText("+0,05× tiap 600 kata · hingga 4×").assertIsDisplayed()
         compose.onNodeWithContentDescription("Tingkatkan kecepatan otomatis").performClick()
         compose.onNodeWithContentDescription("Pilih 1,0×").performClick()
-        androidx.test.espresso.Espresso.pressBack()
+        compose.onNodeWithText("Selesai").performClick()
         compose.onNodeWithContentDescription("Opsi pembaca").performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed().performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed()

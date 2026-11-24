@@ -395,7 +395,11 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Kecepatan", style = MaterialTheme.typography.titleLarge)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Kecepatan", style = MaterialTheme.typography.titleLarge)
+                        TextButton(onClick = dismiss) { Text("Selesai") }
+                    }
                     Text("Perkiraan sisa · ${formatPlaybackTime(seconds)}",
                         color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp),
