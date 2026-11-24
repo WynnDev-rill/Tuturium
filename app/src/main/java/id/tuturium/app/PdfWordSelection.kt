@@ -8,6 +8,7 @@ import com.tom_roush.pdfbox.text.TextPosition
 import android.content.Context
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.tasks.await
 
 private val pdfWordPattern = Regex("[\\p{L}\\p{N}\\p{M}]+")
 private fun pdfKey(word: String) = java.text.Normalizer.normalize(word, java.text.Normalizer.Form.NFKC)
@@ -42,15 +43,22 @@ internal fun readPdfWordHits(context: Context, source: File, pageIndex: Int,
                 if (textPositions.isEmpty() || text.isBlank()) return
                 // PDFBox emits individual words with their associated glyphs.
                 val tokens = pdfWordPattern.findAll(text).toList()
-                if (tokens.size != 1) return
                 val first = textPositions.first()
                 val width = first.pageWidth.coerceAtLeast(1f)
                 val height = first.pageHeight.coerceAtLeast(1f)
-                val left = textPositions.minOf { it.x / width }
-                val right = textPositions.maxOf { (it.x + it.width) / width }
-                val top = textPositions.minOf { (it.y - it.height) / height }
-                val bottom = textPositions.maxOf { it.y / height }
-                hits.add(PdfWordHit(tokens.single().value, left, top, right, bottom))
+                val glyphs = textPositions.flatMap { glyph ->
+                    List(glyph.unicode?.length?.coerceAtLeast(1) ?: 1) { glyph }
+                }
+                for (token in tokens) {
+                    val positions = if (tokens.size == 1) textPositions else
+                        glyphs.drop(token.range.first).take(token.value.length)
+                    if (positions.isEmpty()) continue
+                    val left = positions.minOf { it.x / width }
+                    val right = positions.maxOf { (it.x + it.width) / width }
+                    val top = positions.minOf { (it.y - it.height) / height }
+                    val bottom = positions.maxOf { it.y / height }
+                    hits.add(PdfWordHit(token.value, left, top, right, bottom))
+                }
             }
         }.apply {
             sortByPosition = true
