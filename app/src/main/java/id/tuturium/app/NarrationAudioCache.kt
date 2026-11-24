@@ -99,3 +99,7 @@ internal class NarrationAudioCache(private val directory: File, private val budg
         }
     }
 }
+
+/** +9.5 dB is approximately 3× signal amplitude before compression, not perceived loudness. */
+internal fun narrationBoostMb(volume: Float): Int =
+    ((volume.coerceIn(0f, 1f) - .5f).coerceAtLeast(0f) * 1900f).toInt()
