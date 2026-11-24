@@ -88,7 +88,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val marked = model.bookmarks.any { it.index == current }
     val offlineVoice = OfflineCatalog.voice(model.settings.voice)
-    LaunchedEffect(book.id, offlineVoice?.id, isPlaying, isLoading, model.listeningOptions.skipEnabled) {
+    LaunchedEffect(book.id, offlineVoice?.id, current, isPlaying, isLoading, model.listeningOptions) {
         val voice = offlineVoice ?: return@LaunchedEffect
         if (isPlaying || isLoading || ReadingService.state.value.playing || ReadingService.state.value.loading)
             return@LaunchedEffect
@@ -223,7 +223,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             } else {
                 spokenText.trimStart().substringBefore(' ').take(28)
             }
-            Row(Modifier.fillMaxWidth().padding(bottom = 9.dp),
+            Row(Modifier.fillMaxWidth().padding(top = if (pdfSource != null) 52.dp else 0.dp, bottom = 9.dp),
                 horizontalArrangement = Arrangement.Center) {
                 Surface(onClick = {
                     showPdf = false
