@@ -88,3 +88,6 @@ internal fun matchesLibraryFilter(book: Book, filter: String, later: Boolean): B
         "Lainnya" -> book.format !in setOf("PDF", "TXT", "DOCX", "EPUB", "DOC", "RTF", "MD", "WEB", "OCR", "SCAN", "IMAGE", "JPG", "JPEG", "PNG")
         else -> true
     }
+
+/** Root library and each folder contain only their own direct members. */
+internal fun isInLibraryFolder(assigned: String?, displayed: String?): Boolean = assigned == displayed

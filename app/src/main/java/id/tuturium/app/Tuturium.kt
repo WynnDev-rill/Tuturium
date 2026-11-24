@@ -129,7 +129,7 @@ fun Tuturium(model: TuturiumModel) {
             showAddSheet -> showAddSheet = false
             model.showUpdate -> model.showUpdate = false
             model.reader != null -> model.closeReader()
-            tab in listOf("account", "stats", "settings", "voices", "storage", "trash", "updates") -> tab = "profile"
+            tab in listOf("account", "stats", "settings", "voices", "storage", "trash", "updates", "about") -> tab = "profile"
             else -> tab = "home"
         }
     }
@@ -192,7 +192,7 @@ fun Tuturium(model: TuturiumModel) {
                         onVoices = { tab = "voices" },
                         onStorage = { model.refresh(); tab = "storage" },
                         onTrash = { model.refresh(); tab = "trash" },
-                        onUpdate = { tab = "updates" })
+                        onUpdate = { tab = "updates" }, onAbout = { tab = "about" })
                     "account" -> TuturiumAccountScreen(
                         onBack = { tab = "profile" },
                         onSignIn = { (context as? MainActivity)?.startGoogleSignIn() },
@@ -204,6 +204,7 @@ fun Tuturium(model: TuturiumModel) {
                     "storage" -> StorageV2(model, { tab = "profile" })
                     "trash" -> ModernTrash(model, { tab = "profile" })
                     "updates" -> ModernUpdateMenu(model, { tab = "profile" })
+                    "about" -> TuturiumAbout { tab = "profile" }
                 }
             }
         }

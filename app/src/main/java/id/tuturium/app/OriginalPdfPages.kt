@@ -7,6 +7,14 @@ import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -53,7 +61,7 @@ import kotlinx.coroutines.withContext
 /** Genuine PDF page rendering. Text extraction is retained separately for narration. */
 @Composable
 internal fun OriginalPdfPages(
-    source: File, readingPage: Int, follow: Boolean, reading: Boolean,
+    source: File, readingPage: Int, follow: Boolean, reading: Boolean, hasReadingPosition: Boolean,
     firstPassByPage: Map<Int, Int>, passesByPage: Map<Int, List<IndexedValue<Pass>>>,
     currentPass: Int, spokenRange: IntRange?, highlightSentence: Boolean, highlightColor: Color,
     onReadWord: (WordSelection) -> Unit
@@ -102,8 +110,18 @@ internal fun OriginalPdfPages(
         }
         if (follow && !browsing && list.firstVisibleItemIndex != target) list.scrollToItem(target)
     }
-    val awayFromReading by remember(target, list) {
-        derivedStateOf { list.layoutInfo.visibleItemsInfo.none { it.index == target } }
+    var activeBand by remember(target, currentPass) { mutableStateOf<Pair<Float, Float>?>(null) }
+    val awayFromReading by remember(target, currentPass, list) {
+        derivedStateOf {
+            val info = list.layoutInfo
+            val item = info.visibleItemsInfo.firstOrNull { it.index == target }
+            if (info.visibleItemsInfo.isEmpty()) false else if (item == null) true
+            else activeBand?.let { band ->
+                pdfWordOutsideViewport(item.offset + item.size * band.first,
+                    item.offset + item.size * band.second, info.viewportStartOffset.toFloat(),
+                    info.viewportEndOffset.toFloat())
+            } ?: false
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -114,7 +132,8 @@ internal fun OriginalPdfPages(
             items(total, key = { it }) { index ->
                 val pass = firstPassByPage[index]
                 PdfPageImage(session, source, index, passesByPage[index].orEmpty(), onReadWord,
-                    currentPass, spokenRange, highlightSentence, highlightColor, onRead = pass
+                    currentPass, spokenRange, highlightSentence, highlightColor,
+                    onActiveBand = { band -> if (index == target) activeBand = band }, onRead = pass
                     ?.takeUnless { reading && index == target }
                     ?.let { start ->
                         {
@@ -125,13 +144,39 @@ internal fun OriginalPdfPages(
                     })
             }
         }
-        if (reading && awayFromReading && (browsing || !follow)) {
-            FilledTonalIconButton(onClick = {
+        if (hasReadingPosition && awayFromReading && (browsing || !follow)) {
+            val snippet = passesByPage[target]?.firstOrNull { it.index == currentPass }?.value?.text.orEmpty()
+            val offset = spokenRange?.first?.coerceIn(0, snippet.length) ?: 0
+            val label = snippet.drop(offset).trimStart().substringBefore(' ').take(30).ifBlank { "Kembali ke bacaan" }
+            val info = list.layoutInfo
+            val item = info.visibleItemsInfo.firstOrNull { it.index == target }
+            val below = if (item == null) target > list.firstVisibleItemIndex
+                else activeBand?.let { item.offset + item.size * it.first >= info.viewportEndOffset } ?: false
+            Surface(onClick = {
                 requestedPage = null
-                browsing = false
-                scope.launch { list.scrollToItem(target) }
-            }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
-                Icon(Icons.Rounded.MyLocation, "Kembali ke halaman bacaan")
+                scope.launch {
+                    list.scrollToItem(target)
+                    val band = activeBand ?: withTimeoutOrNull(1200) {
+                        snapshotFlow { activeBand }.filterNotNull().first()
+                    }
+                    val currentInfo = list.layoutInfo
+                    val page = currentInfo.visibleItemsInfo.firstOrNull { it.index == target }
+                    if (band != null && page != null) {
+                        val viewport = currentInfo.viewportEndOffset - currentInfo.viewportStartOffset
+                        list.scrollToItem(target, (page.size * (band.first + band.second) / 2 - viewport / 2).toInt().coerceAtLeast(0))
+                    }
+                    browsing = false
+                }
+            }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 38.dp)
+                .semantics { contentDescription = "Kembali ke kalimat yang dibacakan" },
+                shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                Row(Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (below) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp,
+                        null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(6.dp))
+                    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
@@ -141,7 +186,7 @@ internal fun OriginalPdfPages(
 private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
     passes: List<IndexedValue<Pass>>, onReadWord: (WordSelection) -> Unit,
     currentPass: Int, spokenRange: IntRange?, highlightSentence: Boolean, highlightColor: Color,
-    onRead: (() -> Unit)?) {
+    onActiveBand: (Pair<Float, Float>?) -> Unit, onRead: (() -> Unit)?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val read by rememberUpdatedState(onReadWord)
@@ -221,6 +266,10 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
             val words = remember(hits, currentPass, spokenRange) {
                 if (spokenRange != null) pdfHighlightWords(hits, currentPass, spokenRange) else emptyList()
             }
+            val passHits = remember(hits, currentPass) { pdfHighlightWords(hits, currentPass, null) }
+            val bandHits = if (words.isNotEmpty()) words else passHits.take(1)
+            val band = if (bandHits.isEmpty()) null else bandHits.minOf { it.top } to bandHits.maxOf { it.bottom }
+            LaunchedEffect(band, currentPass) { if (passes.any { it.index == currentPass }) onActiveBand(band) }
             Canvas(Modifier.matchParentSize()) {
                 val scale = minOf(size.width / bitmap.width, size.height / bitmap.height)
                 val width = bitmap.width * scale
@@ -233,11 +282,12 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
                     val t = hit.top.coerceIn(0f, 1f)
                     val b = hit.bottom.coerceIn(t, 1f)
                     drawRoundRect(color, topLeft = Offset(dx + l * width, dy + t * height),
-                        size = Size((r - l) * width, (b - t) * height), cornerRadius = CornerRadius(2.dp.toPx()))
+                        size = Size((r - l) * width, (b - t) * height), cornerRadius = CornerRadius(2.dp.toPx()),
+                        blendMode = if (dark) BlendMode.Screen else BlendMode.Multiply)
                 }
-                sentence.forEach { paint(it, highlightColor.copy(alpha = .23f)) }
-                words.forEach { paint(it, highlightColor.copy(alpha = .55f)) }
-                selected?.let { paint(it, highlightColor.copy(alpha = .65f)) }
+                sentence.forEach { paint(it, highlightColor.copy(alpha = .48f)) }
+                words.forEach { paint(it, highlightColor.copy(alpha = .88f)) }
+                selected?.let { paint(it, highlightColor.copy(alpha = .90f)) }
             }
             Box(Modifier.align(Alignment.TopStart).offset {
                 IntOffset(anchor.x.roundToInt(), anchor.y.roundToInt())
@@ -339,3 +389,6 @@ private class PdfPageSession(private val source: File) {
         }
     }
 }
+
+internal fun pdfWordOutsideViewport(top: Float, bottom: Float, viewportStart: Float, viewportEnd: Float): Boolean =
+    bottom <= viewportStart || top >= viewportEnd

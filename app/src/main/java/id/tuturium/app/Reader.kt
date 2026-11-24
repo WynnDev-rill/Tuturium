@@ -216,45 +216,10 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         }
         Box(Modifier.weight(1f)) {
         Column(Modifier.fillMaxSize()) {
-        if ((active || book.position > 0 || book.wordOffset > 0) && !showPdf &&
-            manualBrowsing && readingOffScreen
-        ) {
-            val spokenText = document.passes.getOrNull(current)?.text.orEmpty()
-            val range = playback.range.takeIf { active }
-            val snippet = if (range != null && range.first in spokenText.indices) {
-                spokenText.substring(range.first, (range.last + 1).coerceAtMost(spokenText.length))
-            } else {
-                spokenText.trimStart().substringBefore(' ').take(28)
-            }
-            Row(Modifier.fillMaxWidth().padding(top = if (pdfSource != null) 32.dp else 0.dp, bottom = 9.dp),
-                horizontalArrangement = Arrangement.Center) {
-                Surface(onClick = {
-                    showPdf = false
-                    if (searchOpen) panel = null
-                    manualBrowsing = false
-                    jump = current
-                }, modifier = Modifier.semantics { contentDescription = "Kembali ke kalimat yang dibacakan" },
-                    shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    Row(Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        val first = list.firstVisibleItemIndex
-                        val below = locations[current] > first ||
-                            (locations[current] == first && activeBelowViewport)
-                        Icon(if (below) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp,
-                            null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(6.dp))
-                        Text(snippet.take(30).ifBlank { "Kembali ke bacaan" },
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurface)
-                    }
-                }
-            }
-        }
         if (showPdf && pdfSource != null) {
             Box(Modifier.weight(1f)) {
                 OriginalPdfPages(pdfSource, document.pdfPageForPass(current), model.follow,
-                    reading = isPlaying || isLoading, firstPassByPage = pdfPasses,
+                    reading = isPlaying || isLoading, hasReadingPosition = active || book.position > 0 || book.wordOffset > 0 || current > 0, firstPassByPage = pdfPasses,
                     passesByPage = pdfWords, currentPass = current,
                     spokenRange = if (active) playback.range else if (current == book.position)
                         book.wordOffset..book.wordOffset else null,
@@ -412,6 +377,41 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             }
         }
         }
+        }
+        if ((active || book.position > 0 || book.wordOffset > 0) && !showPdf &&
+            !searchOpen && manualBrowsing && readingOffScreen
+        ) {
+            val spokenText = document.passes.getOrNull(current)?.text.orEmpty()
+            val range = playback.range.takeIf { active }
+            val snippet = if (range != null && range.first in spokenText.indices) {
+                spokenText.substring(range.first, (range.last + 1).coerceAtMost(spokenText.length))
+            } else {
+                spokenText.trimStart().substringBefore(' ').take(28)
+            }
+            Row(Modifier.align(Alignment.TopCenter).padding(top = if (pdfSource != null) 38.dp else 4.dp),
+                horizontalArrangement = Arrangement.Center) {
+                Surface(onClick = {
+                    showPdf = false
+                    if (searchOpen) panel = null
+                    manualBrowsing = false
+                    jump = current
+                }, modifier = Modifier.semantics { contentDescription = "Kembali ke kalimat yang dibacakan" },
+                    shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    Row(Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        val first = list.firstVisibleItemIndex
+                        val below = locations[current] > first ||
+                            (locations[current] == first && activeBelowViewport)
+                        Icon(if (below) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp,
+                            null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(6.dp))
+                        Text(snippet.take(30).ifBlank { "Kembali ke bacaan" },
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+            }
         }
         if (pdfSource != null) {
             val colors = MaterialTheme.colorScheme

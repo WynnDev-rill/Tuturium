@@ -360,7 +360,7 @@ private fun NavTab(title: String, icon: androidx.compose.ui.graphics.vector.Imag
 @Composable
 fun ModernProfile(onBack: () -> Unit, onAccount: () -> Unit, onStats: () -> Unit,
     onSettings: () -> Unit, onVoices: () -> Unit, onStorage: () -> Unit,
-    onTrash: () -> Unit, onUpdate: () -> Unit) {
+    onTrash: () -> Unit, onUpdate: () -> Unit, onAbout: () -> Unit) {
     val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
     LazyColumn(Modifier.fillMaxSize().background(Color.Black),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
@@ -410,7 +410,7 @@ fun ModernProfile(onBack: () -> Unit, onAccount: () -> Unit, onStats: () -> Unit
             Surface(shape = RoundedCornerShape(22.dp), color = Tile, modifier = Modifier.fillMaxWidth()) {
                 Column {
                     ProfileEntry(Icons.Rounded.SystemUpdate, "Pembaruan aplikasi", onUpdate, "Tuturium ${BuildConfig.VERSION_NAME}")
-                    ProfileEntry(Icons.Rounded.Info, "Tentang Tuturium", onStorage, "Pembaca dokumen offline")
+                    ProfileEntry(Icons.Rounded.Info, "Tentang Tuturium", onAbout, "Pembaca dokumen offline")
                 }
             }
         }
@@ -627,4 +627,41 @@ private fun durationLabel(durationMs: Long): String {
 private fun HomeGoogleAvatar() {
     val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
     GoogleAvatar(cloud.photoUrl, 44.dp, "Buka profil")
+}
+
+@Composable
+internal fun TuturiumAbout(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    LazyColumn(Modifier.fillMaxSize().background(colors.background),
+        contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Kembali") }
+                Text("Tentang Tuturium", style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        item {
+            Column(Modifier.fillMaxWidth().padding(vertical = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(shape = RoundedCornerShape(22.dp), color = colors.primaryContainer) {
+                    Icon(Icons.Rounded.AutoStories, null, Modifier.padding(18.dp).size(48.dp), tint = colors.onPrimaryContainer)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("Tuturium", style = MaterialTheme.typography.headlineMedium)
+                Text("Versi ${BuildConfig.VERSION_NAME}", color = colors.onSurfaceVariant)
+            }
+        }
+        item { Text("Pembaca dokumen untuk belajar dan mendengarkan buku. Impor PDF, teks, dan dokumen lainnya, lalu baca dengan suara Indonesia.") }
+        item { HorizontalDivider() }
+        item { Text("Suara dan privasi", style = MaterialTheme.typography.titleMedium) }
+        item { Text("Mendukung suara offline setelah model diunduh, dan Google TTS sesuai ketersediaan perangkat. Dokumen dapat dibaca secara lokal; sinkronisasi Google Drive bersifat opsional.") }
+        item { Text("Teknologi", style = MaterialTheme.typography.titleMedium) }
+        item { Text("Android · Jetpack Compose · Media3 · PDFBox · ML Kit · Supertonic / sherpa-onnx", color = colors.onSurfaceVariant) }
+        item {
+            OutlinedButton(onClick = {
+                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://github.com/WynnDev-rill/Tuturium"))) }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Repository dan kode sumber") }
+        }
+    }
 }

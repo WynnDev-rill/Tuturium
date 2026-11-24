@@ -554,6 +554,23 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun hasOriginalPdf(book: Book): Boolean = book.format == "PDF" && library.originalPdf(book.id) != null
+
+    fun exportBook(book: Book, destination: Uri, pdf: Boolean) = viewModelScope.launch {
+        safe("Unduh dokumen gagal") {
+            withContext(Dispatchers.IO) {
+                val source = if (pdf) checkNotNull(library.originalPdf(book.id)) { "PDF asli tidak tersedia." } else null
+                val text = if (source == null) library.document(book.id).sections.joinToString("\n\n") { it.text } else null
+                val output = checkNotNull(app.contentResolver.openOutputStream(destination, "wt")) { "Lokasi penyimpanan tidak tersedia." }
+                output.use { stream ->
+                    if (source != null) source.inputStream().use { it.copyTo(stream) }
+                    else stream.write(checkNotNull(text).toByteArray(Charsets.UTF_8))
+                }
+            }
+            status = "Dokumen berhasil diunduh."
+        }
+    }
+
     fun shareBook(book: Book) = viewModelScope.launch {
         safe("Gagal membagikan dokumen") {
             // Export a readable text copy, never expose the private database file.

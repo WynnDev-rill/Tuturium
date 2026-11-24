@@ -115,6 +115,7 @@ internal fun ReaderAudioSheet(model: TuturiumModel, dismiss: () -> Unit) {
                 Text("Padukan dengan musik latar", Modifier.weight(1f))
                 Switch(options.mixWithMusic, { model.changeListeningOptions(options.copy(mixWithMusic = it)) })
             }
+            if (options.mixWithMusic) Text("Musik aplikasi lain akan dikecilkan otomatis oleh Android saat membaca dan dipulihkan saat dijeda. Besarnya pengurangan mengikuti sistem.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Volume narasi ${(volume * 100).toInt()}%", style = MaterialTheme.typography.titleMedium)
             Slider(volume, { model.changeSettings(model.settings.copy(volume = it), persist = false) },
                 valueRange = 0.01f..1f,
