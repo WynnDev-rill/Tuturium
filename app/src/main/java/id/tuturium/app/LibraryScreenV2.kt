@@ -40,7 +40,8 @@ private val Secondary = Color(0xFF9D9D9D)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
+fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit,
+    folderRefresh: Int = 0, onFolderChanged: (String?) -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("library_display", 0) }
     var folders by remember { mutableStateOf(FolderStore.names(context)) }
@@ -67,6 +68,9 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
     var choosingForFolder by remember { mutableStateOf(false) }
     var chooseTargetForSelection by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
+    LaunchedEffect(folderRefresh) { folders = FolderStore.names(context); revision++ }
+    LaunchedEffect(folder) { onFolderChanged(folder) }
+    var groupByDate by rememberSaveable { mutableStateOf(prefs.getBoolean("group_date", false)) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = remember { FocusRequester() }
     val allFolders = remember(folders, revision) {
@@ -80,6 +84,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
             book.title.contains(search.trim(), ignoreCase = true)
         }, sort).sortedWith(compareByDescending<Book> { BookActions.pinned(context, it.id) })
     }
+    val pinnedBooks = remember(model.books, revision) { model.books.filter { BookActions.pinned(context, it.id) }.map { it.id }.toSet() }
     val shownFolders = if (search.isBlank()) allFolders else allFolders.filter {
         it.contains(search.trim(), ignoreCase = true)
     }
@@ -150,11 +155,17 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                             }
                         }
                         Box {
-                            IconButton(onClick = { if (folder == null) menu = true else folderOptions = folder }) {
+                            IconButton(onClick = { menu = true }) {
                                 Icon(Icons.Rounded.MoreHoriz, "Opsi perpustakaan")
                             }
                             TuturiumMenu(expanded = menu, onDismissRequest = { menu = false },
-                                modifier = Modifier.width(275.dp).background(Panel)) {
+                                modifier = Modifier.width(275.dp), shape = RoundedCornerShape(20.dp), containerColor = Panel) {
+                                if (folder != null) {
+                                    DropdownMenuItem(text = { Text("Tambahkan bacaan yang ada") }, leadingIcon = { Icon(Icons.Rounded.Add, null) }, onClick = { choosingForFolder = true; menu = false })
+                                    DropdownMenuItem(text = { Text("Buat Folder") }, leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) }, onClick = { folderDraft = ""; folderEditor = true; menu = false })
+                                    DropdownMenuItem(text = { Text("Ubah Nama Folder") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) }, onClick = { folderDraft = folder.orEmpty(); renameFolder = folder; menu = false })
+                                    HorizontalDivider(color = Color.DarkGray)
+                                }
                                 DropdownMenuItem(text = { Text("Pilih beberapa") },
                                     leadingIcon = { Icon(Icons.Rounded.Checklist, null) },
                                     onClick = { selecting = true; menu = false })
@@ -188,12 +199,17 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                                         })
                                 }
                                 HorizontalDivider(color = Color.DarkGray)
+                                DropdownMenuItem(text = { Text("Kelompokkan berdasarkan tanggal") },
+                                    leadingIcon = { Icon(Icons.Rounded.CalendarMonth, null) },
+                                    trailingIcon = { if (groupByDate) Icon(Icons.Rounded.Check, null) },
+                                    onClick = { groupByDate = !groupByDate; groupByFormat = false; prefs.edit().putBoolean("group_date", groupByDate).putBoolean("group", false).apply(); menu = false })
                                 DropdownMenuItem(text = { Text("Kelompokkan berdasarkan format") },
                                     leadingIcon = { Icon(Icons.Rounded.Category, null) },
                                     trailingIcon = { if (groupByFormat) Icon(Icons.Rounded.Check, null) },
                                     onClick = {
                                         groupByFormat = !groupByFormat
-                                        prefs.edit().putBoolean("group", groupByFormat).apply()
+                                        groupByDate = false
+                                        prefs.edit().putBoolean("group", groupByFormat).putBoolean("group_date", false).apply()
                                         menu = false
                                     })
                             }
@@ -255,6 +271,10 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Folder, null, Modifier.size(60.dp), tint = Color(0xFF2F9ED6))
                         Spacer(Modifier.width(12.dp))
+                        if (FolderStore.isPinned(context, name)) {
+                            Icon(Icons.Rounded.PushPin, "Disematkan", Modifier.size(16.dp), tint = Color.White)
+                            Spacer(Modifier.width(5.dp))
+                        }
                         Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                         IconButton(onClick = { folderOptions = name }) {
                             Icon(Icons.Rounded.MoreHoriz, "Opsi folder $name", tint = Secondary)
@@ -263,19 +283,20 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                 }
             }
             if (filter != "Folder" || folder != null) {
-                if (groupByFormat && !selecting) {
-                    visible.groupBy { it.format }.forEach { (format, group) ->
+                if ((groupByFormat || groupByDate) && !selecting) {
+                    val dateFormat = DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.forLanguageTag("id-ID"))
+                    visible.groupBy { if (groupByDate) dateFormat.format(Date(if (sort == "Terbaru") it.updated else it.created)) else it.format }.forEach { (format, group) ->
                         item(key = "group:$format") {
                             Text(format, color = Secondary, style = MaterialTheme.typography.labelLarge)
                         }
-                        bookRows(group, layout, model, playback, selecting, selectedIds,
+                        bookRows(group, layout, model, playback, selecting, selectedIds, pinnedBooks,
                             onClick = {
                                 if (selecting) selectedIds = toggleSelected(selectedIds, it.id)
                                 else model.open(it.id)
                             }, onOptions = { activeFile = it })
                     }
                 } else {
-                    bookRows(visible, layout, model, playback, selecting, selectedIds,
+                    bookRows(visible, layout, model, playback, selecting, selectedIds, pinnedBooks,
                         onClick = {
                             if (selecting) selectedIds = toggleSelected(selectedIds, it.id)
                             else model.open(it.id)
@@ -297,8 +318,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                         else -> "Belum ada dokumen."
                     }, color = Secondary)
                     Button(onClick = {
-                        if (folder != null && model.books.isNotEmpty()) choosingForFolder = true
-                        else onAdd()
+                        onAdd(folder)
                     }, colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
                         Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(6.dp))
                         Text("Tambahkan")
@@ -468,7 +488,7 @@ private fun toggleSelected(ids: Set<String>, id: String) =
 
 private fun LazyListScope.bookRows(
     books: List<Book>, layout: String, model: TuturiumModel, playback: Playback,
-    selecting: Boolean, selected: Set<String>, onClick: (Book) -> Unit, onOptions: (Book) -> Unit
+    selecting: Boolean, selected: Set<String>, pinnedBooks: Set<String>, onClick: (Book) -> Unit, onOptions: (Book) -> Unit
 ) {
     if (layout == "Daftar") items(books, key = { "book:${it.id}" }) { book ->
         Row(Modifier.fillMaxWidth().heightIn(min = 82.dp).combinedClickable(
@@ -479,8 +499,7 @@ private fun LazyListScope.bookRows(
             FileArtwork(book.format, Modifier.size(69.dp, 80.dp))
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
-                Text(book.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyLarge)
+                PinnedBookTitle(book, 1, book.id in pinnedBooks)
                 Spacer(Modifier.height(7.dp))
                 val current = if (playback.bookId == book.id && playback.total > 0)
                     if (playback.completed) book.count else playback.index else book.position
@@ -511,8 +530,7 @@ private fun LazyListScope.bookRows(
                         FileArtwork(book.format,
                             Modifier.size(if (cols == 2) 105.dp else 82.dp,
                                 if (cols == 2) 122.dp else 98.dp))
-                        Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall)
+                        PinnedBookTitle(book, 2, book.id in pinnedBooks)
                         Text("±${estimateRemainingMinutes(book.words, book.count, book.position, model.settings.speed)} menit",
                             color = Secondary, style = MaterialTheme.typography.labelSmall)
                         if (model.savingBookId == book.id) {
@@ -526,6 +544,18 @@ private fun LazyListScope.bookRows(
                 repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
+    }
+}
+
+@Composable
+private fun PinnedBookTitle(book: Book, lines: Int, pinned: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (pinned) {
+            Icon(Icons.Rounded.PushPin, "Disematkan", Modifier.size(15.dp), tint = Color.White)
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(book.title, maxLines = lines, overflow = TextOverflow.Ellipsis,
+            style = if (lines == 1) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodySmall)
     }
 }
 

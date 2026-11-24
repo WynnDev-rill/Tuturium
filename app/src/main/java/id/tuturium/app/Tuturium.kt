@@ -44,12 +44,18 @@ fun Tuturium(model: TuturiumModel) {
     val playback by ReadingService.chromeState.collectAsStateWithLifecycle(Playback())
     var tab by rememberSaveable { mutableStateOf("home") }
     var showAddSheet by remember { mutableStateOf(false) }
+    var libraryFolder by remember { mutableStateOf<String?>(null) }
+    var addFolderTarget by remember { mutableStateOf<String?>(null) }
+    var showCreateFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    var folderRefresh by remember { mutableIntStateOf(0) }
+    fun showAdd(target: String?) { addFolderTarget = target; model.importTargetFolder = null; showAddSheet = true }
     var showLinkDialog by remember { mutableStateOf(false) }
     var linkDraft by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) model.import(uri)
+        if (uri != null) model.import(uri) else model.importTargetFolder = null
     }
     val openFile: () -> Unit = {
         try {
@@ -63,13 +69,27 @@ fun Tuturium(model: TuturiumModel) {
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             recognizer.process(InputImage.fromBitmap(bitmap, 0))
                 .addOnSuccessListener { result ->
-                    if (result.text.isBlank()) model.status = "Tidak ada tulisan yang terdeteksi."
+                    if (result.text.isBlank()) { model.importTargetFolder = null; model.status = "Tidak ada tulisan yang terdeteksi." }
                     else model.addText("Hasil pindai", result.text, format = "SCAN")
                 }
-                .addOnFailureListener { model.status = "Pemindaian teks gagal." }
+                .addOnFailureListener { model.importTargetFolder = null; model.status = "Pemindaian teks gagal." }
                 .addOnCompleteListener { recognizer.close() }
+        } else model.importTargetFolder = null
+    }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) model.importTargetFolder = null else {
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            try {
+                recognizer.process(InputImage.fromFilePath(context, uri))
+                    .addOnSuccessListener { result ->
+                        if (result.text.isBlank()) { model.importTargetFolder = null; model.status = "Tidak ada tulisan yang terdeteksi." }
+                        else model.addText("Hasil foto", result.text, format = "SCAN")
+                    }.addOnFailureListener { model.importTargetFolder = null; model.status = "Pemindaian foto gagal." }
+                    .addOnCompleteListener { recognizer.close() }
+            } catch (_: Exception) { recognizer.close(); model.importTargetFolder = null; model.status = "Foto tidak dapat dibuka." }
         }
     }
+    val photo: () -> Unit = { photoPicker.launch("image/*") }
     val scan: () -> Unit = {
         try { camera.launch(null) }
         catch (_: Exception) { model.status = "Aplikasi kamera belum tersedia." }
@@ -77,8 +97,8 @@ fun Tuturium(model: TuturiumModel) {
     val dictation = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-            if (!spoken.isNullOrBlank()) model.addText("Hasil dikte", spoken)
-        }
+            if (!spoken.isNullOrBlank()) model.addText("Hasil dikte", spoken) else model.importTargetFolder = null
+        } else model.importTargetFolder = null
     }
     val dictate: () -> Unit = {
         try {
@@ -105,7 +125,7 @@ fun Tuturium(model: TuturiumModel) {
     BackHandler(model.showUpdate || model.reader != null || tab !in listOf("home", "library") ||
         showAddSheet || showLinkDialog) {
         when {
-            showLinkDialog -> showLinkDialog = false
+            showLinkDialog -> { showLinkDialog = false; model.importTargetFolder = null }
             showAddSheet -> showAddSheet = false
             model.showUpdate -> model.showUpdate = false
             model.reader != null -> model.closeReader()
@@ -135,9 +155,9 @@ fun Tuturium(model: TuturiumModel) {
                 if (model.reader == null && !model.showUpdate && tab in listOf("home", "library")) {
                     Column {
                         ModernNavigation(tab,
-                            onHome = { tab = "home"; model.refresh() },
+                            onHome = { tab = "home"; libraryFolder = null; model.importTargetFolder = null; model.refresh() },
                             onLibrary = { tab = "library"; model.refresh() },
-                            onAdd = { showAddSheet = true })
+                            onAdd = { showAdd(if (tab == "library") libraryFolder else null) })
                     }
                 }
             }
@@ -147,7 +167,7 @@ fun Tuturium(model: TuturiumModel) {
                 model.reader != null -> "reader"
                 else -> tab
             }
-            Crossfade(screen, modifier = Modifier.fillMaxSize().padding(padding),
+            Crossfade(screen, modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
                 animationSpec = tween(170), label = "Layar Tuturium") { target ->
                 when (target) {
                     "update" -> model.release?.let { UpdateScreen(model, it) }
@@ -160,9 +180,10 @@ fun Tuturium(model: TuturiumModel) {
                         openProfile = { tab = "profile" },
                         openBook = { model.open(it.id) },
                         onFile = openFile, onScan = scan, onLink = link,
-                        onPaste = paste, onDictation = dictate, onAdd = { showAddSheet = true })
+                        onPaste = paste, onDictation = dictate, onAdd = { showAdd(null) })
                     "library" -> LibraryV2(model, playback,
-                        onAdd = { showAddSheet = true })
+                        onAdd = { showAdd(it) }, folderRefresh = folderRefresh,
+                        onFolderChanged = { libraryFolder = it })
                     "profile" -> ModernProfile(
                         onBack = { tab = "home" },
                         onAccount = { tab = "account" },
@@ -190,28 +211,61 @@ fun Tuturium(model: TuturiumModel) {
             TuturiumSheet(onDismissRequest = { showAddSheet = false },
                 containerColor = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-                    Text("Tambahkan bacaan", style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(12.dp))
+                    fun start(action: () -> Unit) {
+                        showAddSheet = false
+                        model.importTargetFolder = addFolderTarget
+                        action()
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(Triple("Kamera", Icons.Rounded.CameraAlt, scan),
+                            Triple("Foto", Icons.Rounded.Image, photo),
+                            Triple("File", Icons.Rounded.AttachFile, openFile)).forEach { (title, icon, action) ->
+                            Surface(onClick = { start(action) }, modifier = Modifier.weight(1f).height(90.dp),
+                                shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Icon(icon, null, Modifier.size(30.dp))
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(title, style = MaterialTheme.typography.titleSmall)
+                                }
+                            }
+                        }
+                    }
+                    ListItem(headlineContent = { Text("Buat Folder") }, leadingContent = { Icon(Icons.Rounded.CreateNewFolder, null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable { showAddSheet = false; newFolderName = ""; showCreateFolder = true })
+                    HorizontalDivider()
                     listOf(
-                        Triple("File", Icons.Rounded.FolderOpen, openFile),
-                        Triple("Pindai", Icons.Rounded.CameraAlt, scan),
-                        Triple("Tautan", Icons.Rounded.Link, link),
-                        Triple("Tempel teks", Icons.Rounded.EditNote, paste),
-                        Triple("Dikte", Icons.Rounded.Mic, dictate)
+                        Triple("Tempel Link", Icons.Rounded.Link, link),
+                        Triple("Ketik atau tempel teks", Icons.Rounded.EditNote, paste),
+                        Triple("Teks yang Didiktekan", Icons.Rounded.Mic, dictate)
                     ).forEach { (title, icon, action) ->
                         ListItem(headlineContent = { Text(title) },
                             leadingContent = { Icon(icon, null) },
-                            modifier = Modifier.clickable {
-                                showAddSheet = false
-                                action()
-                            })
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable { start(action) })
                     }
+                    HorizontalDivider()
+                    Text("Diimpor dari", Modifier.padding(top = 14.dp, bottom = 4.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                    ListItem(headlineContent = { Text("Penyimpanan perangkat / cloud") },
+                        supportingContent = { Text("Google Drive jika tersedia di pemilih file Android") },
+                        leadingContent = { Icon(Icons.Rounded.Cloud, null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable { start(openFile) })
                     Spacer(Modifier.height(12.dp))
                 }
             }
         }
+        if (showCreateFolder) TuturiumDialog(onDismissRequest = { showCreateFolder = false },
+            title = { Text("Buat Folder") },
+            text = { OutlinedTextField(newFolderName, { newFolderName = it.take(60) }, singleLine = true, label = { Text("Nama folder") }) },
+            confirmButton = { TextButton(onClick = {
+                if (FolderStore.add(context, newFolderName)) { folderRefresh++; showCreateFolder = false; tab = "library" }
+                else model.status = "Nama folder sudah digunakan atau tidak valid."
+            }) { Text("Buat") } },
+            dismissButton = { TextButton(onClick = { showCreateFolder = false }) { Text("Batal") } })
         if (showLinkDialog) {
-            TuturiumDialog(onDismissRequest = { showLinkDialog = false },
+            TuturiumDialog(onDismissRequest = { showLinkDialog = false; model.importTargetFolder = null },
                 title = { Text("Dengarkan tautan") },
                 text = { OutlinedTextField(linkDraft, { linkDraft = it.take(2048) },
                     singleLine = true, label = { Text("URL HTTPS halaman web") }) },
@@ -222,7 +276,7 @@ fun Tuturium(model: TuturiumModel) {
                         linkDraft = ""
                     }, enabled = linkDraft.startsWith("https://")) { Text("Impor") }
                 },
-                dismissButton = { TextButton(onClick = { showLinkDialog = false }) { Text("Batal") } })
+                dismissButton = { TextButton(onClick = { showLinkDialog = false; model.importTargetFolder = null }) { Text("Batal") } })
         }
         if (model.showPaste) PasteDialog(model)
         model.importing?.let { progress ->
@@ -407,7 +461,7 @@ private fun BookRow(book: Book, playback: Playback, open: () -> Unit, rename: ()
 @Composable
 private fun PasteDialog(model: TuturiumModel) {
     var title by rememberSaveable { mutableStateOf("") }
-    TuturiumDialog(onDismissRequest = { model.showPaste = false }, title = { Text("Tambah teks") }, text = {
+    TuturiumDialog(onDismissRequest = { model.showPaste = false; model.importTargetFolder = null }, title = { Text("Tambah teks") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(title, { title = it.take(200) }, label = { Text("Judul (opsional)") }, singleLine = true)
             OutlinedTextField(model.textDraft, { model.textDraft = it.take(DocumentImporter.MAX_TEXT) },
@@ -416,5 +470,5 @@ private fun PasteDialog(model: TuturiumModel) {
     }, confirmButton = {
         TextButton(onClick = { model.addText(title, model.textDraft); model.showPaste = false },
             enabled = model.textDraft.isNotBlank()) { Text("Simpan") }
-    }, dismissButton = { TextButton({ model.showPaste = false }) { Text("Batal") } })
+    }, dismissButton = { TextButton({ model.showPaste = false; model.importTargetFolder = null }) { Text("Batal") } })
 }

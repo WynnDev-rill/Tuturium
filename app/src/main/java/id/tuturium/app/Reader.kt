@@ -192,7 +192,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         panel = null
     }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().then(if (searchOpen) Modifier.imePadding() else Modifier).background(MaterialTheme.colorScheme.background)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (pdfSource == null) 17.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = model::closeReader, enabled = !model.savingReader) {
@@ -252,7 +252,12 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             Box(Modifier.weight(1f)) {
                 OriginalPdfPages(pdfSource, document.pdfPageForPass(current), model.follow,
                     reading = isPlaying || isLoading, firstPassByPage = pdfPasses,
-                    passesByPage = pdfWords, onReadWord = { model.playFromWord(book, it) })
+                    passesByPage = pdfWords, currentPass = current,
+                    spokenRange = if (active) playback.range else if (current == book.position)
+                        book.wordOffset..book.wordOffset else null,
+                    highlightSentence = model.readerHighlightSentence,
+                    highlightColor = readerCursorColor(model.readerHighlight, MaterialTheme.colorScheme.primary),
+                    onReadWord = { model.playFromWord(book, it) })
             }
         } else {
         val scheme = MaterialTheme.colorScheme

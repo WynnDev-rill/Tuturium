@@ -52,8 +52,9 @@ internal fun ReaderSearchBar(
     onNavigate: (Int) -> Unit, onClose: () -> Unit
 ) {
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    Surface(Modifier.fillMaxWidth().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { focus.requestFocus(); keyboard?.show() }
+    Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         shape = RoundedCornerShape(25.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(enabled = count > 1, onClick = { onNavigate(-1) }) {
@@ -77,7 +78,7 @@ internal fun ReaderSearchBar(
                     style = MaterialTheme.typography.labelMedium)
                 IconButton(onClick = { onQuery("") }) { Icon(Icons.Rounded.Clear, "Hapus pencarian") }
             }
-            IconButton(onClick = onClose) { Icon(Icons.Rounded.Done, "Tutup pencarian") }
+            FilledIconButton(onClick = { keyboard?.hide(); onClose() }, modifier = Modifier.size(44.dp)) { Icon(Icons.Rounded.Done, "Tutup pencarian") }
         }
     }
 }

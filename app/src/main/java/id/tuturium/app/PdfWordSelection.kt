@@ -99,3 +99,12 @@ internal suspend fun ocrPdfWordHits(bitmap: android.graphics.Bitmap,
         return hits.mapIndexed { i, hit -> hit.copy(selection = selections[i]) }
     } finally { recognizer.close() }
 }
+
+/** Select only words mapped to the active speech pass and overlapping its range. */
+internal fun pdfHighlightWords(hits: List<PdfWordHit>, passIndex: Int, range: IntRange?): List<PdfWordHit> =
+    hits.filter { hit ->
+        val selection = hit.selection
+        selection != null && selection.passIndex == passIndex &&
+            (range == null || (selection.offset <= range.last &&
+                selection.offset + hit.text.length - 1 >= range.first))
+    }
