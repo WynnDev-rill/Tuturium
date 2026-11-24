@@ -1,7 +1,7 @@
 # Graph Report - Tuturium  (2026-11-24)
 
 ## Corpus Check
-- 89 files · ~57,174 words
+- 89 files · ~57,182 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 17 file(s) not represented in the graph (top: .xml 6, .ttf 5, (none) 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `887cd5fa`
+- Built from commit: `6c60de19`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -228,16 +228,16 @@ Nodes (4): Audit Google dan pembaruan Tuturium 1.3.6, Identitas dan Google Cloud
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `ReadingService` connect `ReadingService.kt` to `ListeningScreens.kt`, `Tuturium.kt`, `OfflineAudio.kt`, `ReadingDocument`, `Alur kode`, `ListeningOptions`, `file`?**
-  _High betweenness centrality (0.113) - this node is a cross-community bridge._
+  _High betweenness centrality (0.109) - this node is a cross-community bridge._
 - **Are the 3 inferred relationships involving `ReadingService` (e.g. with `Alur kode` and `OfflineAudio`) actually correct?**
   _`ReadingService` has 3 INFERRED edges - model-reasoned connections that need verification._
 - **Should `ReadingService.kt` be split into smaller, more focused modules?**
   _Cohesion score 0.05671466353217749 - nodes in this community are weakly interconnected._
 - **Why does `Alur kode` connect `Alur kode` to `ReadingService.kt`, `Updates.kt`, `DocumentImporter.kt`, `Library`?**
-  _High betweenness centrality (0.084) - this node is a cross-community bridge._
+  _High betweenness centrality (0.079) - this node is a cross-community bridge._
 - **Are the 20 inferred relationships involving `ReaderContent()` (e.g. with `SkipOptionsSheet()` and `SpeedControlSheet()`) actually correct?**
   _`ReaderContent()` has 20 INFERRED edges - model-reasoned connections that need verification._
 - **Should `Updates.kt` be split into smaller, more focused modules?**
   _Cohesion score 0.08140610545790934 - nodes in this community are weakly interconnected._
-- **Why does `ReaderContent()` connect `ReaderActions.kt` to `ReadingService.kt`, `Library`, `TuturiumMenus.kt`, `Tuturium.kt`, `OfflineAudio.kt`, `LibraryV2`, `ReadingDocument`, `LibraryScreenV2.kt`, `TuturiumAccountScreen.kt`, `ListeningOptions`, `ListeningScreens.kt`, `PdfPageSession`, `Reader.kt`, `.write`?**
-  _High betweenness centrality (0.074) - this node is a cross-community bridge._
+- **Are the 7 inferred relationships involving `LibraryV2()` (e.g. with `matchesLibraryFilter()` and `sortBooks()`) actually correct?**
+  _`LibraryV2()` has 7 INFERRED edges - model-reasoned connections that need verification._

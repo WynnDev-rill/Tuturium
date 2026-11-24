@@ -70,7 +70,10 @@ class ReaderFlowTest {
         }
         compose.onNodeWithContentDescription("Pilih 2,0×").performClick()
         compose.onNodeWithContentDescription("Percepat").performClick()
-        compose.onAllNodesWithText("2,05×").onLast().assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText("2,05×").fetchSemanticsNodes().isNotEmpty())
+        compose.runOnIdle {
+            assertTrue(kotlin.math.abs(ReadingSettings.read(compose.activity).speed - 2.05f) < 0.001f)
+        }
         compose.onNodeWithContentDescription("Penggeser kecepatan").assertIsDisplayed()
         compose.onNodeWithContentDescription("Tingkatkan kecepatan otomatis").performClick()
         compose.onNodeWithText("+0,05× tiap 600 kata · hingga 4×").assertIsDisplayed()
