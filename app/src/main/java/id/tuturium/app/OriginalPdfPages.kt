@@ -5,6 +5,10 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.ui.input.pointer.pointerInput
@@ -51,6 +55,7 @@ import kotlinx.coroutines.withContext
 internal fun OriginalPdfPages(
     source: File, readingPage: Int, follow: Boolean, reading: Boolean,
     firstPassByPage: Map<Int, Int>, passesByPage: Map<Int, List<IndexedValue<Pass>>>,
+    currentPass: Int, spokenRange: IntRange?, highlightSentence: Boolean, highlightColor: Color,
     onReadWord: (WordSelection) -> Unit
 ) {
     val session = remember(source.path) { PdfPageSession(source) }
@@ -108,7 +113,8 @@ internal fun OriginalPdfPages(
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(total, key = { it }) { index ->
                 val pass = firstPassByPage[index]
-                PdfPageImage(session, source, index, passesByPage[index].orEmpty(), onReadWord, onRead = pass
+                PdfPageImage(session, source, index, passesByPage[index].orEmpty(), onReadWord,
+                    currentPass, spokenRange, highlightSentence, highlightColor, onRead = pass
                     ?.takeUnless { reading && index == target }
                     ?.let { start ->
                         {
@@ -133,7 +139,9 @@ internal fun OriginalPdfPages(
 
 @Composable
 private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
-    passes: List<IndexedValue<Pass>>, onReadWord: (WordSelection) -> Unit, onRead: (() -> Unit)?) {
+    passes: List<IndexedValue<Pass>>, onReadWord: (WordSelection) -> Unit,
+    currentPass: Int, spokenRange: IntRange?, highlightSentence: Boolean, highlightColor: Color,
+    onRead: (() -> Unit)?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val read by rememberUpdatedState(onReadWord)
@@ -164,6 +172,11 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
         layer = withContext(Dispatchers.IO) { runCatching { readPdfWordHits(context, source, index, passes) }.getOrDefault(emptyList()) }
     }
     val bitmap = result.first
+    LaunchedEffect(bitmap, layer, passes) {
+        if (bitmap != null && layer != null && layer.orEmpty().none { it.selection != null } && passes.isNotEmpty()) {
+            ocrLayer = withContext(Dispatchers.Default) { runCatching { ocrPdfWordHits(bitmap, passes) }.getOrDefault(emptyList()) }
+        }
+    }
     val ratio = bitmap?.let { it.width.toFloat() / it.height } ?: session.cachedRatio(index)
     Box(Modifier.fillMaxWidth().aspectRatio(ratio.coerceIn(0.25f, 3f)),
         contentAlignment = Alignment.Center) {
@@ -201,19 +214,47 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
                         }
                     })
                 }, contentScale = ContentScale.Fit, colorFilter = filter)
+            val hits = (layer.orEmpty() + ocrLayer.orEmpty()).distinctBy { it.selection ?: it }
+            val sentence = remember(hits, currentPass, highlightSentence) {
+                if (highlightSentence) pdfHighlightWords(hits, currentPass, null) else emptyList()
+            }
+            val words = remember(hits, currentPass, spokenRange) {
+                if (spokenRange != null) pdfHighlightWords(hits, currentPass, spokenRange) else emptyList()
+            }
+            Canvas(Modifier.matchParentSize()) {
+                val scale = minOf(size.width / bitmap.width, size.height / bitmap.height)
+                val width = bitmap.width * scale
+                val height = bitmap.height * scale
+                val dx = (size.width - width) / 2f
+                val dy = (size.height - height) / 2f
+                fun paint(hit: PdfWordHit, color: Color) {
+                    val l = hit.left.coerceIn(0f, 1f)
+                    val r = hit.right.coerceIn(l, 1f)
+                    val t = hit.top.coerceIn(0f, 1f)
+                    val b = hit.bottom.coerceIn(t, 1f)
+                    drawRoundRect(color, topLeft = Offset(dx + l * width, dy + t * height),
+                        size = Size((r - l) * width, (b - t) * height), cornerRadius = CornerRadius(2.dp.toPx()))
+                }
+                sentence.forEach { paint(it, highlightColor.copy(alpha = .23f)) }
+                words.forEach { paint(it, highlightColor.copy(alpha = .55f)) }
+                selected?.let { paint(it, highlightColor.copy(alpha = .65f)) }
+            }
             Box(Modifier.align(Alignment.TopStart).offset {
                 IntOffset(anchor.x.roundToInt(), anchor.y.roundToInt())
             }) {
-                DropdownMenu(expanded = selected != null, onDismissRequest = { selected = null }) {
-                    DropdownMenuItem(text = { Text("Baca") }, enabled = selected?.selection != null,
-                        onClick = { selected?.selection?.let(read); selected = null })
-                    DropdownMenuItem(text = { Text("Salin") }, onClick = {
+                DropdownMenu(expanded = selected != null, onDismissRequest = { selected = null },
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(enabled = selected?.selection != null,
+                        onClick = { selected?.selection?.let(read); selected = null }) { Text("Baca") }
+                    TextButton(onClick = {
                         selected?.let { hit ->
                             context.getSystemService(ClipboardManager::class.java)
                                 .setPrimaryClip(ClipData.newPlainText("Teks PDF", hit.text))
                         }
                         selected = null
-                    })
+                    }) { Text("Salin") }
+                    }
                 }
             }
         } else Text(if (result.second) "Halaman PDF gagal dirender."
