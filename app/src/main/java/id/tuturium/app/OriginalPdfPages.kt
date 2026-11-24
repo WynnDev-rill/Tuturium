@@ -64,17 +64,25 @@ internal fun OriginalPdfPages(
     val list = rememberLazyListState(initialFirstVisibleItemIndex = target)
     val scope = rememberCoroutineScope()
     var browsing by rememberSaveable(source.path) { mutableStateOf(false) }
+    var requestedPage by remember { mutableStateOf<Int?>(null) }
     val dragging by list.interactionSource.collectIsDraggedAsState()
     val scrollInput = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && available.y != 0f) browsing = true
+                if (source == NestedScrollSource.UserInput && available.y != 0f) {
+                    browsing = true
+                    requestedPage = null
+                }
                 return Offset.Zero
             }
         }
     }
     LaunchedEffect(dragging) { if (dragging) browsing = true }
-    LaunchedEffect(target, follow, browsing) {
+    LaunchedEffect(target, follow, browsing, requestedPage) {
+        if (requestedPage == target) {
+            requestedPage = null
+            browsing = false
+        }
         if (follow && !browsing && list.firstVisibleItemIndex != target) list.scrollToItem(target)
     }
     val awayFromReading by remember(target, list) {
@@ -90,13 +98,18 @@ internal fun OriginalPdfPages(
                 val pass = firstPassByPage[index]
                 PdfPageImage(session, index, onRead = pass
                     ?.takeUnless { reading && index == target }
-                    ?.let { { browsing = false
-                        onReadPage(it)
-                    } })
+                    ?.let { start ->
+                        {
+                            browsing = true
+                            requestedPage = index
+                            onReadPage(start)
+                        }
+                    })
             }
         }
         if (reading && awayFromReading && (browsing || !follow)) {
             FilledTonalIconButton(onClick = {
+                requestedPage = null
                 browsing = false
                 scope.launch { list.scrollToItem(target) }
             }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {

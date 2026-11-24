@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -21,11 +23,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.*
 import kotlin.math.roundToInt
 
 internal val SpeechifyPanel = Color(0xFF202020)
@@ -421,27 +426,10 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                             color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
                     }
                 }
-                Surface(shape = RoundedCornerShape(22.dp), color = colors.surface,
-                    modifier = Modifier.size(56.dp, 182.dp)) {
-                    Slider(value = speed.coerceIn(PLAYBACK_SPEED_RANGE),
-                        onValueChange = { dragSpeed = (it * 20).roundToInt() / 20f },
-                        onValueChangeFinished = {
-                            dragSpeed?.let { setSpeed(it) }
-                            dragSpeed = null
-                        },
-                        valueRange = PLAYBACK_SPEED_RANGE,
-                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp)
-                            .layout { measurable, constraints ->
-                                val width = constraints.maxWidth
-                                val height = constraints.maxHeight
-                                val slider = measurable.measure(Constraints.fixed(height, width))
-                                layout(width, height) {
-                                    slider.placeWithLayer((width - height) / 2, (height - width) / 2) {
-                                        rotationZ = -90f
-                                    }
-                                }
-                            }.semantics { contentDescription = "Penggeser kecepatan" })
-                }
+                VerticalSpeedSlider(speed, onPreview = { dragSpeed = it }, onCommit = {
+                    setSpeed(it)
+                    dragSpeed = null
+                })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (preset in listOf(0.8f, 1f, 1.25f, 2f, 3f, 4f)) {
@@ -468,6 +456,74 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                     onCheckedChange = { model.changeListeningOptions(options.copy(autoRamp = it)) },
                     modifier = Modifier.semantics { contentDescription = "Tingkatkan kecepatan otomatis" })
             }
+        }
+    }
+}
+
+@Composable
+private fun VerticalSpeedSlider(value: Float, onPreview: (Float?) -> Unit, onCommit: (Float) -> Unit) {
+    val range = PLAYBACK_SPEED_RANGE
+    val bounded = value.coerceIn(range)
+    val fraction = (bounded - range.start) / (range.endInclusive - range.start)
+    val preview by rememberUpdatedState(onPreview)
+    val commit by rememberUpdatedState(onCommit)
+    val colors = MaterialTheme.colorScheme
+    Box(Modifier.size(56.dp, 182.dp)
+        .clip(RoundedCornerShape(22.dp)).background(colors.surface)
+        .semantics {
+            contentDescription = "Penggeser kecepatan"
+            progressBarRangeInfo = ProgressBarRangeInfo(bounded, range, 69)
+            setProgress {
+                onCommit(it)
+                true
+            }
+        }
+        .onKeyEvent {
+            if (it.type != KeyEventType.KeyDown) return@onKeyEvent false
+            val change = when (it.key) {
+                Key.DirectionUp, Key.DirectionRight -> SPEED_STEP
+                Key.DirectionDown, Key.DirectionLeft -> -SPEED_STEP
+                else -> return@onKeyEvent false
+            }
+            onCommit(bounded + change)
+            true
+        }.focusable()
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                down.consume()
+                fun speedAt(y: Float): Float {
+                    val fractionUp = (1f - y / size.height).coerceIn(0f, 1f)
+                    return ((range.start + fractionUp * (range.endInclusive - range.start)) * 20f)
+                        .roundToInt() / 20f
+                }
+                var selected = speedAt(down.position.y)
+                var completed = false
+                try {
+                    preview(selected)
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.isConsumed) break
+                        selected = speedAt(change.position.y)
+                        change.consume()
+                        if (!change.pressed) {
+                            completed = true
+                            break
+                        }
+                        preview(selected)
+                    }
+                } finally {
+                    if (completed) commit(selected) else preview(null)
+                }
+            }
+        }.padding(8.dp)) {
+        BoxWithConstraints(Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
+            .background(colors.surfaceContainerHighest)) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(fraction)
+                .background(colors.primary))
+            Box(Modifier.align(Alignment.BottomCenter)
+                .offset(y = -(maxHeight - 7.dp) * fraction).width(26.dp).height(7.dp)
+                .clip(CircleShape).background(if (fraction > 0.1f) colors.onPrimary else colors.primary))
         }
     }
 }
