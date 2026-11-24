@@ -58,6 +58,18 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var activeFile by remember { mutableStateOf<Book?>(null) }
     var moveFile by remember { mutableStateOf<Book?>(null) }
+    var downloadBook by remember { mutableStateOf<Book?>(null) }
+    var downloadIsPdf by remember { mutableStateOf(false) }
+    val exportPdf = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val book = downloadBook
+        downloadBook = null
+        if (uri != null && book != null) model.exportBook(book, uri, true)
+    }
+    val exportText = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val book = downloadBook
+        downloadBook = null
+        if (uri != null && book != null) model.exportBook(book, uri, false)
+    }
     var renameFile by remember { mutableStateOf<Book?>(null) }
     var deleteFile by remember { mutableStateOf<Book?>(null) }
     var folderOptions by remember { mutableStateOf<String?>(null) }
@@ -79,7 +91,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
     }
     val visible = remember(model.books, search, filter, folder, sort, revision) {
         sortBooks(model.books.filter { book ->
-            (folder == null || FolderStore.folderOf(context, book.id) == folder) &&
+            isInLibraryFolder(FolderStore.folderOf(context, book.id), folder) &&
             matchesLibraryFilter(book, filter, BookActions.later(context, book.id)) &&
             book.title.contains(search.trim(), ignoreCase = true)
         }, sort).sortedWith(compareByDescending<Book> { BookActions.pinned(context, it.id) })
@@ -419,8 +431,18 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
                 SheetAction(Icons.Rounded.Edit, "Ubah nama") {
                     renameFile = book; activeFile = null
                 }
+                SheetAction(Icons.Rounded.FileDownload, "Unduh") {
+                    downloadBook = book
+                    downloadIsPdf = model.hasOriginalPdf(book)
+                    val name = book.title.replace(Regex("[/\\\\:*?\"<>|]"), "_").take(180).ifBlank { "Tuturium" }
+                    activeFile = null
+                    runCatching {
+                        if (downloadIsPdf) exportPdf.launch(name.removeSuffix(".pdf") + ".pdf")
+                        else exportText.launch(name.removeSuffix(".txt") + ".txt")
+                    }.onFailure { downloadBook = null; model.status = "Pemilih penyimpanan tidak tersedia." }
+                }
                 SheetAction(Icons.Rounded.CloudDone, "Tersimpan offline") {
-                    model.status = "Tuturium menyimpan dokumen di perangkat, tanpa cloud."
+                    model.status = "Dokumen tersedia secara offline di Tuturium."
                     activeFile = null
                 }
                 HorizontalDivider(color = Color.DarkGray)
@@ -433,39 +455,74 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
     }
     if (moveFile != null || chooseTargetForSelection || choosingForFolder) {
         val moving = moveFile
+        var destination by remember(moving?.id, chooseTargetForSelection) { mutableStateOf<String?>(null) }
+        var destinationQuery by remember { mutableStateOf("") }
+        var searchDestination by remember { mutableStateOf(false) }
+        var createDestination by remember { mutableStateOf(false) }
+        var destinationDraft by remember { mutableStateOf("") }
         TuturiumSheet(onDismissRequest = {
             moveFile = null; chooseTargetForSelection = false; choosingForFolder = false
         }, containerColor = Panel) {
             Column(Modifier.fillMaxWidth().heightIn(max = 680.dp)
-                .verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp)) {
-                Text(if (choosingForFolder) "Tambahkan bacaan" else "Pindahkan ke folder",
-                    style = MaterialTheme.typography.titleLarge)
+                .padding(horizontal = 22.dp, vertical = 12.dp)) {
+                if (choosingForFolder) Text("Tambahkan bacaan", style = MaterialTheme.typography.titleLarge)
+                else Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Pindahkan ke “${destination ?: "Perpustakaan"}”", Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                    IconButton(onClick = { searchDestination = !searchDestination }) { Icon(Icons.Rounded.Search, "Cari folder") }
+                    IconButton(onClick = { destinationDraft = ""; createDestination = true }) { Icon(Icons.Rounded.CreateNewFolder, "Buat folder tujuan") }
+                }
                 Spacer(Modifier.height(12.dp))
                 if (choosingForFolder) {
+                    Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
                     model.books.filter { FolderStore.folderOf(context, it.id) != folder }.forEach { book ->
                         SheetAction(Icons.Rounded.Description, book.title) {
                             FolderStore.assign(context, book.id, folder)
                             choosingForFolder = false; revision++
                         }
                     }
+                    }
                 } else {
-                    if (folders.isEmpty()) Text("Buat folder terlebih dahulu.", color = Secondary)
-                    folders.forEach { name ->
-                        SheetAction(Icons.Rounded.Folder, name) {
-                            val ids = if (moving != null) listOf(moving.id) else selectedIds.toList()
-                            ids.forEach { FolderStore.assign(context, it, name) }
-                            selectedIds = emptySet(); selecting = false
-                            moveFile = null; chooseTargetForSelection = false; revision++
+                    if (searchDestination) OutlinedTextField(destinationQuery, { destinationQuery = it },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Cari folder") })
+                    Column(Modifier.fillMaxWidth().height(260.dp).verticalScroll(rememberScrollState())) {
+                        if ("Perpustakaan".contains(destinationQuery, true)) {
+                            ListItem(headlineContent = { Text("Perpustakaan") },
+                                leadingContent = { Icon(Icons.Rounded.MenuBook, null) },
+                                trailingContent = { if (destination == null) Icon(Icons.Rounded.Check, "Dipilih") },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                modifier = Modifier.clickable { destination = null })
+                        }
+                        allFolders.filter { it.contains(destinationQuery, true) }.forEach { name ->
+                            ListItem(headlineContent = { Text(name) },
+                                leadingContent = { Icon(Icons.Rounded.Folder, null, tint = Color(0xFF2F9ED6)) },
+                                trailingContent = { if (destination == name) Icon(Icons.Rounded.Check, "Dipilih") },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                modifier = Modifier.clickable { destination = name })
                         }
                     }
-                    SheetAction(Icons.Rounded.CreateNewFolder, "Buat folder baru") {
-                        moveFile = null; chooseTargetForSelection = false
-                        folderDraft = ""; folderEditor = true
-                    }
+                    Button(onClick = {
+                        val ids = if (moving != null) listOf(moving.id) else selectedIds.toList()
+                        ids.forEach { FolderStore.assign(context, it, destination) }
+                        selectedIds = emptySet(); selecting = false
+                        moveFile = null; chooseTargetForSelection = false; revision++
+                        model.status = "Bacaan dipindahkan ke ${destination ?: "Perpustakaan"}."
+                    }, modifier = Modifier.fillMaxWidth().height(52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Blue)) { Text("Pindahkan") }
                 }
                 Spacer(Modifier.height(14.dp))
             }
         }
+        if (createDestination) TuturiumDialog(onDismissRequest = { createDestination = false },
+            title = { Text("Buat Folder") },
+            text = { OutlinedTextField(destinationDraft, { destinationDraft = it.take(60) }, singleLine = true) },
+            confirmButton = { TextButton(onClick = {
+                if (FolderStore.add(context, destinationDraft)) {
+                    folders = FolderStore.names(context); revision++
+                    destination = destinationDraft.trim().take(60); createDestination = false
+                } else model.status = "Nama folder tidak valid atau sudah digunakan."
+            }) { Text("Buat") } },
+            dismissButton = { TextButton(onClick = { createDestination = false }) { Text("Batal") } })
     }
     renameFile?.let { book ->
         RenameBookSheet(book.title, { renameFile = null }) {
