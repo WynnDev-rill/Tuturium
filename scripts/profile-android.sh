@@ -3,6 +3,10 @@ set -euo pipefail
 app=id.tuturium.app
 output=app/build/reports/android-performance
 mkdir -p "$output"
+# Gradle uninstalls its instrumented packages when connected tests finish.
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell settings put global hide_error_dialogs 1
+adb shell wm dismiss-keyguard
 # Instrumentation skips animations for deterministic interactions. Re-enable them for this run.
 for setting in window_animation_scale transition_animation_scale animator_duration_scale; do
   adb shell settings put global "$setting" 1
@@ -10,6 +14,7 @@ done
 adb shell am force-stop "$app"
 adb shell dumpsys gfxinfo "$app" reset > /dev/null
 adb shell am start -W -n "$app/.MainActivity" | tee "$output/cold-start.txt"
+grep -Fq 'Status: ok' "$output/cold-start.txt"
 sleep 2
 read -r width height < <(adb shell wm size | tail -1 | tr -d '\r' | sed -E 's/.* ([0-9]+)x([0-9]+)/\1 \2/')
 for _ in {1..5}; do

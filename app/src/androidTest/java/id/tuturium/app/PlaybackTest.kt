@@ -22,20 +22,27 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class PlaybackTest {
     @Test fun localSpeechSurvivesHomeAndRespondsToNotificationTransportControls(): Unit = runBlocking {
-        assumeTrue(InstrumentationRegistry.getArguments().getString("tuturiumPlayback") == "true")
+        val arguments = InstrumentationRegistry.getArguments()
+        val offline = arguments.getString("offlineVoiceSmoke") == "true"
+        assumeTrue(offline || arguments.getString("tuturiumPlayback") == "true")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val library = Library.get(instrumentation.targetContext)
+        val context = instrumentation.targetContext
+        val original = ReadingSettings.read(context)
+        val pack = if (offline) OfflineCatalog.model("arbo-nano") else null
+        if (pack != null) OfflineModelStore.install(context, pack) {}
+        val library = Library.get(context)
         val book = library.add("Uji pemutar", "TXT", ReadingDocument(listOf(
             Section("Uji", ("Musim hujan membawa ketenangan ke desa kecil di tepi hutan " +
                 "dengan jalan setapak yang menghubungkan rumah warga ").repeat(5) + ".")
         )))
         try {
+            if (pack != null) ReadingSettings(pack.voices.single().id, 1f, 1f).save(context)
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { ReadingService.command(it, ReadingService.PLAY, book.id, 0) }
                 val started = withTimeout(30_000) {
-                    ReadingService.state.first { it.error != null || (it.bookId == book.id && it.playing) }
+                    ReadingService.state.first { it.bookId == book.id && (it.error != null || it.playing) }
                 }
-                assertNull("Android TTS returned an error", started.error)
+                assertNull("TTS returned an error", started.error)
                 val notificationManager = instrumentation.targetContext.getSystemService(NotificationManager::class.java)
                 val token = withTimeout(10_000) {
                     var found: MediaSession.Token? = null
@@ -52,13 +59,15 @@ class PlaybackTest {
                 delay(1800)
                 assertTrue("Playback stopped when the activity left the foreground", ReadingService.state.value.playing)
                 controls.pause()
-                withTimeout(15_000) { ReadingService.state.first { it.bookId == book.id && !it.playing } }
+                withTimeout(15_000) { ReadingService.state.first { it.bookId == book.id && !it.playing && !it.loading } }
                 controls.play()
                 withTimeout(15_000) { ReadingService.state.first { it.bookId == book.id && it.playing } }
             }
         } finally {
-            instrumentation.targetContext.stopService(Intent(instrumentation.targetContext, ReadingService::class.java))
+            context.stopService(Intent(context, ReadingService::class.java))
+            if (pack != null) original.save(context)
             library.delete(book.id)
+            library.deletePermanently(book.id)
         }
     }
 
