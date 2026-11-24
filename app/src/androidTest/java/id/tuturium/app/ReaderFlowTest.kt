@@ -69,17 +69,21 @@ class ReaderFlowTest {
                 compose.onAllNodesWithText("40% · ≈1 menit · TXT").fetchSemanticsNodes().isNotEmpty()
             }
             compose.onNodeWithText(book.title).performClick()
-            val remainingInReader = hasText("40% · ≈", substring = true) and
-                hasText(" tersisa", substring = true)
+            val timeInReader = hasText("≈ ", substring = true) and
+                hasText(" / ", substring = true)
             compose.waitUntil(15_000) {
-                compose.onAllNodes(remainingInReader).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodes(timeInReader).fetchSemanticsNodes().isNotEmpty()
             }
-            val readerLabel = compose.onNode(remainingInReader).fetchSemanticsNode()
+            val readerLabel = compose.onNode(timeInReader).fetchSemanticsNode()
                 .config[androidx.compose.ui.semantics.SemanticsProperties.Text].single().text
-            val remaining = readerLabel.removePrefix("40% · ")
-            assertTrue(remaining.endsWith(" tersisa"))
+            val times = readerLabel.removePrefix("≈ ").split(" / ")
+            fun parseTime(value: String): Int = value.split(":").fold(0) { acc, part -> acc * 60 + part.toInt() }
+            assertTrue(times.size == 2)
+            val elapsed = parseTime(times[0])
+            val total = parseTime(times[1])
+            assertTrue(elapsed in 0..total)
             compose.onNodeWithContentDescription("Atur kecepatan").performClick()
-            compose.onNodeWithText(remaining).assertIsDisplayed()
+            compose.onNodeWithText("≈${formatPlaybackTime(total - elapsed)} tersisa").assertIsDisplayed()
         } finally {
             library.delete(book.id)
             library.deletePermanently(book.id)
