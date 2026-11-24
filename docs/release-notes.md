@@ -1,3 +1,11 @@
+## Tuturium 1.3.16
+
+- Estimasi durasi perpustakaan mendukung seluruh rentang 0,5–4× tanpa batas 1.000 menit.
+- Sorotan PDF pada kata aktif, kalimat, dan kata yang dipilih; menu Baca/Salin horizontal.
+- Ikon pin pada folder dan dokumen; opsi folder untuk tampilan, urutan, pengelompokan tanggal.
+- Panel tambah dengan Kamera, Foto, File, Buat Folder, tautan, teks, dikte, dan pemilih penyimpanan/cloud Android. Impor dari folder otomatis masuk ke folder tersebut. Folder masih datar.
+- Pencarian pembaca berada di atas keyboard tanpa padding IME ganda.
+
 ## Tuturium 1.3.15
 
 - Tiga preset kecepatan 0,8× / 1× / 1,2×, tanpa tombol Selesai; slider 0,5×–4×.
