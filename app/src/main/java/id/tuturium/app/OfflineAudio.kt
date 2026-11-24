@@ -169,31 +169,30 @@ internal class OfflineAudio(private val context: Context) {
                 delay(60)
             }
         }
+        fun bufferAtCapacity(): Boolean {
+            val remainingMs = clips.values.sumOf { it.audio.durationMs } - engine.currentPosition
+            return clips.size >= MAX_CLIPS || (clips.size > 1 && remainingMs >= LOOKAHEAD_MS)
+        }
+
         producer = scope.launch {
             try {
                 for (pass in passages) {
-                    while (clips.size >= MAX_CLIPS ||
-                        (clips.size > 1 && clips.values.sumOf { it.audio.durationMs } -
-                            engine.currentPosition >= LOOKAHEAD_MS)
-                    ) {
+                    while (bufferAtCapacity()) {
                         room.receive()
                     }
+                    val id = pass.index.toString()
                     val file = File.createTempFile("offline-voice-", ".wav", context.cacheDir)
-                    var retained = false
                     try {
                         val audio = OfflineSynth.write(context, voice, pass.speech.text, file)
                         ensureActive()
-                        val id = pass.index.toString()
-                        val clip = Clip(id, pass, file, audio)
-                        clips[id] = clip
-                        retained = true
+                        clips[id] = Clip(id, pass, file, audio)
                         val restart = engine.playbackState == Player.STATE_ENDED
                         val item = MediaItem.Builder().setMediaId(id).setUri(android.net.Uri.fromFile(file)).build()
                         engine.addMediaItem(item)
                         if (restart) engine.seekToDefaultPosition(engine.mediaItemCount - 1)
                         prepareWhenBuffered()
                     } finally {
-                        if (!retained) file.delete()
+                        if (clips[id]?.file != file) file.delete()
                     }
                 }
                 sourceDone = true

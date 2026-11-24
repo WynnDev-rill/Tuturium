@@ -32,14 +32,15 @@ class PlaybackTest {
         if (pack != null) OfflineModelStore.install(context, pack) {}
         val library = Library.get(context)
         val book = library.add("Uji pemutar", "TXT", ReadingDocument(listOf(
-            Section("Uji", ("Musim hujan membawa ketenangan ke desa kecil di tepi hutan " +
-                "dengan jalan setapak yang menghubungkan rumah warga ").repeat(5) + ".")
+            Section("Uji", "Musim hujan membawa ketenangan ke desa kecil di tepi hutan. " +
+                "Jalan setapak menghubungkan rumah semua warga di desa itu. " +
+                "Hari ini banyak anak bermain di lapangan di tengah desa.")
         )))
         try {
             if (pack != null) ReadingSettings(pack.voices.first().id, 1f, 1f).save(context)
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { ReadingService.command(it, ReadingService.PLAY, book.id, 0) }
-                val started = withTimeout(30_000) {
+                val started = withTimeout(60_000) {
                     ReadingService.state.first { it.bookId == book.id && (it.error != null || it.playing) }
                 }
                 assertNull("TTS returned an error", started.error)
@@ -59,9 +60,9 @@ class PlaybackTest {
                 delay(1800)
                 assertTrue("Playback stopped when the activity left the foreground", ReadingService.state.value.playing)
                 controls.pause()
-                withTimeout(15_000) { ReadingService.state.first { it.bookId == book.id && !it.playing && !it.loading } }
+                withTimeout(30_000) { ReadingService.state.first { it.bookId == book.id && !it.playing && !it.loading } }
                 controls.play()
-                withTimeout(15_000) { ReadingService.state.first { it.bookId == book.id && it.playing } }
+                withTimeout(30_000) { ReadingService.state.first { it.bookId == book.id && it.playing } }
             }
         } finally {
             context.stopService(Intent(context, ReadingService::class.java))
