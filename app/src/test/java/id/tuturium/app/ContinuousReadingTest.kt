@@ -9,9 +9,16 @@ class ContinuousReadingTest {
     @Test fun fastPlaybackKeepsMoreRealAudioAndAllowsManyShortPhrases() {
         val buffer = SupertonicBuffer()
         assertFalse(buffer.atCapacity(4f, 60_000, 12))
-        assertTrue(buffer.atCapacity(4f, 192_000, 28))
-        assertTrue(buffer.atCapacity(4f, 10_000, 56))
-        assertTrue(buffer.atCapacity(1f, 90_000, 20))
+        assertFalse(buffer.atCapacity(4f, 192_000, 56))
+        assertTrue(buffer.atCapacity(4f, 720_000, 110))
+        assertTrue(buffer.atCapacity(4f, 10_000, 384))
+        assertTrue(buffer.atCapacity(1f, 180_000, 28))
+        buffer.generated(5_000, 2_000, 0)
+        buffer.generated(5_000, 1, 1, cacheHit = true)
+        assertFalse(buffer.atCapacity(4f, 720_000, 100))
+        assertTrue(buffer.atCapacity(4f, 1_200_000, 180))
+        assertTrue(buffer.atCapacity(4f, 720_000, 100, thermal = 2))
+        assertTrue(buffer.atCapacity(4f, 240_000, 40, thermal = 3))
     }
 
     @Test fun slowerSynthesisBuildsAnInitialReserveButDoesNotWaitIndefinitely() {
@@ -22,6 +29,14 @@ class ContinuousReadingTest {
         assertTrue(buffer.ready(4f, 48_000, 4, false, 18_000))
         assertTrue(buffer.ready(1f, 2_000, 1, false, 18_000))
         assertTrue(buffer.ready(4f, 2_000, 1, true, 10_000))
+    }
+
+    @Test fun recoveryWaitsForAReserveButStillPlaysTheLastPass() {
+        val buffer = SupertonicBuffer()
+        assertFalse(buffer.recoveryReady(4f, 4_000L, 1, false))
+        assertTrue(buffer.recoveryReady(4f, 32_000L, 4, false))
+        assertTrue(buffer.recoveryReady(4f, 1_000L, 1, true))
+        assertFalse(buffer.recoveryReady(4f, 0L, 0, true))
     }
 
     @Test fun originalPageNumbersSurviveBlankPagesAndOldImports() {

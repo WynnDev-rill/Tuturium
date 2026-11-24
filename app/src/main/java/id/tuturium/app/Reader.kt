@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -79,6 +80,14 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     var preview by remember { mutableStateOf<Float?>(null) }
     var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val marked = model.bookmarks.any { it.index == current }
+    val offlineVoice = OfflineCatalog.voice(model.settings.voice)
+    LaunchedEffect(book.id, offlineVoice?.model) {
+        if (offlineVoice != null) {
+            delay(350)
+            val state = ReadingService.state.value
+            if (!state.playing && !state.loading) OfflineSynth.prewarm(context.applicationContext)
+        }
+    }
     LaunchedEffect(book.id, model.listeningOptions.autoplay) {
         if (model.listeningOptions.autoplay && ReadingService.state.value.bookId != book.id)
             model.play(book, current)
@@ -262,9 +271,15 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     onReadPage = { model.playFromWord(book, WordSelection(it, 0)) })
             }
         } else {
+        val scheme = MaterialTheme.colorScheme
+        val warm = model.readerPreset == "warm"
+        val focusMode = model.readerPreset == "focus"
+        val dark = scheme.background.luminance() < 0.4f
+        val paper = if (!warm) scheme.background else if (dark) Color(0xFF28211B) else Color(0xFFFFF2DB)
+        val ink = if (!warm) scheme.onBackground else if (dark) Color(0xFFF7E6D4) else Color(0xFF382719)
         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 17.dp),
+            .background(paper),
+            contentPadding = PaddingValues(horizontal = if (focusMode) 38.dp else 24.dp, vertical = 17.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)) {
             itemsIndexed(rows) { rowIndex, row ->
                 if (row.heading != null) {
@@ -279,12 +294,10 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     }
                 } else {
                     val pass = row.passes.firstOrNull { it.index == current }?.value
-                    val sentenceColor = MaterialTheme.colorScheme.primaryContainer
-                    val wordColor = when (model.readerHighlight) {
-                        "amber" -> Color(0xFFFFCC73)
-                        "mint" -> Color(0xFF94DED0)
-                        else -> MaterialTheme.colorScheme.primary
-                    }
+                    val wordColor = readerCursorColor(model.readerHighlight, MaterialTheme.colorScheme.primary)
+                    val sentenceColor = if (model.readerHighlight == "theme") MaterialTheme.colorScheme.primaryContainer
+                        else wordColor.copy(alpha = if (dark) 0.22f else 0.34f)
+                    val highlightSentence = model.readerHighlightSentence
                     val wordInk = if (model.readerHighlight == "theme") MaterialTheme.colorScheme.onPrimary
                         else Color(0xFF202020)
                     val resultRange = searchMatch?.takeIf { it.row == rowIndex }?.range
@@ -292,12 +305,12 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         else if (!active && pass != null && current == book.position && book.wordOffset in pass.text.indices)
                             book.wordOffset..book.wordOffset
                         else null
-                    val highlighted = remember(row, pass, spokenRange, sentenceColor, wordColor, wordInk, resultRange) {
+                    val highlighted = remember(row, pass, spokenRange, sentenceColor, wordColor, wordInk, resultRange, highlightSentence) {
                         buildAnnotatedString {
                             append(row.text)
                             if (pass != null) {
                                 val end = (pass.offset + pass.text.length).coerceAtMost(length)
-                                addStyle(SpanStyle(background = sentenceColor), pass.offset, end)
+                                if (highlightSentence) addStyle(SpanStyle(background = sentenceColor), pass.offset, end)
                                 if (spokenRange != null && spokenRange.first in pass.text.indices) {
                                     val start = pass.offset + spokenRange.first
                                     val wordEnd = minOf(end, pass.offset + spokenRange.last + 1)
@@ -361,7 +374,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         jump = it.passIndex
                         if (!model.savingReader) model.playFromWord(book, it)
                     })
-                    val readableSize = (model.fontSize * 0.86f).coerceIn(16f, 29f)
+                    val readableSize = model.fontSize.coerceIn(16f, 34f)
                     Text(highlighted, modifier = Modifier.fillMaxWidth()
                         .padding(bottom = if (row.paragraphEnd) 17.dp else 0.dp)
                         .pointerInput(row) {
@@ -370,16 +383,12 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                             selectSpokenWord(row.text, row.passes, offset)?.let(latestPlay)
                         }
                     }, onTextLayout = { layout = it },
-                        fontFamily = when (model.readerFont) {
-                            "serif" -> FontFamily.Serif
-                            "mono" -> FontFamily.Monospace
-                            else -> FontFamily.SansSerif
-                        },
+                        fontFamily = readerTypeface(model.readerFont),
                         fontWeight = if (model.readerBold) FontWeight.Bold else FontWeight.Normal,
                         fontSize = readableSize.sp,
-                        lineHeight = (readableSize * 1.48f).sp,
+                        lineHeight = (readableSize * if (focusMode) 1.66f else 1.48f).sp,
                         textAlign = TextAlign.Start,
-                        color = MaterialTheme.colorScheme.onBackground)
+                        color = ink)
                 }
             }
         }

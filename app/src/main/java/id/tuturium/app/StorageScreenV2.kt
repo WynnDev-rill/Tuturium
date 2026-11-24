@@ -36,13 +36,14 @@ internal object StorageInspector {
         return LocalStorage(
             documents = bytes(File(context.filesDir, "books")),
             database = dbBytes,
-            cache = bytes(File(context.cacheDir, "updates")) + bytes(File(context.cacheDir, "shared"))
+            cache = bytes(File(context.cacheDir, "updates")) + bytes(File(context.cacheDir, "shared")) +
+                bytes(File(context.cacheDir, "supertonic-audio"))
         )
     }
 
-    /** Never delete books, only generated update downloads and temporary TXT exports. */
+    /** Never delete books, only regenerable files. */
     fun clearTemporary(context: Context) {
-        for (name in listOf("updates", "shared")) {
+        for (name in listOf("updates", "shared", "supertonic-audio")) {
             File(context.cacheDir, name).listFiles()?.forEach { it.deleteRecursively() }
         }
     }

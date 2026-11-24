@@ -10,6 +10,7 @@ adb shell settings put global transition_animation_scale 0 || true
 adb shell settings put global animator_duration_scale 0 || true
 
 if ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.offlineVoiceSmoke=true; then
+    adb logcat -d -s TuturiumVoiceBenchmark:I
     exit 0
 fi
 

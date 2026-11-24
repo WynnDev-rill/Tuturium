@@ -9,6 +9,7 @@ import java.nio.ByteOrder
 
 /** Sherpa has its own statically linked ONNX runtime. Inference stays on one worker. */
 internal object OfflineSynth {
+    private const val INFERENCE_STEPS = 8
     private val dispatcher = Dispatchers.IO.limitedParallelism(1)
     private var sherpa: OfflineTts? = null
 
@@ -61,10 +62,30 @@ internal object OfflineSynth {
         }
     }
 
+    suspend fun prewarm(context: Context) = withContext(dispatcher) {
+        if (android.os.Build.VERSION.SDK_INT >= 29 &&
+            context.getSystemService(android.os.PowerManager::class.java).currentThermalStatus >=
+            android.os.PowerManager.THERMAL_STATUS_MODERATE
+        ) return@withContext
+        if (OfflineModelStore.installed(context, OfflineCatalog.models.single())) {
+            try {
+                runCatching { load(context) }
+            } finally {
+                releaseWhenIdle()
+            }
+        }
+    }
+
     suspend fun write(context: Context, voice: OfflineVoice, text: String, target: File): SynthesizedAudio =
         withContext(dispatcher) {
             releaseJob?.cancel()
             try {
+                val cache = NarrationAudioCache(File(context.cacheDir, "supertonic-audio"))
+                val model = OfflineCatalog.model(voice.model)
+                val key = "${model.files.single().sha256}/${voice.id}/id/$INFERENCE_STEPS/gain-v1"
+                if (OfflineModelStore.installed(context, model)) {
+                    cache.restore(text, key, target)?.let { return@withContext it }
+                }
                 var rate = 0
                 var bytes = 0L
                 val cues = mutableListOf<AudioCue>()
@@ -78,20 +99,21 @@ internal object OfflineSynth {
                         ensureActive()
                         // Synthesize at the model's baseline. The player controls listening speed.
                         val pcm = engine.generateWithConfig(text.substring(range), GenerationConfig(
-                            sid = voice.speaker, speed = 1f, numSteps = 8, extra = mapOf("lang" to "id")))
+                            sid = voice.speaker, speed = 1f, numSteps = INFERENCE_STEPS, extra = mapOf("lang" to "id")))
                         ensureActive()
                         check(pcm.samples.isNotEmpty() && pcm.sampleRate > 0)
                         if (rate == 0) rate = pcm.sampleRate
                         check(rate == pcm.sampleRate)
                         cues += AudioCue(bytes * 500L / rate, range)
                         buffer.clear()
+                        val gain = narrationGain(pcm.samples)
                         for (sample in pcm.samples) {
                             if (!buffer.hasRemaining()) {
                                 wav.write(buffer.array(), 0, buffer.position())
                                 buffer.clear()
                                 ensureActive()
                             }
-                            buffer.putShort((sample.coerceIn(-1f, 1f) * 32767f).toInt().toShort())
+                            buffer.putShort((amplifyNarration(sample, gain) * 32767f).toInt().toShort())
                         }
                         if (buffer.position() > 0) wav.write(buffer.array(), 0, buffer.position())
                         bytes += pcm.samples.size * 2L
@@ -105,14 +127,17 @@ internal object OfflineSynth {
                     wav.seek(0)
                     wav.write(header.array())
                 }
-                SynthesizedAudio(cues, bytes * 500L / rate)
+                SynthesizedAudio(cues, bytes * 500L / rate).also {
+                    ensureActive()
+                    cache.save(text, key, target, it)
+                }
             } finally {
                 releaseWhenIdle()
             }
         }
 }
 
-internal data class SynthesizedAudio(val cues: List<AudioCue>, val durationMs: Long)
+internal data class SynthesizedAudio(val cues: List<AudioCue>, val durationMs: Long, val cacheHit: Boolean = false)
 
 internal data class AudioCue(val startMs: Long, val range: IntRange)
 

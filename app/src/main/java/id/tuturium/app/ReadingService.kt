@@ -123,6 +123,22 @@ class ReadingService : Service() {
     private lateinit var focus: AudioFocusRequest
     private lateinit var lock: PowerManager.WakeLock
     private var tts: TextToSpeech? = null
+    private var narrationEnhancer: android.media.audiofx.LoudnessEnhancer? = null
+    private val narrationSessionId by lazy {
+        val id = audio.generateAudioSessionId()
+        if (id <= 0) null else runCatching {
+            val effect = android.media.audiofx.LoudnessEnhancer(id)
+            try {
+                effect.setTargetGain(600)
+                check(effect.setEnabled(true) == android.media.audiofx.AudioEffect.SUCCESS)
+                narrationEnhancer = effect
+                id
+            } catch (error: Exception) {
+                effect.release()
+                throw error
+            }
+        }.getOrNull()
+    }
     private val offlineAudio by lazy { OfflineAudio(applicationContext) }
     private var ready = false
     private var initializationFailed = false
@@ -467,10 +483,12 @@ class ReadingService : Service() {
         current = current.copy(playing = false, loading = true, completed = false,
             effectiveSpeed = usableSpeed, range = null, error = null)
         startupStage = "mengirim teks ke Google TTS"
+        val sessionId = narrationSessionId
         val result = runCatching {
             engine.speak(prepared.text.substring(preparedStart),
                 TextToSpeech.QUEUE_FLUSH, android.os.Bundle().apply {
                     putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, settings.volume)
+                    if (sessionId != null) putInt(TextToSpeech.Engine.KEY_PARAM_SESSION_ID, sessionId)
                 }, token)
         }.onFailure { android.util.Log.e("TuturiumPlayback", "Google TTS speak exception", it) }
             .getOrDefault(TextToSpeech.ERROR)
@@ -829,6 +847,7 @@ class ReadingService : Service() {
         if (hasFocus) runCatching { audio.abandonAudioFocusRequest(focus) }
         unregisterReceiver(noisy)
         tts?.shutdown()
+        narrationEnhancer?.release()
         session.release()
         scope.cancel()
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION)

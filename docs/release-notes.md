@@ -1,6 +1,6 @@
-## Tuturium 1.3.11
+## Tuturium 1.3.12
 
-- Cadangan audio Supertonic menyesuaikan laju baca, dengan cakupan lebih panjang untuk kalimat pendek dan pemutaran cepat. Model tetap siap selama antrean disiapkan dan Android menjaga pemutaran saat layar mati.
-- Drive tersambung setelah login, meminta izin Google saat diperlukan, dan memperbarui token otomatis. Detail status serta percobaan ulang tersedia di baris Penyimpanan Google Drive.
-- Mode PDF membuka halaman asli satu per satu, mengikuti narasi, dan bisa membacakan halaman yang dipilih. Mode Teks tetap tersedia dengan tema Tuturium.
-- Tekan lama dokumen untuk membuka opsi. Pencarian di pembaca menyorot hasil langsung di teks. Lembar bawah baru menyediakan ubah nama, pengaturan tampilan, dan volume narasi.
+- Panel Tampilan punya pilihan tema, mode Standar/Sepia/Fokus, font dengan pratinjau, dan tombol ukuran serta teks tebal. Warna sorotan dan sorotan kalimat dapat disesuaikan.
+- Narasi Supertonic lebih kuat dengan pembatas puncak audio. Google TTS meminta penguatan di sesi narasi jika mesin dan perangkat mendukung.
+- Supertonic mempersiapkan model saat pembaca dibuka, mengisi antrean dengan target adaptif 3–5 menit, dan memakai kembali cache audio lokal. Saat antrean benar-benar habis, pemutar mengisi cadangan sebelum lanjut dari bagian berikutnya.
+- [Benchmark Supertonic dan batas pengujian](https://github.com/WynnDev-rill/Tuturium/blob/main/docs/supertonic-benchmark.md).

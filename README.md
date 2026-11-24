@@ -16,7 +16,9 @@ Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine,
 
 ## Supertonic 3
 
-Tuturium menyintesis teks pada 1×, lalu Media3 mengubah kecepatan pemutaran. Saat membaca, aplikasi menyiapkan cadangan yang mengikuti laju baca dan kecepatan sintesis. Audio dan model tetap siap selama pembacaan latar. Waktu penyiapan awal dan isi antrean bergantung pada panjang kalimat, kecepatan pilihan, serta kinerja perangkat.
+Tuturium menyintesis teks pada 1×, lalu Media3 mengubah kecepatan pemutaran. Cadangan audio menargetkan 3–5 menit waktu dengar sesuai laju baca, kecepatan sintesis, dan suhu perangkat. Audio yang sudah dibaca dapat dipakai ulang dari cache lokal, yang bisa dibersihkan dari menu Penyimpanan. Audio baru memakai penguatan otomatis dengan pembatas puncak. Lihat [hasil benchmark dan prosedur pengujian POCO F6](docs/supertonic-benchmark.md).
+
+Di pembaca, buka **Opsi pembaca → Tampilan** untuk mengatur tema, warna sorotan, font, dan mode Standar, Sepia, atau Fokus. Untuk mengatur volume narasi saat memutar musik dari aplikasi lain, buka **Opsi pembaca → Audio**.
 
 ## Aktivasi rilis otomatis (sekali saja)
 

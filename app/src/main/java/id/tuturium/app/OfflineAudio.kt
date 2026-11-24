@@ -17,6 +17,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal data class OfflinePass(val index: Int, val speech: PreparedSpeech)
 
@@ -24,10 +25,11 @@ internal class SupertonicBuffer {
     private var inferenceRatio = 0.0
     private var firstReadyAt = -1L
 
-    fun generated(durationMs: Long, elapsedMs: Long, nowMs: Long) {
-        val sample = elapsedMs.toDouble() / durationMs.coerceAtLeast(1L)
-        inferenceRatio = if (firstReadyAt < 0) sample else inferenceRatio * 0.75 + sample * 0.25
+    fun generated(durationMs: Long, elapsedMs: Long, nowMs: Long, cacheHit: Boolean = false) {
         if (firstReadyAt < 0) firstReadyAt = nowMs
+        if (cacheHit) return
+        val sample = elapsedMs.toDouble() / durationMs.coerceAtLeast(1L)
+        inferenceRatio = if (inferenceRatio == 0.0) sample else inferenceRatio * 0.75 + sample * 0.25
     }
 
     fun ready(playbackRate: Float, bufferedMs: Long, count: Int, endOfInput: Boolean, nowMs: Long): Boolean {
@@ -40,12 +42,26 @@ internal class SupertonicBuffer {
             count >= 12 || (playbackRate < 2f && nowMs - firstReadyAt >= 8_000)
     }
 
-    fun atCapacity(playbackRate: Float, remainingMs: Long, count: Int): Boolean =
-        count >= 56 || (count > 1 && remainingMs >= maxOf(90_000L, (playbackRate * 48_000).toLong()))
+    fun atCapacity(playbackRate: Float, remainingMs: Long, count: Int, thermal: Int = 0): Boolean {
+        val target = when {
+            thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE -> 60_000L
+            thermal >= android.os.PowerManager.THERMAL_STATUS_MODERATE -> 180_000L
+            inferenceRatio * playbackRate >= 0.75 -> 300_000L
+            else -> 180_000L
+        }
+        // At most roughly 58 MB of 24 kHz mono PCM at 4×, plus the last clip.
+        return count >= 384 || (count > 1 && remainingMs >= (playbackRate * target).toLong())
+    }
+
+    fun recoveryReady(playbackRate: Float, bufferedMs: Long, count: Int, finished: Boolean): Boolean =
+        count > 0 && (finished || bufferedMs >= (playbackRate * 8_000).toLong() || count >= 10)
 }
 
 /** Maintains one Media3 playlist for narration, with bounded PCM lookahead. */
-internal class OfflineAudio(private val context: Context) {
+internal class OfflineAudio(
+    private val context: Context,
+    private val synthesize: suspend (Context, OfflineVoice, String, File) -> SynthesizedAudio = OfflineSynth::write
+) {
     private var player: ExoPlayer? = null
     private var producer: Job? = null
     private var progress: Job? = null
@@ -102,6 +118,12 @@ internal class OfflineAudio(private val context: Context) {
         bufferChanged = { room.trySend(Unit) }
         var sourceDone = false
         var started = false
+        var queuedMs = 0L
+        var recoveryStart: String? = null
+        var recovering = false
+        var lastThermalSample = -2_000L
+        var thermal = 0
+        val power = context.getSystemService(android.os.PowerManager::class.java)
         var rendering = false
         engine.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), false)
@@ -141,15 +163,23 @@ internal class OfflineAudio(private val context: Context) {
             override fun onPlayerError(error: PlaybackException) = fail(error)
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (player === engine && active != null && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+                if (player === engine && active != null && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                     startPass(mediaItem?.mediaId)
+                }
             }
 
             override fun onEvents(player: Player, events: Player.Events) {
                 if (this@OfflineAudio.player !== engine) return
                 if (engine.playbackState == Player.STATE_ENDED) {
                     finishPass()
-                    if (sourceDone) { done(); return }
+                    if (sourceDone && recoveryStart == null) {
+                        done()
+                        return
+                    }
+                    if (!recovering) {
+                        recovering = true
+                        engine.pause()
+                    }
                 } else if (engine.isPlaying) {
                     startPass(engine.currentMediaItem?.mediaId)
                 }
@@ -175,14 +205,33 @@ internal class OfflineAudio(private val context: Context) {
                     // The decoder has moved ahead. Remove the consumed prefix and wake the producer.
                     val ids = List(consumed) { engine.getMediaItemAt(it).mediaId }
                     engine.removeMediaItems(0, consumed)
-                    ids.forEach { clips.remove(it)?.file?.delete() }
+                    ids.forEach { id ->
+                        clips.remove(id)?.let {
+                            queuedMs -= it.audio.durationMs
+                            it.file.delete()
+                        }
+                    }
                     room.trySend(Unit)
                 }
             }
         })
         fun prepareWhenBuffered() {
+            val pending = recoveryStart
+            if (recovering && pending != null) {
+                val count = engine.mediaItemCount - 1
+                val remaining = queuedMs - (clips.values.firstOrNull()?.audio?.durationMs ?: 0L)
+                if (buffer.recoveryReady(engine.playbackParameters.speed, remaining, count, sourceDone)) {
+                    val position = (0 until engine.mediaItemCount).firstOrNull { engine.getMediaItemAt(it).mediaId == pending }
+                        ?: return
+                    recoveryStart = null
+                    recovering = false
+                    engine.seekToDefaultPosition(position)
+                    engine.play()
+                }
+                return
+            }
             if (!started && buffer.ready(engine.playbackParameters.speed,
-                    clips.values.sumOf { it.audio.durationMs }, clips.size, sourceDone,
+                    queuedMs, clips.size, sourceDone,
                     SystemClock.elapsedRealtime())
             ) {
                 started = true
@@ -195,9 +244,12 @@ internal class OfflineAudio(private val context: Context) {
             var lastClip: Clip? = null
             var lastRange: IntRange? = null
             while (player === engine) {
-                if (!started) prepareWhenBuffered()
+                if (!started || recovering) prepareWhenBuffered()
                 val clip = active
-                if (clip != lastClip) { lastClip = clip; lastRange = null }
+                if (clip != lastClip) {
+                    lastClip = clip
+                    lastRange = null
+                }
                 if (clip != null && engine.isPlaying && engine.currentMediaItem?.mediaId == clip.id) {
                     val cue = clip.audio.cues.lastOrNull { it.startMs <= engine.currentPosition }
                     val range = cue?.range?.let {
@@ -212,8 +264,13 @@ internal class OfflineAudio(private val context: Context) {
             }
         }
         fun bufferAtCapacity(): Boolean {
-            val remainingMs = clips.values.sumOf { it.audio.durationMs } - engine.currentPosition
-            return buffer.atCapacity(engine.playbackParameters.speed, remainingMs, clips.size)
+            val now = SystemClock.elapsedRealtime()
+            if (android.os.Build.VERSION.SDK_INT >= 29 && now - lastThermalSample >= 2_000L) {
+                thermal = power.currentThermalStatus
+                lastThermalSample = now
+            }
+            return buffer.atCapacity(engine.playbackParameters.speed, queuedMs - engine.currentPosition,
+                clips.size, thermal)
         }
 
         producer = scope.launch {
@@ -221,21 +278,26 @@ internal class OfflineAudio(private val context: Context) {
                 OfflineSynth.withWarmModel {
                     for (pass in passages) {
                         while (bufferAtCapacity()) {
-                            room.receive()
+                            withTimeoutOrNull(2_000L) { room.receive() }
                         }
                         val id = pass.index.toString()
                         val file = File.createTempFile("offline-voice-", ".wav", context.cacheDir)
                         try {
                             val startMs = SystemClock.elapsedRealtime()
-                            val audio = OfflineSynth.write(context, voice, pass.speech.text, file)
+                            val audio = synthesize(context, voice, pass.speech.text, file)
                             ensureActive()
                             val finishedMs = SystemClock.elapsedRealtime()
-                            buffer.generated(audio.durationMs, finishedMs - startMs, finishedMs)
+                            buffer.generated(audio.durationMs, finishedMs - startMs, finishedMs, audio.cacheHit)
                             clips[id] = Clip(id, pass, file, audio)
-                            val restart = engine.playbackState == Player.STATE_ENDED
+                            queuedMs += audio.durationMs
+                            if (engine.playbackState == Player.STATE_ENDED && !recovering) {
+                                finishPass()
+                                recovering = true
+                                engine.pause()
+                            }
+                            if (recovering && recoveryStart == null) recoveryStart = id
                             val item = MediaItem.Builder().setMediaId(id).setUri(android.net.Uri.fromFile(file)).build()
                             engine.addMediaItem(item)
-                            if (restart) engine.seekToDefaultPosition(engine.mediaItemCount - 1)
                             prepareWhenBuffered()
                         } finally {
                             if (clips[id]?.file != file) file.delete()
@@ -243,7 +305,7 @@ internal class OfflineAudio(private val context: Context) {
                     }
                     sourceDone = true
                     prepareWhenBuffered()
-                    if (clips.isEmpty() || engine.playbackState == Player.STATE_ENDED) {
+                    if (clips.isEmpty() || (recovering && recoveryStart == null)) {
                         finishPass()
                         done()
                     }

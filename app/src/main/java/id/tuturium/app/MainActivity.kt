@@ -361,6 +361,10 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var readerHighlight by mutableStateOf(prefs.getString("reader_highlight", "theme") ?: "theme")
         private set
+    var readerPreset by mutableStateOf(prefs.getString("reader_preset", "standard") ?: "standard")
+        private set
+    var readerHighlightSentence by mutableStateOf(prefs.getBoolean("reader_highlight_sentence", true))
+        private set
     var readerBold by mutableStateOf(prefs.getBoolean("reader_bold", false))
         private set
 
@@ -385,6 +389,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     fun reloadCloudPreferences() {
         readerFont = prefs.getString("reader_font", "sans") ?: "sans"
         readerHighlight = prefs.getString("reader_highlight", "theme") ?: "theme"
+        readerPreset = prefs.getString("reader_preset", "standard") ?: "standard"
+        readerHighlightSentence = prefs.getBoolean("reader_highlight_sentence", true)
         readerBold = prefs.getBoolean("reader_bold", false)
         settings = ReadingSettings.read(app)
         listeningOptions = ListeningOptions.read(app)
@@ -833,6 +839,18 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     fun changeReaderHighlight(value: String) {
         readerHighlight = value
         prefs.edit().putString("reader_highlight", value).apply()
+        TuturiumCloud.markDirty(app)
+    }
+
+    fun changeReaderPreset(value: String) {
+        readerPreset = value
+        prefs.edit().putString("reader_preset", value).apply()
+        TuturiumCloud.markDirty(app)
+    }
+
+    fun changeReaderHighlightSentence(value: Boolean) {
+        readerHighlightSentence = value
+        prefs.edit().putBoolean("reader_highlight_sentence", value).apply()
         TuturiumCloud.markDirty(app)
     }
 
