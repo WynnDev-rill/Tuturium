@@ -461,7 +461,7 @@ private fun BookRow(book: Book, playback: Playback, open: () -> Unit, rename: ()
 @Composable
 private fun PasteDialog(model: TuturiumModel) {
     var title by rememberSaveable { mutableStateOf("") }
-    TuturiumDialog(onDismissRequest = { model.showPaste = false }, title = { Text("Tambah teks") }, text = {
+    TuturiumDialog(onDismissRequest = { model.showPaste = false; model.importTargetFolder = null }, title = { Text("Tambah teks") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(title, { title = it.take(200) }, label = { Text("Judul (opsional)") }, singleLine = true)
             OutlinedTextField(model.textDraft, { model.textDraft = it.take(DocumentImporter.MAX_TEXT) },
@@ -470,5 +470,5 @@ private fun PasteDialog(model: TuturiumModel) {
     }, confirmButton = {
         TextButton(onClick = { model.addText(title, model.textDraft); model.showPaste = false },
             enabled = model.textDraft.isNotBlank()) { Text("Simpan") }
-    }, dismissButton = { TextButton({ model.showPaste = false }) { Text("Batal") } })
+    }, dismissButton = { TextButton({ model.showPaste = false; model.importTargetFolder = null }) { Text("Batal") } })
 }
