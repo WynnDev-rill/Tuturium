@@ -91,6 +91,36 @@ class LibraryV2FlowTest {
         compose.onAllNodesWithContentDescription("Disematkan").onFirst().assertIsDisplayed()
     }
 
+    @Test fun aboutOpensDedicatedPage() {
+        compose.onNodeWithContentDescription("Buka profil").performClick()
+        compose.onNodeWithText("Tentang Tuturium").performScrollTo().performClick()
+        compose.onNodeWithText("Tentang Tuturium").assertIsDisplayed()
+        compose.onNodeWithText("Versi ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
+    }
+
+    @Test fun filedBookIsHiddenFromRootAndCanReturn() {
+        val library = Library.get(compose.activity)
+        val book = library.add("Bacaan pindah folder", "TXT",
+            ReadingDocument(listOf(Section("Bab", "Contoh buku."))))
+        try {
+            FolderStore.add(compose.activity, folderName)
+            FolderStore.assign(compose.activity, book.id, folderName)
+            compose.onNodeWithText("Perpustakaan").performClick()
+            compose.onNodeWithText(book.title).assertDoesNotExist()
+            compose.onNodeWithText(folderName).performClick()
+            compose.onNodeWithText(book.title).performTouchInput { longClick() }
+            compose.onNodeWithText("Pindahkan ke folder").performScrollTo().performClick()
+            compose.onNodeWithText("Pindahkan").performClick()
+            compose.onNodeWithText(book.title).assertDoesNotExist()
+            compose.onNodeWithContentDescription("Daftar folder").performClick()
+            compose.onNodeWithText(book.title).assertIsDisplayed()
+        } finally {
+            FolderStore.assign(compose.activity, book.id, null)
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     @Test fun guestStartsWithoutGoogleAndSignInIsOptionalInProfile() {
         compose.onNodeWithText("Beranda").assertIsDisplayed()
         compose.onNodeWithContentDescription("Buka profil").performClick()
