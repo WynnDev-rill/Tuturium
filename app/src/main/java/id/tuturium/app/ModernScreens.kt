@@ -399,7 +399,7 @@ fun ModernProfile(onBack: () -> Unit, onAccount: () -> Unit, onStats: () -> Unit
             Surface(shape = RoundedCornerShape(22.dp), color = Tile, modifier = Modifier.fillMaxWidth()) {
                 Column {
                     ProfileEntry(Icons.Rounded.Headphones, "Mendengarkan", onSettings)
-                    ProfileEntry(Icons.Rounded.RecordVoiceOver, "Bacakan", onVoices, "Pustaka suara Indonesia")
+                    ProfileEntry(Icons.Rounded.RecordVoiceOver, "Pustaka Suara", onVoices, "Suara Indonesia")
                     ProfileEntry(Icons.Rounded.Storage, "Penyimpanan & Data", onStorage)
                     ProfileEntry(Icons.Rounded.DeleteOutline, "File yang Dihapus", onTrash)
                 }
