@@ -84,6 +84,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
             book.title.contains(search.trim(), ignoreCase = true)
         }, sort).sortedWith(compareByDescending<Book> { BookActions.pinned(context, it.id) })
     }
+    val pinnedBooks = remember(model.books, revision) { model.books.filter { BookActions.pinned(context, it.id) }.map { it.id }.toSet() }
     val shownFolders = if (search.isBlank()) allFolders else allFolders.filter {
         it.contains(search.trim(), ignoreCase = true)
     }
@@ -288,14 +289,14 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
                         item(key = "group:$format") {
                             Text(format, color = Secondary, style = MaterialTheme.typography.labelLarge)
                         }
-                        bookRows(group, layout, model, playback, selecting, selectedIds,
+                        bookRows(group, layout, model, playback, selecting, selectedIds, pinnedBooks,
                             onClick = {
                                 if (selecting) selectedIds = toggleSelected(selectedIds, it.id)
                                 else model.open(it.id)
                             }, onOptions = { activeFile = it })
                     }
                 } else {
-                    bookRows(visible, layout, model, playback, selecting, selectedIds,
+                    bookRows(visible, layout, model, playback, selecting, selectedIds, pinnedBooks,
                         onClick = {
                             if (selecting) selectedIds = toggleSelected(selectedIds, it.id)
                             else model.open(it.id)
@@ -487,7 +488,7 @@ private fun toggleSelected(ids: Set<String>, id: String) =
 
 private fun LazyListScope.bookRows(
     books: List<Book>, layout: String, model: TuturiumModel, playback: Playback,
-    selecting: Boolean, selected: Set<String>, onClick: (Book) -> Unit, onOptions: (Book) -> Unit
+    selecting: Boolean, selected: Set<String>, pinnedBooks: Set<String>, onClick: (Book) -> Unit, onOptions: (Book) -> Unit
 ) {
     if (layout == "Daftar") items(books, key = { "book:${it.id}" }) { book ->
         Row(Modifier.fillMaxWidth().heightIn(min = 82.dp).combinedClickable(
@@ -498,7 +499,7 @@ private fun LazyListScope.bookRows(
             FileArtwork(book.format, Modifier.size(69.dp, 80.dp))
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
-                PinnedBookTitle(book, 1)
+                PinnedBookTitle(book, 1, book.id in pinnedBooks)
                 Spacer(Modifier.height(7.dp))
                 val current = if (playback.bookId == book.id && playback.total > 0)
                     if (playback.completed) book.count else playback.index else book.position
@@ -529,7 +530,7 @@ private fun LazyListScope.bookRows(
                         FileArtwork(book.format,
                             Modifier.size(if (cols == 2) 105.dp else 82.dp,
                                 if (cols == 2) 122.dp else 98.dp))
-                        PinnedBookTitle(book, 2)
+                        PinnedBookTitle(book, 2, book.id in pinnedBooks)
                         Text("±${estimateRemainingMinutes(book.words, book.count, book.position, model.settings.speed)} menit",
                             color = Secondary, style = MaterialTheme.typography.labelSmall)
                         if (model.savingBookId == book.id) {
@@ -547,10 +548,9 @@ private fun LazyListScope.bookRows(
 }
 
 @Composable
-private fun PinnedBookTitle(book: Book, lines: Int) {
-    val context = LocalContext.current
+private fun PinnedBookTitle(book: Book, lines: Int, pinned: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (BookActions.pinned(context, book.id)) {
+        if (pinned) {
             Icon(Icons.Rounded.PushPin, "Disematkan", Modifier.size(15.dp), tint = Color.White)
             Spacer(Modifier.width(4.dp))
         }
