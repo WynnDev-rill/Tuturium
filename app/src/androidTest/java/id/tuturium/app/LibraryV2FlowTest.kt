@@ -76,6 +76,21 @@ class LibraryV2FlowTest {
         compose.onNodeWithText("Folder ini kosong. Impor atau pindahkan file ke sini.").assertIsDisplayed()
     }
 
+    @Test fun folderPinAndFolderMenuAreVisible() {
+        compose.onNodeWithText("Perpustakaan").performClick()
+        compose.onNodeWithContentDescription("Buat folder").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput(folderName)
+        compose.onNodeWithText("Simpan").performClick()
+        compose.onNodeWithContentDescription("Opsi perpustakaan").performClick()
+        compose.onNodeWithText("Ubah Nama Folder").assertIsDisplayed()
+        compose.onNodeWithText("Kelompokkan berdasarkan tanggal").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithContentDescription("Daftar folder").performClick()
+        compose.onNodeWithContentDescription("Opsi folder $folderName").performClick()
+        compose.onNodeWithText("Sematkan di atas").performClick()
+        compose.onAllNodesWithContentDescription("Disematkan").onFirst().assertIsDisplayed()
+    }
+
     @Test fun guestStartsWithoutGoogleAndSignInIsOptionalInProfile() {
         compose.onNodeWithText("Beranda").assertIsDisplayed()
         compose.onNodeWithContentDescription("Buka profil").performClick()
