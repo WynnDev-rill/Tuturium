@@ -24,7 +24,7 @@ Pemaksaan empat thread pada kuota dua vCPU memperburuk hasil. Angka dua thread j
 | Cadangan 4× sebelum batas antrean | 48 detik atau 56 klip | 180–300 detik dengan batas 384 klip. Saat suhu parah, target turun ke 60 detik. |
 | Mengulang potongan yang sudah ada | Sintesis ulang | Cache PCM mengembalikan WAV dan penanda waktu yang sama. Cache dikeluarkan dari estimasi kecepatan inferensi. |
 | Narasi sebelum skala volume pengguna | PCM mentah | Median RMS **+8,18 dB** pada sembilan sampel baseline. Puncak maksimum 0,878 skala penuh setelah pembatas. |
-| Waktu muat model pada host | Median pertama mencakup tahap muat terpisah sebesar 775 ms pada konfigurasi baseline | Pemuatan dapat dimulai saat pembaca dibuka. Penghematan waktu yang dirasakan bergantung pada jeda sebelum menekan Play. |
+| Waktu muat model pada host | 775 ms untuk memuat model pada konfigurasi baseline, di luar waktu sintesis pertama | Pemuatan dapat dimulai saat pembaca dibuka. Penghematan waktu yang dirasakan bergantung pada jeda sebelum menekan Play. |
 
 Cadangan menargetkan waktu dengar, bukan durasi file sebelum dipercepat. Target suhu normal adalah 3 menit dan menjadi 5 menit jika waktu sintesis mendekati laju konsumsi. Pada suhu sedang target kembali ke 3 menit. Setelah antrean habis, pemutar kembali dari potongan pertama yang belum diucapkan setelah ada cadangan atau input telah selesai. Media3 memakai satu daftar putar selama sesi. Cache lokal maksimal 96 MiB dan mengabaikan entri yang tidak dipakai selama tujuh hari. Perubahan suara, model, teks, atau algoritme penguatan menghasilkan kunci cache berbeda. Kecepatan dan nada diterapkan saat playback sehingga audio bisa dipakai ulang.
 

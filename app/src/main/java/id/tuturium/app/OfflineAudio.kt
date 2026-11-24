@@ -218,11 +218,11 @@ internal class OfflineAudio(
         fun prepareWhenBuffered() {
             val pending = recoveryStart
             if (recovering && pending != null) {
-                val count = engine.mediaItemCount - 1
-                val remaining = queuedMs - (clips.values.firstOrNull()?.audio?.durationMs ?: 0L)
+                val position = (0 until engine.mediaItemCount).firstOrNull { engine.getMediaItemAt(it).mediaId == pending }
+                    ?: return
+                val count = engine.mediaItemCount - position
+                val remaining = clips.values.drop(position).sumOf { it.audio.durationMs }
                 if (buffer.recoveryReady(engine.playbackParameters.speed, remaining, count, sourceDone)) {
-                    val position = (0 until engine.mediaItemCount).firstOrNull { engine.getMediaItemAt(it).mediaId == pending }
-                        ?: return
                     recoveryStart = null
                     recovering = false
                     engine.seekToDefaultPosition(position)
