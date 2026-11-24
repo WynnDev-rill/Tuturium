@@ -121,6 +121,8 @@ class ReadingService : Service() {
     private lateinit var session: MediaSession
     private lateinit var audio: AudioManager
     private lateinit var focus: AudioFocusRequest
+    private lateinit var exclusiveFocus: AudioFocusRequest
+    private lateinit var duckingFocus: AudioFocusRequest
     private lateinit var lock: PowerManager.WakeLock
     private var tts: TextToSpeech? = null
     private var narrationEnhancer: android.media.audiofx.LoudnessEnhancer? = null
@@ -213,12 +215,12 @@ class ReadingService : Service() {
             .apply { setReferenceCounted(false) }
         val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
-        focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        fun requestFor(gain: Int) = AudioFocusRequest.Builder(gain)
             .setAudioAttributes(attributes).setWillPauseWhenDucked(true)
             .setOnAudioFocusChangeListener({ change ->
                 when (change) {
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                        if (current.playing) {
+                        if (current.playing || current.loading) {
                             resumeOnFocus = true
                             pause(keepFocus = true)
                         }
@@ -230,6 +232,9 @@ class ReadingService : Service() {
                     }
                 }
             }, handler).build()
+        exclusiveFocus = requestFor(AudioManager.AUDIOFOCUS_GAIN)
+        duckingFocus = requestFor(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        focus = exclusiveFocus
         ContextCompat.registerReceiver(this, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
             ContextCompat.RECEIVER_NOT_EXPORTED)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -447,11 +452,14 @@ class ReadingService : Service() {
         // a wakelock. An OEM exception in these optional components must not
         // prevent the same successfully previewed voice from speaking.
         startupStage = "fokus audio"
-        if (options.mixWithMusic) {
+        val desiredFocus = if (options.mixWithMusic) duckingFocus else exclusiveFocus
+        if (focus !== desiredFocus) {
             if (hasFocus) runCatching { audio.abandonAudioFocusRequest(focus) }
                 .onFailure { android.util.Log.w("TuturiumPlayback", "Abandon focus failed", it) }
             hasFocus = false
-        } else if (!hasFocus) {
+            focus = desiredFocus
+        }
+        if (!hasFocus) {
             val focusResult = runCatching { audio.requestAudioFocus(focus) }
                 .onFailure { android.util.Log.w("TuturiumPlayback", "Audio focus request failed", it) }
                 .getOrNull()
