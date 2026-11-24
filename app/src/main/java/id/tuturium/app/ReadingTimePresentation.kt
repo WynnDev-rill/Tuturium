@@ -14,7 +14,7 @@ internal fun readingPosition(model: TuturiumModel, book: Book, index: Int, offse
     document: ReadingDocument? = null): ReadingPosition? {
     val options = model.listeningOptions.timelineOptions()
     val atStart = index == 0 && offset == 0
-    if (book.count > 0 && index >= book.count && (document == null || index >= document.passes.size)) {
+    if (book.count > 0 && index >= book.count && document == null) {
         return ReadingPosition(1f, 0)
     }
     val initial = if (atStart && book.words > 0 && !options.skipEnabled &&
