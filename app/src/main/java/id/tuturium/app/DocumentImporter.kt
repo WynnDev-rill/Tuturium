@@ -98,17 +98,26 @@ class DocumentImporter(private val context: Context) {
         val extracted = PDDocument.load(file, com.tom_roush.pdfbox.io.MemoryUsageSetting.setupTempFileOnly())
             .use { pdf ->
                 require(pdf.currentAccessPermission.canExtractContent()) { "PDF membatasi ekstraksi teks." }
-                val stripper = PDFTextStripper().apply {
+                val jobContext = kotlin.coroutines.coroutineContext
+                val texts = MutableList(pdf.numberOfPages) { "" }
+                val writer = java.io.StringWriter()
+                val stripper = object : PDFTextStripper() {
+                    override fun startPage(page: com.tom_roush.pdfbox.pdmodel.PDPage) {
+                        jobContext.ensureActive()
+                        progress("Membaca halaman ${currentPageNo} dari ${pdf.numberOfPages}")
+                        super.startPage(page)
+                    }
+                    override fun endPage(page: com.tom_roush.pdfbox.pdmodel.PDPage) {
+                        super.endPage(page)
+                        texts[currentPageNo - 1] = normalizePdf(writer.toString())
+                        writer.buffer.setLength(0)
+                    }
+                }.apply {
                     sortByPosition = true
                     paragraphEnd = "\n\n"
                 }
-                List(pdf.numberOfPages) { page ->
-                    kotlin.coroutines.coroutineContext.ensureActive()
-                    progress("Membaca halaman ${page + 1} dari ${pdf.numberOfPages}")
-                    stripper.startPage = page + 1
-                    stripper.endPage = page + 1
-                    normalizePdf(stripper.getText(pdf))
-                }
+                stripper.writeText(pdf, writer)
+                texts
             }
         if (extracted.all { it.any(Char::isLetterOrDigit) }) {
             return extracted.mapIndexed { index, text -> Section("Halaman ${index + 1}", text) }
