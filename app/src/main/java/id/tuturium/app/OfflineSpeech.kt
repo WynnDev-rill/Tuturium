@@ -46,7 +46,7 @@ internal fun arboIpa(text: String): String =
 
 private data class Pcm(val samples: FloatArray, val rate: Int)
 
-private object OfflineSynth {
+internal object OfflineSynth {
     // Serialize native inference, including preview, to avoid loading two models at once.
     val dispatcher = Dispatchers.IO.limitedParallelism(1)
     private var key: String? = null

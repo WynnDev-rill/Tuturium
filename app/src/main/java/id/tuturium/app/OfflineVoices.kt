@@ -58,8 +58,8 @@ internal object OfflineCatalog {
                 ModelFile("model_quantized.onnx", KOKORO + "onnx/model_quantized.onnx",
                     "0d55b15d4b735d61a21b0105136bc81b8768c4db94753193c19354fa863cd556", 0),
                 file("tokenizer.json", KOKORO, "", 0),
-                file("id_arbo.bin", ARBO_RAW + "arbotts/voices/", "", 0),
-                file("id_arba.bin", ARBO_RAW + "arbotts/voices/", "", 0)),
+                file("id_arbo.bin", ARBO_RAW + "arbotts/voices/", "", 524288),
+                file("id_arba.bin", ARBO_RAW + "arbotts/voices/", "", 524288)),
             listOf("Arbo Kokoro", "Arba Kokoro"),
             listOf("model_quantized.onnx", "tokenizer.json", "id_arbo.bin", "id_arba.bin"))
     )
