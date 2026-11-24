@@ -9,7 +9,6 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -143,12 +142,6 @@ fun Tuturium(model: TuturiumModel) {
             bottomBar = {
                 if (model.reader == null && !model.showUpdate && tab in listOf("home", "library")) {
                     Column {
-                        AnimatedVisibility(playback.bookId != null && playback.total > 0) {
-                            MiniPlayer(playback, onOpen = { playback.bookId?.let(model::open) }, onPlay = {
-                                val action = if (playback.playing || playback.loading) ReadingService.PAUSE else ReadingService.PLAY
-                                ReadingService.command(context, action)
-                            })
-                        }
                         ModernNavigation(tab,
                             onHome = { tab = "home"; model.refresh() },
                             onLibrary = { tab = "library"; model.refresh() },
@@ -414,25 +407,6 @@ private fun BookRow(book: Book, playback: Playback, open: () -> Unit, rename: ()
                     DropdownMenuItem(text = { Text("Ganti judul") }, onClick = { menu = false; rename() })
                     DropdownMenuItem(text = { Text("Hapus") }, onClick = { menu = false; remove() })
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiniPlayer(playback: Playback, onOpen: () -> Unit, onPlay: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).heightIn(min = 52.dp).clickable(onClick = onOpen),
-                verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.GraphicEq, null, tint = MaterialTheme.colorScheme.primary)
-                Text(playback.title, Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            IconButton(onPlay) {
-                Icon(if (playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    if (playback.playing) "Jeda" else "Putar")
             }
         }
     }

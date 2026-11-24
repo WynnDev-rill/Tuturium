@@ -33,6 +33,7 @@ internal class DriveArchive(private val context: Context) {
                 .put("format", book.format)
                 .put("count", book.count)
                 .put("position", book.position)
+                .put("wordOffset", book.wordOffset)
                 .put("updated", book.updated)
                 .put("created", book.created)
                 .put("words", book.words)
@@ -138,7 +139,8 @@ internal class DriveArchive(private val context: Context) {
                     position = value.getInt("position"),
                     updated = value.getLong("updated"),
                     words = value.optInt("words", 1),
-                    created = value.optLong("created", value.getLong("updated"))
+                    created = value.optLong("created", value.getLong("updated")),
+                    wordOffset = value.optInt("wordOffset", 0).coerceAtLeast(0)
                 )
                 val marks = value.optJSONArray("marks") ?: JSONArray()
                 val bookmarks = List(marks.length()) { n ->

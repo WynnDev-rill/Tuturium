@@ -19,13 +19,14 @@ data class Book(
     val position: Int,
     val updated: Long,
     val words: Int = 0,
-    val created: Long = updated
+    val created: Long = updated,
+    val wordOffset: Int = 0
 )
 
 data class Bookmark(val index: Int, val excerpt: String)
 
 class Library private constructor(context: Context) :
-    SQLiteOpenHelper(context, "library.db", null, 3) {
+    SQLiteOpenHelper(context, "library.db", null, 4) {
     private val appContext = context.applicationContext
     private val folder = File(context.filesDir, "books").apply { mkdirs() }
 
@@ -34,7 +35,7 @@ class Library private constructor(context: Context) :
             """CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL, format TEXT NOT NULL,
                 count INTEGER NOT NULL, position INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL,
                 deleted_at INTEGER NOT NULL DEFAULT 0, words INTEGER NOT NULL DEFAULT 0,
-                created INTEGER NOT NULL DEFAULT 0)"""
+                created INTEGER NOT NULL DEFAULT 0, word_offset INTEGER NOT NULL DEFAULT 0)"""
         )
         db.execSQL(
             """CREATE TABLE bookmarks (book TEXT REFERENCES books(id) ON DELETE CASCADE,
@@ -45,6 +46,7 @@ class Library private constructor(context: Context) :
     override fun onConfigure(db: SQLiteDatabase) = db.setForeignKeyConstraintsEnabled(true)
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) db.execSQL("ALTER TABLE books ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
+        if (oldVersion < 4) db.execSQL("ALTER TABLE books ADD COLUMN word_offset INTEGER NOT NULL DEFAULT 0")
         if (oldVersion < 3) {
             db.execSQL("ALTER TABLE books ADD COLUMN words INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE books ADD COLUMN created INTEGER NOT NULL DEFAULT 0")
@@ -140,9 +142,10 @@ class Library private constructor(context: Context) :
         })
     }
 
-    fun position(id: String, index: Int) {
+    fun position(id: String, index: Int, wordOffset: Int = 0) {
         writableDatabase.update("books", ContentValues().apply {
-            put("position", index)
+            put("position", index.coerceAtLeast(0))
+            put("word_offset", wordOffset.coerceAtLeast(0))
             put("updated", System.currentTimeMillis())
         }, "id = ? AND count >= ?", arrayOf(id, index.toString()))
         TuturiumCloud.markDirty(appContext)
@@ -260,6 +263,7 @@ class Library private constructor(context: Context) :
                 put("format", incoming.format)
                 put("count", incoming.count)
                 put("position", incoming.position.coerceIn(0, incoming.count))
+                put("word_offset", incoming.wordOffset.coerceAtLeast(0))
                 put("words", incoming.words)
                 put("created", incoming.created)
                 put("updated", incoming.updated)
@@ -287,7 +291,8 @@ class Library private constructor(context: Context) :
         getString(getColumnIndexOrThrow("id")), getString(getColumnIndexOrThrow("title")),
         getString(getColumnIndexOrThrow("format")), getInt(getColumnIndexOrThrow("count")),
         getInt(getColumnIndexOrThrow("position")), getLong(getColumnIndexOrThrow("updated")),
-        getInt(getColumnIndexOrThrow("words")), getLong(getColumnIndexOrThrow("created"))
+        getInt(getColumnIndexOrThrow("words")), getLong(getColumnIndexOrThrow("created")),
+        getInt(getColumnIndexOrThrow("word_offset"))
     )
 
     companion object {

@@ -128,6 +128,7 @@ class ReadingService : Service() {
     private var utterance = 0
     private var activeUtterance: String? = null
     private var speechOffset = 0
+    private var lastCheckpoint = 0L
     private var resumeOnFocus = false
     private var hasFocus = false
     private var foreground = false
@@ -238,7 +239,7 @@ class ReadingService : Service() {
         when (intent?.action) {
             PLAY -> {
                 val id = intent.getStringExtra("book")
-                if (id != null) open(id, intent.getIntExtra("index", -1), intent.getIntExtra("offset", 0))
+                if (id != null) open(id, intent.getIntExtra("index", -1), intent.getIntExtra("offset", -1))
                 else if (document != null) startCurrent()
                 else {
                     promote()
@@ -249,7 +250,7 @@ class ReadingService : Service() {
             STOP -> finish()
             NEXT -> seek(current.index + 1)
             PREVIOUS -> seek(current.index - 1)
-            SEEK -> seek(intent.getIntExtra("index", 0), offset = intent.getIntExtra("offset", 0))
+            SEEK -> seek(intent.getIntExtra("index", 0), offset = intent.getIntExtra("offset", 0).coerceAtLeast(0))
             SETTINGS -> if (current.playing) {
                 speechOffset = current.range?.first ?: speechOffset
                 stopUtterance()
@@ -260,12 +261,15 @@ class ReadingService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun open(id: String, index: Int, offset: Int = 0) {
+    private fun open(id: String, index: Int, offset: Int = -1) {
         if (current.bookId == id && document != null) {
-            if (index >= 0) seek(index, keepPlaying = false, offset = offset)
+            if (index >= 0 && (index != current.index || offset >= 0 || current.completed))
+                seek(index, keepPlaying = false, offset = offset.coerceAtLeast(0))
             startCurrent()
             return
         }
+        if (current.total > 0 && !current.completed)
+            persist(current.index, current.range?.first ?: speechOffset)
         stopUtterance()
         normalSpeedRetryPass = -1
         cachedVoices = emptyList()
@@ -287,8 +291,10 @@ class ReadingService : Service() {
                 document = content
                 val start = (if (index >= 0) index else book.position.takeIf { it < book.count } ?: 0)
                     .coerceIn(0, content.passes.lastIndex)
+                speechOffset = (if (offset >= 0) offset else if (start == book.position) book.wordOffset else 0)
+                    .coerceIn(0, content.passes[start].text.lastIndex.coerceAtLeast(0))
                 current = current.copy(title = book.title, index = start, total = content.passes.size)
-                persist(start)
+                persist(start, speechOffset)
                 if (current.loading) startCurrent() else publish()
             } catch (error: CancellationException) {
                 throw error
@@ -434,7 +440,7 @@ class ReadingService : Service() {
         speechOffset = offset.coerceIn(0,
             (document?.passes?.getOrNull(next)?.text?.lastIndex ?: 0).coerceAtLeast(0))
         current = current.copy(index = next, completed = false, range = null, error = null)
-        persist(next)
+        persist(next, speechOffset)
         if (active) startCurrent() else publish()
     }
 
@@ -446,8 +452,14 @@ class ReadingService : Service() {
                 if (utteranceId == activeUtterance && start >= 0 && end > start) {
                     val mappedStart = activePrepared.offsets.getOrNull(preparedStart + start)
                     val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
-                    if (mappedStart != null && mappedEnd != null)
+                    if (mappedStart != null && mappedEnd != null) {
                         current = current.copy(range = mappedStart..mappedEnd)
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastCheckpoint >= 2000L) {
+                            lastCheckpoint = now
+                            persist(current.index, mappedStart)
+                        }
+                    }
                 }
             }
         }
@@ -533,14 +545,18 @@ class ReadingService : Service() {
         }
     }
 
-    private fun persist(index: Int) {
+    private fun persist(index: Int, offset: Int = 0) {
         val id = current.bookId ?: return
         val context = applicationContext
-        positionWrites.launch { runCatching { Library.get(context).position(id, index) } }
+        positionWrites.launch {
+            runCatching { Library.get(context).position(id, index, offset) }
+                .onFailure { android.util.Log.e("TuturiumPlayback", "Position save failed", it) }
+        }
     }
 
     private fun pause(keepFocus: Boolean = false) {
         speechOffset = current.range?.first ?: speechOffset
+        if (current.total > 0 && !current.completed) persist(current.index, speechOffset)
         stopUtterance()
         if (!keepFocus) {
             resumeOnFocus = false
@@ -656,6 +672,7 @@ class ReadingService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        if (current.total > 0 && !current.completed) persist(current.index, current.range?.first ?: speechOffset)
         stopUtterance()
         if (hasFocus) runCatching { audio.abandonAudioFocusRequest(focus) }
         unregisterReceiver(noisy)
@@ -679,12 +696,13 @@ class ReadingService : Service() {
         const val SETTINGS = "SETTINGS"
         private const val CHANNEL = "reading"
         private const val NOTIFICATION = 41
-        private val positionWrites = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+        internal val positionDispatcher = Dispatchers.IO.limitedParallelism(1)
+        private val positionWrites = CoroutineScope(SupervisorJob() + positionDispatcher)
         private val mutable = MutableStateFlow(Playback())
         val state = mutable.asStateFlow()
 
         fun command(context: Context, action: String, book: String? = null,
-            index: Int = -1, minutes: Int = 0, offset: Int = 0): Boolean {
+            index: Int = -1, minutes: Int = 0, offset: Int = -1): Boolean {
             val intent = Intent(context, ReadingService::class.java).setAction(action)
                 .putExtra("book", book).putExtra("index", index).putExtra("minutes", minutes)
                 .putExtra("offset", offset)
