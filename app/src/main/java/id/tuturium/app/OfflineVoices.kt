@@ -23,7 +23,7 @@ internal object OfflineCatalog {
     private const val SHERPA = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/"
     private const val ARBO = "https://github.com/ARBO-TEAM/arboTTS/releases/download/"
     private const val ARBO_RAW = "https://raw.githubusercontent.com/ARBO-TEAM/arboTTS/f628060f0a3afdf86019c99eb057dcecb824d294/"
-    private const val KOKORO = "https://huggingface.co/onnx-community/Kokoro-82M-ONNX/resolve/f81504b/"
+    private const val KOKORO = "https://huggingface.co/onnx-community/Kokoro-82M-ONNX/resolve/main/"
     private fun file(name: String, base: String, sha: String, size: Long) = ModelFile(name, base + name, sha, size)
     private fun tar(id: String, label: String, name: String, sha: String, size: Long,
         labels: List<String>, required: List<String>) =
@@ -98,7 +98,7 @@ internal object OfflineModelStore {
                         instanceFollowRedirects = true
                     }
                     try {
-                        check(connection.responseCode == 200) { "Server model: HTTP " + connection.responseCode }
+                        check(connection.responseCode == 200) { "Server model ${model.id}/${spec.name}: HTTP " + connection.responseCode }
                         val digest = MessageDigest.getInstance("SHA-256")
                         connection.inputStream.use { input ->
                             target.outputStream().use { output ->
