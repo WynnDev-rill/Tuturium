@@ -71,6 +71,10 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     val pdfPasses = remember(document) {
         if (pdfSource != null) document.firstPassByPdfPage() else emptyMap()
     }
+    val pdfWords = remember(document, pdfSource) {
+        if (pdfSource != null) document.passes.withIndex().groupBy { document.pdfPageForPass(it.index) }
+        else emptyMap()
+    }
     val isPlaying = active && playback.playing
     val isLoading = playback.bookId == book.id && playback.loading
     var panel by remember { mutableStateOf<String?>(null) }
@@ -84,16 +88,20 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val marked = model.bookmarks.any { it.index == current }
     val offlineVoice = OfflineCatalog.voice(model.settings.voice)
-    LaunchedEffect(book.id, offlineVoice?.model) {
-        if (offlineVoice != null) {
-            delay(350)
-            val state = ReadingService.state.value
-            if (!state.playing && !state.loading) OfflineSynth.prewarm(context.applicationContext)
+    LaunchedEffect(book.id, offlineVoice?.id, isPlaying, isLoading, model.listeningOptions.skipEnabled) {
+        val voice = offlineVoice ?: return@LaunchedEffect
+        if (isPlaying || isLoading || ReadingService.state.value.playing || ReadingService.state.value.loading)
+            return@LaunchedEffect
+        val options = model.listeningOptions
+        val offset = if (active) playback.range?.first ?: book.wordOffset.takeIf { current == book.position } ?: 0
+            else book.wordOffset.takeIf { current == book.position } ?: 0
+        try {
+            OfflineSynth.prepareOpeningAudio(context.applicationContext, voice, document, current, offset, options)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("TuturiumReader", "Offline preparation deferred", error)
         }
-    }
-    LaunchedEffect(book.id, model.listeningOptions.autoplay) {
-        if (model.listeningOptions.autoplay && ReadingService.state.value.bookId != book.id)
-            model.play(book, current)
     }
     LaunchedEffect(playback.timerUntil) {
         while (playback.timerUntil > 0) {
@@ -203,35 +211,8 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 Icon(Icons.Rounded.MoreHoriz, "Opsi pembaca", Modifier.size(27.dp))
             }
         }
-        if (pdfSource != null) {
-            val colors = MaterialTheme.colorScheme
-            Box(Modifier.align(Alignment.CenterHorizontally)) {
-                Surface(Modifier.align(Alignment.Center).size(108.dp, 30.dp),
-                    shape = RoundedCornerShape(15.dp), color = colors.surface,
-                    border = BorderStroke(1.dp, colors.outlineVariant)) {}
-                Row(Modifier.selectableGroup()) {
-                    listOf(true to "PDF", false to "Teks").forEach { (pdf, label) ->
-                        val selected = showPdf == pdf
-                        Box(Modifier.size(width = 54.dp, height = 48.dp)
-                            .selectable(selected, role = Role.Tab) {
-                                showPdf = pdf
-                                if (!pdf) {
-                                    manualBrowsing = false
-                                    jump = current
-                                }
-                            }, contentAlignment = Alignment.Center) {
-                            Surface(Modifier.size(50.dp, 26.dp), shape = RoundedCornerShape(13.dp),
-                                color = if (selected) colors.primaryContainer else Color.Transparent,
-                                contentColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(label, style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        Box(Modifier.weight(1f)) {
+        Column(Modifier.fillMaxSize()) {
         if ((active || book.position > 0 || book.wordOffset > 0) && !showPdf &&
             manualBrowsing && readingOffScreen
         ) {
@@ -271,7 +252,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             Box(Modifier.weight(1f)) {
                 OriginalPdfPages(pdfSource, document.pdfPageForPass(current), model.follow,
                     reading = isPlaying || isLoading, firstPassByPage = pdfPasses,
-                    onReadPage = { model.playFromWord(book, WordSelection(it, 0)) })
+                    passesByPage = pdfWords, onReadWord = { model.playFromWord(book, it) })
             }
         } else {
         val scheme = MaterialTheme.colorScheme
@@ -282,7 +263,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         val ink = if (!warm) scheme.onBackground else if (dark) Color(0xFFF7E6D4) else Color(0xFF382719)
         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth()
             .background(paper),
-            contentPadding = PaddingValues(horizontal = if (focusMode) 38.dp else 24.dp, vertical = 17.dp),
+            contentPadding = PaddingValues(start = if (focusMode) 38.dp else 24.dp, end = if (focusMode) 38.dp else 24.dp, top = if (pdfSource != null) 52.dp else 17.dp, bottom = 17.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)) {
             itemsIndexed(rows) { rowIndex, row ->
                 if (row.heading != null) {
@@ -392,6 +373,31 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         lineHeight = (readableSize * if (focusMode) 1.66f else 1.48f).sp,
                         textAlign = TextAlign.Start,
                         color = ink)
+                }
+            }
+        }
+        }
+        }
+        if (pdfSource != null) {
+            val colors = MaterialTheme.colorScheme
+            Surface(Modifier.align(Alignment.TopCenter).padding(top = 3.dp),
+                shape = RoundedCornerShape(25.dp), color = colors.surface.copy(alpha = 0.94f),
+                border = BorderStroke(1.dp, colors.outlineVariant)) {
+                Row(Modifier.selectableGroup().padding(3.dp)) {
+                    listOf(true to "PDF", false to "Teks").forEach { (pdf, label) ->
+                        val selected = showPdf == pdf
+                        Box(Modifier.size(width = 54.dp, height = 44.dp)
+                            .selectable(selected, role = Role.Tab) {
+                                showPdf = pdf
+                                if (!pdf) { manualBrowsing = false; jump = current }
+                            }, contentAlignment = Alignment.Center) {
+                            Surface(Modifier.size(50.dp, 32.dp), shape = RoundedCornerShape(18.dp),
+                                color = if (selected) colors.primaryContainer else Color.Transparent,
+                                contentColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant) {
+                                Box(contentAlignment = Alignment.Center) { Text(label, style = MaterialTheme.typography.labelMedium) }
+                            }
+                        }
+                    }
                 }
             }
         }
