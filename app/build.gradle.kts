@@ -35,8 +35,8 @@ android {
         resourceConfigurations += listOf("en", "id")
         minSdk = 26
         targetSdk = 35
-        versionCode = 10317
-        versionName = "1.3.17"
+        versionCode = 10318
+        versionName = "1.3.18"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Client IDs are public identifiers, not OAuth client secrets.
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID",
