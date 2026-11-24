@@ -70,7 +70,7 @@ class ReaderFlowTest {
         }
         compose.onNodeWithContentDescription("Pilih 2,0×").performClick()
         compose.onNodeWithContentDescription("Percepat").performClick()
-        compose.onNodeWithText("2,05×").assertIsDisplayed()
+        compose.onAllNodesWithText("2,05×").onLast().assertIsDisplayed()
         compose.onNodeWithContentDescription("Penggeser kecepatan").assertIsDisplayed()
         compose.onNodeWithContentDescription("Tingkatkan kecepatan otomatis").performClick()
         compose.onNodeWithText("+0,05× tiap 600 kata · hingga 4×").assertIsDisplayed()
