@@ -50,7 +50,9 @@ class OfflineVoiceRuntimeTest {
         OfflineModelStore.install(context, model) {}
         val passages = listOf(
             "Kalimat pertama dibaca sampai kata terakhir.",
-            "Kalimat kedua menyebutkan perpustakaan dan halaman baru.",
+            "Pada kalimat kedua kami membaca tentang perpustakaan di pinggir kota, menyusuri rak " +
+                "buku bersama teman dari sekolah, lalu mencari sebuah cerita lama tentang perjalanan " +
+                "menuju pulau kecil yang ditumbuhi pohon kelapa dan dipenuhi burung berwarna cerah.",
             "Kalimat terakhir selesai dengan kata penutup."
         ).mapIndexed { index, text -> OfflinePass(index, PreparedSpeech(text, IntArray(text.length) { it })) }
         for (rate in listOf(2f, 4f)) withContext(Dispatchers.Main) {
@@ -72,7 +74,7 @@ class OfflineVoiceRuntimeTest {
                 assertEquals("Start order at ${rate}x", listOf(0, 1, 2), started)
                 assertEquals("Completion order at ${rate}x", started, spoken)
                 assertEquals("Every passage reached its last cue at ${rate}x",
-                    passages.associate { it.index to 0..it.speech.text.lastIndex }, lastCue)
+                    passages.associate { it.index to synthesisRanges(it.speech.text).last() }, lastCue)
                 assertEquals("Visible rebuffering at ${rate}x", 0, interruptions)
             } finally {
                 engine.stop()
