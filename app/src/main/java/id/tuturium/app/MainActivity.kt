@@ -222,6 +222,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var bookmarks by mutableStateOf<List<Bookmark>>(emptyList())
         private set
+    var savingBookId by mutableStateOf<String?>(null)
+        private set
     var savingReader by mutableStateOf(false)
         private set
     var position by mutableStateOf(0)
@@ -288,6 +290,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun open(id: String) {
+        if (savingBookId != null) return
         if (reader?.id == id && content != null) return
         openJob?.cancel()
         openJob = viewModelScope.launch {
@@ -308,6 +311,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         openJob?.cancel()
         val book = reader ?: return
         savingReader = true
+        savingBookId = book.id
+        val previousDocument = content
         viewModelScope.launch {
             try {
                 val state = ReadingService.state.value
@@ -317,6 +322,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
                         ReadingService.state.first { it.bookId != book.id || (!it.playing && !it.loading) }
                     }
                 }
+                reader = null
+                content = null
                 // The service queues its checkpoint before reporting paused.
                 // Read after every pending write; never overwrite a newer service checkpoint.
                 val saved = withContext(ReadingService.positionDispatcher) {
@@ -331,16 +338,22 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
                     library.books()
                 }
                 books = saved
-                reader = null
-                content = null
+                if (ReadingService.state.value.bookId == book.id) ReadingService.command(app, ReadingService.STOP)
+                // Keep the row indicator visible across the reader crossfade.
+                kotlinx.coroutines.delay(450L)
             } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+                content = previousDocument
+                reader = book
                 status = "Progres belum berhasil disimpan. Coba kembali lagi."
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                content = previousDocument
+                reader = book
                 status = "Progres belum berhasil disimpan. Coba kembali lagi."
             } finally {
                 savingReader = false
+                savingBookId = null
             }
         }
     }

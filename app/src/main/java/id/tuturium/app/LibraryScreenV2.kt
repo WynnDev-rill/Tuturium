@@ -52,6 +52,7 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
     var search by rememberSaveable { mutableStateOf("") }
     var searching by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var filterMenu by remember { mutableStateOf(false) }
     var selecting by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var activeFile by remember { mutableStateOf<Book?>(null) }
@@ -154,21 +155,6 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
                             }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false },
                                 modifier = Modifier.width(275.dp).background(Panel)) {
-                                listOf(
-                                    "Belum dibaca" to Icons.Rounded.AutoStories,
-                                    "Baca nanti" to Icons.Rounded.Schedule,
-                                    "PDF" to Icons.Rounded.PictureAsPdf,
-                                    "Dokumen" to Icons.Rounded.Description,
-                                    "Halaman web" to Icons.Rounded.Language,
-                                    "Pindai" to Icons.Rounded.CameraAlt,
-                                    "Lainnya" to Icons.Rounded.MoreHoriz
-                                ).forEach { (name, icon) ->
-                                    DropdownMenuItem(text = { Text(name) },
-                                        leadingIcon = { Icon(icon, null) },
-                                        trailingIcon = { if (filter == name) Icon(Icons.Rounded.Check, null) },
-                                        onClick = { filter = name; menu = false })
-                                }
-                                HorizontalDivider(color = Color.DarkGray)
                                 DropdownMenuItem(text = { Text("Pilih beberapa") },
                                     leadingIcon = { Icon(Icons.Rounded.Checklist, null) },
                                     onClick = { selecting = true; menu = false })
@@ -219,6 +205,34 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: () -> Unit) {
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box {
+                    FilledIconButton(onClick = { filterMenu = true },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Panel, contentColor = Color.White)) {
+                        Icon(Icons.Rounded.FilterList, "Filter perpustakaan")
+                    }
+                    DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false },
+                        modifier = Modifier.width(240.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        containerColor = Color(0xFF2D2D2D)) {
+                                listOf(
+                                    "Belum dibaca" to Icons.Rounded.AutoStories,
+                                    "Baca nanti" to Icons.Rounded.Schedule,
+                                    "PDF" to Icons.Rounded.PictureAsPdf,
+                                    "Dokumen" to Icons.Rounded.Description,
+                                    "Halaman web" to Icons.Rounded.Language,
+                                    "Pindai" to Icons.Rounded.CameraAlt,
+                                    "Lainnya" to Icons.Rounded.MoreHoriz
+                                ).forEach { (name, icon) ->
+                                    if (name == "PDF") HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(horizontal = 16.dp))
+                                    DropdownMenuItem(text = { Text(name) },
+                                        leadingIcon = { Icon(icon, null) },
+                                        trailingIcon = { if (filter == name) Icon(Icons.Rounded.Check, null) },
+                                        onClick = { filter = name; filterMenu = false })
+                                }
+                    }
+                }
                 if (filter !in listOf("Buku", "Folder")) {
                     FilterChip(selected = true, onClick = { filter = "Buku" },
                         label = { Text(filter) }, trailingIcon = { Icon(Icons.Rounded.Close, "Hapus filter") },
@@ -477,7 +491,10 @@ private fun LazyListScope.bookRows(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (selecting) Checkbox(checked = book.id in selected,
+            if (model.savingBookId == book.id) {
+                CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp,
+                    color = Blue)
+            } else if (selecting) Checkbox(checked = book.id in selected,
                 onCheckedChange = { onClick(book) })
             else IconButton(onClick = { onOptions(book) }) {
                 Icon(Icons.Rounded.MoreHoriz, "Opsi ${book.title}", tint = Secondary)
@@ -497,7 +514,9 @@ private fun LazyListScope.bookRows(
                             style = MaterialTheme.typography.bodySmall)
                         Text("±${estimateRemainingMinutes(book.words, book.count, book.position, model.settings.speed)} menit",
                             color = Secondary, style = MaterialTheme.typography.labelSmall)
-                        if (selecting) Checkbox(checked = book.id in selected, onCheckedChange = { onClick(book) })
+                        if (model.savingBookId == book.id) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Blue)
+                        } else if (selecting) Checkbox(checked = book.id in selected, onCheckedChange = { onClick(book) })
                         else IconButton(onClick = { onOptions(book) }) {
                             Icon(Icons.Rounded.MoreHoriz, "Opsi ${book.title}")
                         }
