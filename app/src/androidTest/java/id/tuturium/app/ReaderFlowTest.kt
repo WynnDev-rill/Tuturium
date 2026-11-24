@@ -96,13 +96,16 @@ class ReaderFlowTest {
         )))
         val file = java.io.File.createTempFile("original-pages-", ".pdf", context.cacheDir)
         try {
-            android.graphics.pdf.PdfDocument().use { pdf ->
+            val pdf = android.graphics.pdf.PdfDocument()
+            try {
                 repeat(3) { index ->
                     val page = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(300, 440, index + 1).create())
                     page.canvas.drawText("Original ${index + 1}", 18f, 30f, android.graphics.Paint())
                     pdf.finishPage(page)
                 }
                 file.outputStream().use(pdf::writeTo)
+            } finally {
+                pdf.close()
             }
             library.saveOriginalPdf(book.id, file)
             compose.onNodeWithText("Perpustakaan").performClick()
