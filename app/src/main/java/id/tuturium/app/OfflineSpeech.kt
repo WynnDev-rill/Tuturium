@@ -82,7 +82,7 @@ internal object OfflineSynth {
             try {
                 val cache = NarrationAudioCache(File(context.cacheDir, "supertonic-audio"))
                 val model = OfflineCatalog.model(voice.model)
-                val key = "${model.files.single().sha256}/${voice.id}/id/$INFERENCE_STEPS/gain-v1"
+                val key = "${model.files.single().sha256}/${voice.id}/id/$INFERENCE_STEPS/gain-v2"
                 if (OfflineModelStore.installed(context, model)) {
                     cache.restore(text, key, target)?.let { return@withContext it }
                 }
