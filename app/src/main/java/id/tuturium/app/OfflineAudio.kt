@@ -19,7 +19,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-internal data class OfflinePass(val index: Int, val speech: PreparedSpeech, val pauseAfterMs: Int = 0)
+internal data class OfflinePass(
+    val index: Int, val speech: PreparedSpeech, val pauseAfterMs: Int = 0, val extraPauseMs: Int = 0
+)
 
 internal class SupertonicBuffer {
     private var inferenceRatio = 0.0
@@ -171,7 +173,7 @@ internal class OfflineAudio(
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun play(
         scope: CoroutineScope, voice: OfflineVoice, passages: Sequence<OfflinePass>, speed: Float, pitch: Float,
-        volume: Float = 1f, onPass: (OfflinePass) -> Unit, onSpoken: (OfflinePass) -> Unit,
+        volume: Float = 1f, onPass: (OfflinePass) -> Unit, onSpoken: (OfflinePass, Long) -> Unit,
         onRange: (IntRange) -> Unit, onRendering: (Boolean) -> Unit,
         onDone: () -> Unit, onError: (Throwable) -> Unit
     ) {
@@ -201,7 +203,7 @@ internal class OfflineAudio(
         fun finishPass() {
             val previous = active ?: return
             active = null
-            onSpoken(previous.pass)
+            onSpoken(previous.pass, previous.audio.durationMs)
         }
 
         fun fail(error: Throwable) {

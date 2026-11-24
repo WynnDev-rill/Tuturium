@@ -5,10 +5,10 @@ import org.junit.Test
 
 class LibraryPresentationTest {
     @Test fun remainingMinutesReflectWordsProgressAndSpeed() {
-        assertEquals(10, estimateRemainingMinutes(1500, 100, 0, 1f))
-        assertEquals(5, estimateRemainingMinutes(1500, 100, 50, 1f))
-        assertEquals(3, estimateRemainingMinutes(1500, 100, 50, 2f))
-        assertEquals(0, estimateRemainingMinutes(1500, 100, 100, 1f))
+        assertEquals(10, ReadingPosition(0f, 1500).remainingMinutes(INITIAL_MILLIS_PER_WORD, 1f))
+        assertEquals(5, ReadingPosition(0.5f, 750).remainingMinutes(INITIAL_MILLIS_PER_WORD, 1f))
+        assertEquals(3, ReadingPosition(0.5f, 750).remainingMinutes(INITIAL_MILLIS_PER_WORD, 2f))
+        assertEquals(0, ReadingPosition(1f, 0).remainingMinutes(INITIAL_MILLIS_PER_WORD, 1f))
     }
     @Test fun wordCountSkipsWhitespaceAndPunctuation() {
         assertEquals(6, countDocumentWords("Halo, dunia!\nIni adalah sebuah tes."))

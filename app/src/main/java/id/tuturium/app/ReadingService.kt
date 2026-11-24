@@ -53,7 +53,8 @@ data class Playback(
     val range: IntRange? = null,
     val timerUntil: Long = 0,
     val effectiveSpeed: Float = 1f,
-    val error: String? = null
+    val error: String? = null,
+    val offset: Int = 0
 )
 
 data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Float, val volume: Float = 1f) {
@@ -154,6 +155,8 @@ class ReadingService : Service() {
     private var document: ReadingDocument? = null
     private var request = 0
     private var utterance = 0
+    private val utteranceAudio = UtteranceAudioLength()
+    private var googlePaceProfile: PaceProfile? = null
     private var activeUtterance: String? = null
     private var offlineSession: OfflineSession? = null
 
@@ -172,6 +175,9 @@ class ReadingService : Service() {
     private val automaticSpeed = AutomaticSpeed()
     private var listeningStart = 0L
     private var listeningSpeed = 1f
+    private var captionIndex = -1
+    private var readingCaption: MediaReadingCaption? = null
+    private var lastMediaMetadata: Pair<String, String>? = null
     private var current = Playback()
         set(value) {
             if (field.playing && !value.playing && listeningStart > 0L) {
@@ -340,6 +346,8 @@ class ReadingService : Service() {
         speechOffset = offset.coerceAtLeast(0)
         automaticSpeed.reset()
         document = null
+        captionIndex = -1
+        readingCaption = null
         preparedParagraph = null
         preparedLocation = null
         val ticket = ++request
@@ -358,7 +366,7 @@ class ReadingService : Service() {
                     .coerceIn(0, content.passes.lastIndex)
                 speechOffset = (if (offset >= 0) offset else if (start == book.position) book.wordOffset else 0)
                     .coerceIn(0, content.passes[start].text.lastIndex.coerceAtLeast(0))
-                current = current.copy(title = book.title, index = start, total = content.passes.size)
+                current = current.copy(title = book.title, index = start, offset = speechOffset, total = content.passes.size)
                 persist(start, speechOffset)
                 if (current.loading) startCurrent() else publish()
             } catch (error: CancellationException) {
@@ -411,12 +419,13 @@ class ReadingService : Service() {
             speechOffset = 0
             if (current.index < current.total - 1) {
                 val next = current.index + 1
-                current = current.copy(index = next, range = null, playing = false, loading = true)
+                current = current.copy(index = next, offset = 0, range = null, playing = false, loading = true)
                 val skipped = current
                 handler.post { if (current === skipped) startCurrent() }
             } else completeBook()
             return
         }
+        setCaptionSpeech(current.index, sourceSpeech)
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
         startupStage = "memilih suara Indonesia"
@@ -496,6 +505,8 @@ class ReadingService : Service() {
         startupStage = "mengaktifkan pemutar"
         val token = (++utterance).toString()
         activeUtterance = token
+        utteranceAudio.reset(token)
+        googlePaceProfile = PaceProfile.forPlayback(settings, options, usableSpeed)
         runCatching { lock.acquire(300_000) }
             .onFailure { android.util.Log.w("TuturiumPlayback", "WakeLock unavailable", it) }
         current = current.copy(playing = false, loading = true, completed = false,
@@ -547,13 +558,18 @@ class ReadingService : Service() {
         val session = OfflineSession(settings, options)
         offlineSession = session
         val startIndex = current.index
+        val paceProfile = PaceProfile.forPlayback(settings, options, 1f)
         val first = PreparedSpeech(initial.text.substring(offset),
             initial.offsets.copyOfRange(offset, initial.offsets.size))
         val passages = sequence {
-            yield(OfflinePass(startIndex, first, document.pauseAfter(startIndex, options).totalMs))
+            val initialPause = document.pauseAfter(startIndex, options)
+            yield(OfflinePass(startIndex, first, initialPause.totalMs, initialPause.extraMs))
             for (index in startIndex + 1 until document.passes.size) {
                 val speech = preparePass(document, document.passes[index], options)
-                if (speech.text.isNotBlank()) yield(OfflinePass(index, speech, document.pauseAfter(index, options).totalMs))
+                if (speech.text.isNotBlank()) {
+                    val pause = document.pauseAfter(index, options)
+                    yield(OfflinePass(index, speech, pause.totalMs, pause.extraMs))
+                }
             }
         }
         val speed = automaticSpeed.rate
@@ -564,20 +580,24 @@ class ReadingService : Service() {
         offlineAudio.play(scope, voice, passages, speed, settings.pitch, volume = settings.volume,
             onPass = { pass ->
                 speechOffset = pass.speech.offsets.first()
-                current = current.copy(index = pass.index, range = null)
+                current = current.copy(index = pass.index, offset = speechOffset, range = null)
+                setCaptionSpeech(pass.index, pass.speech)
+                refreshMediaCaption()
                 applyOfflineRate(session)
                 persist(pass.index, speechOffset)
                 runCatching { lock.acquire(300_000) }
             },
-            onSpoken = { pass ->
+            onSpoken = { pass, audioMs ->
                 val words = countDocumentWords(pass.speech.text)
                 val rate = current.effectiveSpeed
                 val context = applicationContext
+                ReadingPace.record(context, paceProfile, words, (audioMs - pass.extraPauseMs).toDouble())
                 automaticSpeed.spoken(words)
                 positionWrites.launch { ListeningStats.recordUtterance(context, words, rate) }
             },
             onRange = { range ->
-                current = current.copy(range = range)
+                current = current.copy(range = range, offset = range.first)
+                refreshMediaCaption()
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastCheckpoint >= 2_000L) {
                     lastCheckpoint = now
@@ -601,12 +621,25 @@ class ReadingService : Service() {
         normalSpeedRetryPass = -1
         speechOffset = offset.coerceIn(0,
             (document?.passes?.getOrNull(next)?.text?.lastIndex ?: 0).coerceAtLeast(0))
-        current = current.copy(index = next, completed = false, range = null, error = null)
+        current = current.copy(index = next, offset = speechOffset, completed = false, range = null, error = null)
         persist(next, speechOffset)
-        if (active) startCurrent() else publish()
+        if (active) startCurrent() else {
+            document?.let { doc ->
+                doc.passes.getOrNull(next)?.let { pass ->
+                    setCaptionSpeech(next, preparePass(doc, pass, ListeningOptions.read(this)))
+                }
+            }
+            publish()
+        }
     }
 
     private val listener = object : UtteranceProgressListener() {
+        override fun onBeginSynthesis(utteranceId: String?, sampleRateInHz: Int, audioFormat: Int,
+            channelCount: Int) = utteranceAudio.begin(utteranceId, sampleRateInHz, audioFormat, channelCount)
+
+        override fun onAudioAvailable(utteranceId: String?, audio: ByteArray) =
+            utteranceAudio.add(utteranceId, audio.size)
+
         override fun onStart(utteranceId: String?) {
             handler.post {
                 if (utteranceId != null && utteranceId == activeUtterance) {
@@ -622,7 +655,8 @@ class ReadingService : Service() {
                     val mappedStart = activePrepared.offsets.getOrNull(preparedStart + start)
                     val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
                     if (mappedStart != null && mappedEnd != null) {
-                        current = current.copy(range = mappedStart..mappedEnd)
+                        current = current.copy(range = mappedStart..mappedEnd, offset = mappedStart)
+                        refreshMediaCaption()
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastCheckpoint >= 2000L) {
                             lastCheckpoint = now
@@ -639,6 +673,11 @@ class ReadingService : Service() {
                 val words = countDocumentWords(activePrepared.text.substring(preparedStart))
                 val speed = current.effectiveSpeed
                 val context = applicationContext
+                val audioMs = utteranceAudio.finish(utteranceId)
+                val profile = googlePaceProfile
+                if (audioMs != null && profile != null) {
+                    ReadingPace.record(context, profile, words, audioMs * speed)
+                }
                 positionWrites.launch { ListeningStats.recordUtterance(context, words, speed) }
                 automaticSpeed.spoken(words)
                 runCatching { if (lock.isHeld) lock.release() }
@@ -652,7 +691,7 @@ class ReadingService : Service() {
                     val advance = Runnable {
                         if (current.index == finishedIndex && activeUtterance == utteranceId &&
                             (current.playing || current.loading)) {
-                            current = current.copy(index = current.index + 1, range = null)
+                            current = current.copy(index = current.index + 1, offset = 0, range = null)
                             persist(current.index)
                             startCurrent()
                         }
@@ -677,7 +716,7 @@ class ReadingService : Service() {
         persist(current.total)
         normalSpeedRetryPass = -1
         speechOffset = 0
-        current = current.copy(index = 0, completed = true, range = null)
+        current = current.copy(index = 0, offset = 0, completed = true, range = null)
         pause()
         val completed = current
         continuation = scope.launch {
@@ -766,6 +805,8 @@ class ReadingService : Service() {
 
     private fun stopUtterance() {
         activeUtterance = null
+        utteranceAudio.reset(null)
+        googlePaceProfile = null
         offlineSession = null
         offlineAudio.stop()
         runCatching { tts?.stop() }.onFailure {
@@ -816,6 +857,48 @@ class ReadingService : Service() {
         }
     }
 
+    private fun setCaptionSpeech(index: Int, speech: PreparedSpeech) {
+        captionIndex = index
+        readingCaption = MediaReadingCaption(speech)
+    }
+
+    private fun mediaCaptionText(): String {
+        if (current.completed) return "Bacaan selesai"
+        if (captionIndex == current.index) {
+            readingCaption?.at(current.offset)?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return if (current.loading) "Menyiapkan suara"
+            else if (current.total > 0) "Bagian ${current.index + 1} dari ${current.total}"
+            else "Pemutar dokumen"
+    }
+
+    private fun updateMediaMetadata(): Boolean {
+        val title = current.title.ifBlank { "Tuturium" }
+        val caption = mediaCaptionText()
+        val next = title to caption
+        if (next == lastMediaMetadata) return false
+        session.setMetadata(MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, caption)
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, caption)
+            .build())
+        lastMediaMetadata = next
+        return true
+    }
+
+    @SuppressLint("NotificationPermission")
+    private fun refreshMediaCaption() {
+        if (current.bookId == null || !foreground) return
+        runCatching {
+            // On Android 13+ System UI reads the MediaSession metadata directly.
+            // Older systems need refreshed MediaStyle notification content as well.
+            if (updateMediaMetadata() && Build.VERSION.SDK_INT < 33) {
+                getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
+            }
+        }.onFailure { android.util.Log.w("TuturiumPlayback", "Media caption update failed", it) }
+    }
+
     // Android exempts MediaStyle notifications backed by an active media session.
     @SuppressLint("NotificationPermission")
     private fun publish() {
@@ -826,9 +909,7 @@ class ReadingService : Service() {
             current.playing -> PlaybackState.STATE_PLAYING
             else -> PlaybackState.STATE_PAUSED
         }
-        session.setMetadata(MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, current.title)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, "Tuturium").build())
+        updateMediaMetadata()
         session.setPlaybackState(PlaybackState.Builder().setActions(
             PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or
                 PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_STOP
@@ -853,9 +934,7 @@ class ReadingService : Service() {
     private fun notification(): Notification = Notification.Builder(this, CHANNEL)
         .setSmallIcon(R.drawable.status_audio)
         .setContentTitle(current.title.ifBlank { "Tuturium" })
-        .setContentText(if (current.loading) "Menyiapkan suara" else if (current.total > 0) {
-            "Bagian ${current.index + 1} dari ${current.total}"
-        } else "Pemutar dokumen")
+        .setContentText(mediaCaptionText())
         .setContentIntent(openApp())
         .setOnlyAlertOnce(true)
         .setVisibility(Notification.VISIBILITY_PUBLIC)

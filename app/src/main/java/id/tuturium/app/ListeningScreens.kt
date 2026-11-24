@@ -373,15 +373,12 @@ fun IndonesianVoiceAvatar(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, current: Int,
-    totalPasses: Int, dismiss: () -> Unit) {
+internal fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book,
+    position: ReadingPosition?, dismiss: () -> Unit) {
     val options = model.listeningOptions
-    val base = model.settings.speed
-    val currentSession = playback.bookId == book.id && playback.total > 0 && !playback.completed
     var dragSpeed by remember { mutableStateOf<Float?>(null) }
-    val speed = dragSpeed ?: if (currentSession) playback.effectiveSpeed else base
-    val remaining = book.words * (1f - current / totalPasses.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
-    val seconds = (remaining * 60f / (150f * speed.coerceAtLeast(0.5f))).toInt()
+    val speed = dragSpeed ?: playback.readingSpeed(book, model.settings.speed)
+    val seconds = position?.remainingSeconds(narrationMillisPerWord(model, speed), speed)
     val colors = MaterialTheme.colorScheme
     fun setSpeed(value: Float) {
         val rounded = (value * 20).roundToInt() / 20f
@@ -404,7 +401,8 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                             speed <= 2.5f -> "Cepat"
                             else -> "Sangat cepat"
                         }, style = MaterialTheme.typography.titleLarge)
-                        Text("Durasi: ~${formatPlaybackTime(seconds)}",
+                        Text(if (seconds == null) "Menghitung durasi…"
+                            else "≈${formatPlaybackTime(seconds)} tersisa",
                             color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     }
                     Row(Modifier.fillMaxWidth(),

@@ -502,8 +502,8 @@ fun ModernTrash(model: TuturiumModel, onBack: () -> Unit) {
                         FileArtwork(book.format, Modifier.size(width = 56.dp, height = 63.dp))
                         Column(Modifier.weight(1f).padding(start = 10.dp)) {
                             Text(book.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val percent = (book.position * 100L / book.count.coerceAtLeast(1)).coerceIn(0, 100)
-                            Text("$percent% · ${book.format}", color = colors.onSurfaceVariant,
+                            val position = readingPosition(model, book, book.position, book.wordOffset)
+                            Text(position?.let { "${it.percent}% · ${book.format}" } ?: book.format, color = colors.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelMedium)
                         }
                     }

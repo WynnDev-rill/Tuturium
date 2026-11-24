@@ -18,13 +18,12 @@ import androidx.compose.ui.semantics.semantics
 import java.util.Locale
 
 @Composable
-fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocument,
+internal fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocument,
     playback: Playback, current: Int, playing: Boolean, loading: Boolean,
-    speedPanel: () -> Unit, voicePanel: () -> Unit, seek: (Int) -> Unit) {
-    val progress = (current + 1f) / document.passes.size.coerceAtLeast(1)
-    val actual = if (playback.bookId == book.id && (playing || loading)) playback.effectiveSpeed else model.settings.speed
-    val wholeSeconds = (book.words * 60f / (150f * actual.coerceAtLeast(0.5f))).toInt().coerceAtLeast(1)
-    val elapsedSeconds = (wholeSeconds * progress).toInt()
+    position: ReadingPosition?, speedPanel: () -> Unit, voicePanel: () -> Unit, seek: (Int) -> Unit) {
+    val progress = position?.fraction ?: 0f
+    val actual = playback.readingSpeed(book, model.settings.speed)
+    val remaining = position?.remainingSeconds(narrationMillisPerWord(model, actual), actual)
     Surface(color = MaterialTheme.colorScheme.background,
         shape = RoundedCornerShape(topStart = 23.dp, topEnd = 23.dp)) {
         Column(Modifier.fillMaxWidth()
@@ -34,7 +33,12 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
                 modifier = Modifier.fillMaxWidth().height(3.dp),
                 color = SpeechifyAccent, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
             Spacer(Modifier.height(9.dp))
-            Text("≈ ${formatPlaybackTime(elapsedSeconds)} / ${formatPlaybackTime(wholeSeconds)}",
+            val caption = when {
+                position == null || remaining == null -> "Menghitung durasi…"
+                position.percent == 100 -> "100% · Selesai"
+                else -> "${position.percent}% · ≈${formatPlaybackTime(remaining)} tersisa"
+            }
+            Text(caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,

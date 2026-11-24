@@ -14,6 +14,10 @@ Unduh `Tuturium.apk` dari [GitHub Releases](https://github.com/WynnDev-rill/Tutu
 
 Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine, DOCX mengambil isi utama, dan PDF menyediakan pilihan **PDF** (halaman asli jika berkasnya tersimpan) dengan gulir vertikal atau **Teks** (paragraf rapi dengan sorotan dan pemilihan kata yang langsung dibacakan). Tampilan Teks mengikuti tema gelap/terang aplikasi, dan tombol kata aktif memudahkan kembali ke posisi narasi setelah menggulir jauh. Untuk halaman PDF tanpa teks, model OCR lokal mengenali tulisan Latin. Kuota perangkat dan keterbacaan gambar memengaruhi OCR. Ukuran maksimum dokumen impor 100 MB. PDF tidak memiliki batas jumlah halaman atau karakter tetap; kemampuan memuat tetap bergantung pada RAM dan ruang penyimpanan. EPUB dan format teks lain mempertahankan pembatas keamanan. Mesin TTS yang menyediakan rentang ucapan memungkinkan sorotan kata. Mesin lain menggunakan sorotan kalimat.
 
+## Progres dan sisa durasi
+
+Persentase mengikuti jumlah kata sumber sampai posisi baca yang tersimpan. Sisa durasi bertanda **≈** memperhitungkan filter lewati konten, jeda tambahan, dan kecepatan saat ini. Perkiraan awal memakai 150 kata per menit pada 1×. Setelah cukup audio selesai diputar, Tuturium menyesuaikan perkiraan dengan panjang audio Google TTS atau Supertonic yang terukur. Kalibrasi disimpan di perangkat tanpa menyimpan teks atau audio baru untuk tujuan ini. Perpustakaan membulatkan waktu ke atas dalam menit. Pembaca dan panel kecepatan menampilkan jam, menit, dan detik sesuai durasi. Angka dapat berubah selama kalibrasi berlangsung atau ketika kecepatan otomatis naik.
+
 ## Supertonic 3
 
 Tuturium menyintesis teks pada 1×, lalu Media3 mengubah kecepatan pemutaran. Cadangan audio mengikuti laju baca, kecepatan sintesis, dan suhu perangkat. Audio yang sudah dibaca dapat dipakai ulang dari cache lokal, yang bisa dibersihkan dari menu Penyimpanan. Audio baru memakai penguatan otomatis dengan pembatas puncak. Lihat [hasil benchmark dan prosedur pengujian POCO F6](docs/supertonic-benchmark.md).

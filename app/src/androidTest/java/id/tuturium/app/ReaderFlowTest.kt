@@ -57,6 +57,35 @@ class ReaderFlowTest {
         compose.onNodeWithText("Lanjutkan").assertIsDisplayed()
     }
 
+    @Test fun libraryAndReaderAgreeOnSavedWordsAndRemainingDuration() {
+        val library = Library.get(compose.activity)
+        val book = library.add("Uji durasi dengan progres", "TXT", ReadingDocument(listOf(
+            Section("Bab", "Halo!\nSatu dua tiga empat.")
+        )))
+        library.position(book.id, 1, 5)
+        try {
+            compose.onNodeWithText("Perpustakaan").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("40% · ≈1 menit · TXT").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(book.title).performClick()
+            val remainingInReader = hasText("40% · ≈", substring = true) and
+                hasText(" tersisa", substring = true)
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(remainingInReader).fetchSemanticsNodes().isNotEmpty()
+            }
+            val readerLabel = compose.onNode(remainingInReader).fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.Text].single().text
+            val remaining = readerLabel.removePrefix("40% · ")
+            assertTrue(remaining.endsWith(" tersisa"))
+            compose.onNodeWithContentDescription("Atur kecepatan").performClick()
+            compose.onNodeWithText(remaining).assertIsDisplayed()
+        } finally {
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     @Test fun createExampleNavigateBookmarkAndReturnToHome() {
         compose.onNodeWithText("Lanjutkan").assertIsDisplayed()
         compose.onNodeWithText("Tempel").performClick()

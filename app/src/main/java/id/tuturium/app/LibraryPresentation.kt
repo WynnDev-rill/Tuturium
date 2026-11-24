@@ -1,19 +1,17 @@
 package id.tuturium.app
 
 import android.content.Context
-import kotlin.math.ceil
-
-/** UI estimates, not a stopwatch. Actual duration depends on the installed TTS voice. */
-internal fun estimateRemainingMinutes(wordCount: Int, passCount: Int, position: Int, speed: Float): Int {
-    if (wordCount <= 0 || passCount <= 0) return 0
-    val ratio = (passCount - position.coerceIn(0, passCount)).toDouble() / passCount
-    val wpm = 150.0 * speed.coerceIn(PLAYBACK_SPEED_RANGE)
-    return ceil(wordCount * ratio / wpm).toInt()
-}
 
 private val documentWordPattern = Regex("""[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*""")
 
 internal fun countDocumentWords(text: String): Int = documentWordPattern.findAll(text).count()
+
+internal fun documentWordEnds(text: String): IntArray {
+    val ends = IntArray(text.length)
+    var size = 0
+    for (word in documentWordPattern.findAll(text)) ends[size++] = word.range.last + 1
+    return ends.copyOf(size)
+}
 
 internal fun sortBooks(books: List<Book>, sort: String): List<Book> =
     when(sort) {
