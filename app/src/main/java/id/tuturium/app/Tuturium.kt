@@ -245,14 +245,6 @@ fun Tuturium(model: TuturiumModel) {
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             modifier = Modifier.clickable { start(action) })
                     }
-                    HorizontalDivider()
-                    Text("Diimpor dari", Modifier.padding(top = 14.dp, bottom = 4.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
-                    ListItem(headlineContent = { Text("Penyimpanan perangkat / cloud") },
-                        supportingContent = { Text("Google Drive jika tersedia di pemilih file Android") },
-                        leadingContent = { Icon(Icons.Rounded.Cloud, null) },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        modifier = Modifier.clickable { start(openFile) })
                     Spacer(Modifier.height(12.dp))
                 }
             }

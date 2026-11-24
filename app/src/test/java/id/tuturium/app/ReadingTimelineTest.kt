@@ -42,6 +42,20 @@ class ReadingTimelineTest {
         assertEquals(400.0, faster.combinedWith(PaceSample(10, 6_000.0)).millisPerWord, 0.001)
     }
 
+    @Test fun elapsedAndTotalUseSpokenWordsAndExtraPausesAtSameRate() {
+        val document = ReadingDocument(listOf(Section("Bab", "Satu (abaikan kata ini).\nDua tiga.")))
+        val timeline = ReadingTimeline(document, ListeningOptions(skipEnabled = true, paragraphPauseMs = 900))
+        assertEquals("≈ 00:00 / 00:03", playbackTimeCaption(timeline.position(0, 0), 500.0, 1f))
+        assertEquals("≈ 00:02 / 00:03", playbackTimeCaption(timeline.position(1, 0), 500.0, 1f))
+        assertEquals("≈ 00:03 / 00:03", playbackTimeCaption(timeline.position(document.passes.size, 0), 500.0, 1f))
+        assertEquals("≈ 00:00 / 00:02", playbackTimeCaption(timeline.position(0, 0), 500.0, 2f))
+    }
+
+    @Test fun playbackTimePreservesLongHourFormat() {
+        assertEquals("≈ 03:58 / 16:39:35", playbackTimeCaption(
+            ReadingPosition(0.004f, 59737, 0, 59975, 0), 1000.0, 1f))
+    }
+
     @Test fun googlePcmTimingCountsChannelsAndRejectsStaleUtterances() {
         val audio = UtteranceAudioLength()
         audio.reset("current")

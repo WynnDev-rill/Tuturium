@@ -23,7 +23,7 @@ internal fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: Readi
     position: ReadingPosition?, speedPanel: () -> Unit, voicePanel: () -> Unit, seek: (Int) -> Unit) {
     val progress = position?.fraction ?: 0f
     val actual = playback.readingSpeed(book, model.settings.speed)
-    val remaining = position?.remainingSeconds(narrationMillisPerWord(model, actual), actual)
+    val millisPerWord = narrationMillisPerWord(model, actual)
     Surface(color = MaterialTheme.colorScheme.background,
         shape = RoundedCornerShape(topStart = 23.dp, topEnd = 23.dp)) {
         Column(Modifier.fillMaxWidth()
@@ -33,11 +33,7 @@ internal fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: Readi
                 modifier = Modifier.fillMaxWidth().height(3.dp),
                 color = SpeechifyAccent, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
             Spacer(Modifier.height(9.dp))
-            val caption = when {
-                position == null || remaining == null -> "Menghitung durasi…"
-                position.percent == 100 -> "100% · Selesai"
-                else -> "${position.percent}% · ≈${formatPlaybackTime(remaining)} tersisa"
-            }
+            val caption = playbackTimeCaption(position, millisPerWord, actual)
             Text(caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(14.dp))
@@ -92,4 +88,12 @@ internal fun formatPlaybackTime(seconds: Int): String {
     return if (time >= 3600)
         "%02d:%02d:%02d".format(Locale.US, time / 3600, time / 60 % 60, time % 60)
     else "%02d:%02d".format(Locale.US, time / 60, time % 60)
+}
+
+/** Display elapsed-equivalent and total at the selected voice's calibrated playback rate. */
+internal fun playbackTimeCaption(position: ReadingPosition?, millisPerWord: Double, speed: Float): String {
+    if (position == null) return "Menghitung durasi…"
+    val total = position.totalSeconds(millisPerWord, speed).coerceAtLeast(0)
+    val elapsed = (total - position.remainingSeconds(millisPerWord, speed)).coerceIn(0, total)
+    return "≈ ${formatPlaybackTime(elapsed)} / ${formatPlaybackTime(total)}"
 }

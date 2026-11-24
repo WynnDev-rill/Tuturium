@@ -1,3 +1,8 @@
+## Tuturium 1.3.21
+
+- Pemutar kembali menampilkan estimasi waktu berjalan / total (≈ 03:58 / 16:39:35), dengan kalibrasi durasi dan filter teks tetap aktif.
+- Hapus bagian impor penyimpanan perangkat / cloud yang redundan; tombol File tetap membuka pemilih dokumen Android.
+
 ## Tuturium 1.3.20
 
 - Progres di daftar, kotak, dan pembaca mengikuti jumlah kata sampai posisi baca yang tersimpan.
