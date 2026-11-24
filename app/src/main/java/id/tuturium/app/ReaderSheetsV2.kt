@@ -68,11 +68,10 @@ fun ReaderMenuSheet(model: TuturiumModel, book: Book, index: Int, marked: Boolea
             HorizontalDivider(color = Color.DarkGray)
             ReaderMenuAction(Icons.Rounded.AutoMode, "Lewati Konten Secara Otomatis",
                 "Header, footer, kutipan, dll.") { dismiss(); navigate("skip") }
-            ReaderMenuToggle(Icons.Rounded.PlayCircle, "Putar Audio Otomatis", p.autoplay) {
-                model.changeListeningOptions(p.copy(autoplay = it))
-            }
-            ReaderMenuToggle(Icons.Rounded.VisibilityOff, "Sembunyikan Putar Otomatis", p.hideAutoplay) {
-                model.changeListeningOptions(p.copy(hideAutoplay = it))
+            if (!p.hideAutoplay) {
+                ReaderMenuToggle(Icons.Rounded.PlayCircle, "Putar Audio Otomatis", p.autoplay) {
+                    model.changeListeningOptions(p.copy(autoplay = it))
+                }
             }
             ReaderMenuToggle(Icons.Rounded.AutoAwesomeMotion, "Gulir otomatis", p.autoScroll) {
                 model.changeListeningOptions(p.copy(autoScroll = it))

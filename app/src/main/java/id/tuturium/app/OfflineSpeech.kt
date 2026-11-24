@@ -169,42 +169,88 @@ internal object OfflineSynth {
         } finally { inputs.values.forEach { it.close() } }
     }
 
-    // Short chunks avoid model token limits without changing the document's stored sentence indices.
-    suspend fun write(context: Context, voice: OfflineVoice, text: String, speed: Float, target: File) =
+    private val lifetime = CoroutineScope(SupervisorJob() + dispatcher)
+    private var releaseJob: Job? = null
+
+    suspend fun write(context: Context, voice: OfflineVoice, text: String, speed: Float, target: File): List<AudioCue> =
         withContext(dispatcher) {
-            val chunks = buildList {
-                var part = ""
-                text.split(Regex("\\s+")).filter { it.isNotBlank() }.forEach { word ->
-                    if (part.length + word.length > 180 && part.isNotEmpty()) { add(part); part = "" }
-                    part = if (part.isEmpty()) word else "$part $word"
+            releaseJob?.cancel()
+            try {
+                var rate = 0
+                var bytes = 0L
+                val cues = mutableListOf<AudioCue>()
+                val buffer = ByteBuffer.allocate(16384).order(ByteOrder.LITTLE_ENDIAN)
+                java.io.RandomAccessFile(target, "rw").use { wav ->
+                    wav.setLength(0)
+                    wav.write(ByteArray(44))
+                    for (range in synthesisRanges(text)) {
+                        ensureActive()
+                        val pcm = generate(context, voice, text.substring(range.first, range.last + 1), speed.coerceIn(0.5f, 4f))
+                        ensureActive()
+                        check(pcm.samples.isNotEmpty() && pcm.rate > 0)
+                        if (rate == 0) rate = pcm.rate
+                        check(rate == pcm.rate)
+                        cues += AudioCue(bytes * 500L / rate, range)
+                        buffer.clear()
+                        for (sample in pcm.samples) {
+                            if (!buffer.hasRemaining()) {
+                                wav.write(buffer.array(), 0, buffer.position())
+                                buffer.clear()
+                                ensureActive()
+                            }
+                            buffer.putShort((sample.coerceIn(-1f, 1f) * 32767f).toInt().toShort())
+                        }
+                        if (buffer.position() > 0) wav.write(buffer.array(), 0, buffer.position())
+                        bytes += pcm.samples.size * 2L
+                        check(bytes < Int.MAX_VALUE - 44L)
+                    }
+                    check(bytes > 0)
+                    val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+                    header.put("RIFF".toByteArray()).putInt(36 + bytes.toInt()).put("WAVEfmt ".toByteArray())
+                        .putInt(16).putShort(1.toShort()).putShort(1.toShort()).putInt(rate).putInt(rate * 2)
+                        .putShort(2.toShort()).putShort(16.toShort()).put("data".toByteArray()).putInt(bytes.toInt())
+                    wav.seek(0)
+                    wav.write(header.array())
                 }
-                if (part.isNotEmpty()) add(part)
-            }
-            var rate = 0
-            var bytes = 0L
-            java.io.RandomAccessFile(target, "rw").use { wav ->
-                wav.setLength(0)
-                wav.write(ByteArray(44))
-                chunks.forEach { chunk ->
-                    ensureActive()
-                    val pcm = generate(context, voice, chunk, speed.coerceIn(0.5f, 4f))
-                    check(pcm.samples.isNotEmpty() && pcm.rate > 0)
-                    if (rate == 0) rate = pcm.rate
-                    check(rate == pcm.rate)
-                    val data = ByteBuffer.allocate(pcm.samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-                    pcm.samples.forEach { data.putShort((it.coerceIn(-1f, 1f) * 32767f).toInt().toShort()) }
-                    wav.write(data.array())
-                    bytes += data.capacity()
-                    check(bytes < Int.MAX_VALUE - 44L)
+                cues
+            } finally {
+                releaseJob = lifetime.launch {
+                    delay(45_000)
+                    runCatching { sherpa?.release() }
+                    runCatching { ort?.close() }
+                    sherpa = null
+                    ort = null
+                    vocabulary = null
+                    styles = null
+                    key = null
                 }
-                check(bytes > 0)
-                val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
-                header.put("RIFF".toByteArray()).putInt(36 + bytes.toInt()).put("WAVEfmt ".toByteArray())
-                    .putInt(16).putShort(1.toShort()).putShort(1.toShort()).putInt(rate).putInt(rate * 2)
-                    .putShort(2.toShort()).putShort(16.toShort()).put("data".toByteArray()).putInt(bytes.toInt())
-                wav.seek(0); wav.write(header.array())
             }
         }
+}
+
+internal data class AudioCue(val startMs: Long, val range: IntRange)
+
+internal fun synthesisRanges(text: String, limit: Int = 180): List<IntRange> {
+    require(limit >= 2)
+    return buildList {
+        var start = 0
+        while (start < text.length) {
+            if (text[start].isWhitespace()) {
+                start++
+                continue
+            }
+            var end = minOf(start + limit, text.length)
+            if (end < text.length) {
+                val space = text.lastIndexOf(' ', end)
+                if (space > start) end = space
+                if (text[end].isLowSurrogate() && text[end - 1].isHighSurrogate()) end--
+            }
+            var trimmed = end
+            while (trimmed > start && text[trimmed - 1].isWhitespace()) trimmed--
+            add(start until trimmed)
+            start = end
+        }
+    }
 }
 
 /** Main-thread MediaPlayer lifecycle; model inference and file generation are off-main. */
@@ -212,14 +258,18 @@ internal class OfflineAudio(private val context: Context) {
     private var generation = 0
     private var job: Job? = null
     private var player: MediaPlayer? = null
+    private var cueJob: Job? = null
     private var audio: File? = null
     fun stop() {
         generation++
         job?.cancel(); job = null
+        cueJob?.cancel()
+        cueJob = null
         player?.release(); player = null
         audio?.delete(); audio = null
     }
     fun play(scope: CoroutineScope, voice: OfflineVoice, text: String, speed: Float,
+        pitch: Float = 1f, onRange: (Int, Int) -> Unit = { _, _ -> },
         onStart: () -> Unit, onDone: () -> Unit, onError: (Throwable) -> Unit) {
         stop()
         val token = generation
@@ -227,7 +277,7 @@ internal class OfflineAudio(private val context: Context) {
             var file: File? = null
             try {
                 file = File.createTempFile("offline-voice-", ".wav", context.cacheDir)
-                OfflineSynth.write(context, voice, text, speed, file)
+                val cues = OfflineSynth.write(context, voice, text, speed, file)
                 ensureActive()
                 if (generation != token) return@launch
                 audio = file
@@ -237,7 +287,20 @@ internal class OfflineAudio(private val context: Context) {
                     .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 engine.setDataSource(file.absolutePath)
                 engine.setOnPreparedListener {
-                    if (generation == token) runCatching { it.start(); onStart() }.onFailure { e -> stop(); onError(e) }
+                    if (generation == token) runCatching {
+                        it.start()
+                        if (pitch != 1f) it.playbackParams = it.playbackParams.setPitch(pitch.coerceIn(0.5f, 2f))
+                        onStart()
+                        if (cues.isNotEmpty()) cueJob = scope.launch {
+                            for ((startMs, range) in cues) {
+                                while (generation == token && it.currentPosition < startMs) {
+                                    delay((startMs - it.currentPosition).coerceIn(16L, 250L))
+                                }
+                                if (generation != token) break
+                                onRange(range.first, range.last + 1)
+                            }
+                        }
+                    }.onFailure { e -> stop(); onError(e) }
                 }
                 engine.setOnCompletionListener {
                     if (generation == token) { stop(); onDone() }

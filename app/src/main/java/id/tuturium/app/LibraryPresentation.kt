@@ -11,8 +11,9 @@ internal fun estimateRemainingMinutes(wordCount: Int, passCount: Int, position: 
     return ceil(wordCount * ratio / wpm).toInt()
 }
 
-internal fun countDocumentWords(text: String): Int =
-    Regex("""[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*""").findAll(text).count()
+private val documentWordPattern = Regex("""[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*""")
+
+internal fun countDocumentWords(text: String): Int = documentWordPattern.findAll(text).count()
 
 internal fun sortBooks(books: List<Book>, sort: String): List<Book> =
     when(sort) {

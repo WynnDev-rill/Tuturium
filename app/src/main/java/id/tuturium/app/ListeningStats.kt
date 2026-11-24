@@ -3,9 +3,7 @@ package id.tuturium.app
 import android.content.Context
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
-import java.util.Locale
 
 data class ListeningDay(
     val date: LocalDate, val durationMs: Long = 0L, val words: Long = 0L,
@@ -17,12 +15,13 @@ data class StatsSummary(
     val averageSpeed: Float, val buckets: List<StatsBucket>, val labels: List<String>
 )
 
-/** Local-only listening metrics. Time is committed when playback pauses or stops. */
+/** Listening metrics stored locally and included in an optional Drive archive. */
 object ListeningStats {
     private const val FILE = "listening_stats"
     private fun today() = LocalDate.now().toString()
     private fun prefs(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+    @Synchronized
     fun recordDuration(context: Context, durationMs: Long, speed: Float) {
         if (durationMs <= 0L) return
         val p = prefs(context)
@@ -35,8 +34,8 @@ object ListeningStats {
         TuturiumCloud.markDirty(context)
     }
 
-    fun recordUtterance(context: Context, text: String, speed: Float) {
-        val count = text.split(Regex("\\s+")).count { it.any(Char::isLetterOrDigit) }
+    @Synchronized
+    fun recordUtterance(context: Context, count: Int, speed: Float) {
         if (count == 0) return
         val p = prefs(context)
         val day = today()

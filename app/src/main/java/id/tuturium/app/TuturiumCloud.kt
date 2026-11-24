@@ -46,7 +46,8 @@ internal object TuturiumCloud {
     @Volatile private var token: String? = null
     @Volatile private var authorizedAt = 0L
     private var pending: Job? = null
-    private var lastRemoteChecksum: String? = null
+    private var firstDirtyAt = 0L
+    private var lastDirtyAt = 0L
 
     fun message(text: String) { mutable.update { it.copy(message = text, busy = false) } }
     fun waiting(text: String) { mutable.update { it.copy(message = text, busy = true) } }
@@ -56,7 +57,8 @@ internal object TuturiumCloud {
         val saved = prefs(context)
         val account = saved.getString("session_email", null) ?: return
         mutable.value = TuturiumCloudState(account, saved.getString("display_name", null),
-            saved.getString("photo_url", null), message = "Hubungkan Google Drive untuk melanjutkan sinkronisasi.")
+            saved.getString("photo_url", null), message = "Hubungkan Google Drive untuk melanjutkan sinkronisasi.",
+            lastSynced = saved.getLong("last_synced", 0L))
     }
 
     fun signIn(context: Context, email: String, displayName: String?, photoUrl: String?) {
@@ -64,8 +66,9 @@ internal object TuturiumCloud {
         if (!isCompatibleCloudAccount(prefs(context).getString("account_email", null), account)) {
             throw CloudAccessException("Pustaka ini terhubung ke akun Google lain. Pilih akun yang sebelumnya digunakan.")
         }
-        val name = displayName?.trim()?.take(120)
-        val photo = photoUrl?.takeIf { it.startsWith("https://") }?.take(2048)
+        val previous = state.value.takeIf { isMatchingDriveAccount(account, it.email) }
+        val name = displayName?.trim()?.take(120)?.takeIf { it.isNotEmpty() } ?: previous?.displayName
+        val photo = photoUrl?.takeIf { it.startsWith("https://") }?.take(2048) ?: previous?.photoUrl
         prefs(context).edit().putString("session_email", account)
             .putString("display_name", name).putString("photo_url", photo).apply()
         mutable.value = TuturiumCloudState(account, name, photo,
@@ -74,7 +77,7 @@ internal object TuturiumCloud {
 
     suspend fun connect(context: Context, account: String, accessToken: String) =
         withContext(Dispatchers.IO) {
-            pending?.cancel()
+            cancelPending()
             mutex.withLock {
                 waiting("Memverifikasi akun Google Drive…")
                 val api = DriveAppDataClient(accessToken)
@@ -99,9 +102,20 @@ internal object TuturiumCloud {
     @Synchronized
     fun markDirty(context: Context) {
         if (token == null || !state.value.connected) return
-        pending?.cancel()
+        lastDirtyAt = android.os.SystemClock.elapsedRealtime()
+        if (pending?.isActive == true) return
+        firstDirtyAt = lastDirtyAt
         pending = scope.launch {
-            delay(12_000)
+            var waitMs: Long
+            do {
+                waitMs = synchronized(this@TuturiumCloud) {
+                    val due = minOf(firstDirtyAt + 120_000L, lastDirtyAt + 12_000L)
+                    (due - android.os.SystemClock.elapsedRealtime()).also {
+                        if (it <= 0L) pending = null
+                    }
+                }
+                if (waitMs > 0) delay(waitMs)
+            } while (waitMs > 0)
             mutex.withLock {
                 val currentToken = token ?: return@withLock
                 if (android.os.SystemClock.elapsedRealtime() - authorizedAt >= 45 * 60_000L) {
@@ -126,7 +140,8 @@ internal object TuturiumCloud {
 
     private fun sync(context: Context, api: DriveAppDataClient) {
         val remote = api.findArchive()
-        if (remote != null && (lastRemoteChecksum == null || lastRemoteChecksum != remote.md5)) {
+        val saved = prefs(context)
+        if (remote != null && (remote.md5 == null || saved.getString("last_remote_md5", null) != remote.md5)) {
             val file = File.createTempFile("tuturium-cloud-restore-", ".zip", context.cacheDir)
             try {
                 waiting("Menyatukan pustaka dari Google Drive…")
@@ -145,9 +160,10 @@ internal object TuturiumCloud {
                 val uploaded = api.upload(snapshot, remote)
                 if (uploaded.md5 != digest) throw CloudAccessException("Google Drive belum memverifikasi arsip.")
             }
-            lastRemoteChecksum = digest
+            val syncedAt = System.currentTimeMillis()
+            saved.edit().putString("last_remote_md5", digest).putLong("last_synced", syncedAt).apply()
             mutable.update { it.copy(busy = false, message = "Tersinkronisasi ke Google Drive",
-                lastSynced = System.currentTimeMillis()) }
+                lastSynced = syncedAt) }
         } finally {
             snapshot.delete()
         }
@@ -159,12 +175,17 @@ internal object TuturiumCloud {
         mutable.update { it.copy(connected = false, busy = false, message = text) }
     }
 
-    suspend fun disconnect(context: Context) {
+    @Synchronized
+    private fun cancelPending() {
         pending?.cancel()
+        pending = null
+    }
+
+    suspend fun disconnect(context: Context) {
+        cancelPending()
         mutex.withLock {
             token = null
             authorizedAt = 0L
-            lastRemoteChecksum = null
             prefs(context).edit().remove("session_email").remove("display_name").remove("photo_url").apply()
             mutable.value = TuturiumCloudState()
         }

@@ -63,4 +63,23 @@ class SpeechControlTest {
         assertEquals(4, result.offsets[4])
     }
 
+    @Test fun skipFiltersSeeTheEntireParagraphBeforeSentenceSegmentation() {
+        val raw = "Pertama (catatan satu. Catatan kedua.) dibaca. Lanjut https://contoh.com/cerita."
+        val book = ReadingDocument(listOf(Section("Bab", raw)))
+        val paragraph = prepareSpeech(raw, ListeningOptions(skipEnabled = true))
+        val slices = book.passes.map(paragraph::forPass)
+        assertTrue(slices.joinToString(" ") { it.text }.contains("dibaca"))
+        assertFalse(slices.joinToString(" ") { it.text }.contains("Catatan"))
+        assertFalse(slices.joinToString(" ") { it.text }.contains("contoh.com"))
+        slices.zip(book.passes).forEach { (prepared, pass) ->
+            prepared.text.forEachIndexed { i, c -> assertEquals(c, pass.text[prepared.offsets[i]]) }
+        }
+    }
+
+    @Test fun skipFootnotesPreservesNumberedListsAndSkipsExplicitNotes() {
+        val options = ListeningOptions(skipEnabled = true)
+        assertEquals("1. Beli buku.", prepareSpeech("1. Beli buku.", options).text)
+        assertEquals("", prepareSpeech("[1] Sumber kutipan.", options).text)
+    }
+
 }

@@ -238,7 +238,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     var listeningOptions by mutableStateOf(ListeningOptions.read(app))
         private set
     private val offlinePreview by lazy { OfflineAudio(app) }
-    var installedModels by mutableStateOf(OfflineCatalog.models.filter { OfflineModelStore.installed(app, it) }.map { it.id }.toSet())
+    var installedModels by mutableStateOf<Set<String>>(emptySet())
         private set
     var downloadingModel by mutableStateOf<String?>(null)
         private set
@@ -251,6 +251,15 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     private var modelDownloadJob: Job? = null
     var failedOfflinePreview by mutableStateOf<String?>(null)
         private set
+
+    init {
+        viewModelScope.launch {
+            val onDisk = withContext(Dispatchers.IO) {
+                OfflineCatalog.models.filter { OfflineModelStore.installed(app, it) }.map { it.id }.toSet()
+            }
+            installedModels = installedModels + onDisk
+        }
+    }
 
     fun downloadVoiceModel(id: String) {
         if (downloadingModel != null) return
@@ -309,7 +318,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var fontSize by mutableStateOf(prefs.getFloat("font_size", 22f))
         private set
-    var follow by mutableStateOf(prefs.getBoolean("follow", true))
+    var follow by mutableStateOf(prefs.getBoolean("follow", listeningOptions.autoScroll))
         private set
 
     var release by mutableStateOf<Release?>(null)
@@ -331,16 +340,26 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         favoriteVoices = prefs.getStringSet("favorite_voices", emptySet()).orEmpty().toSet()
         theme = prefs.getString("theme", "dark") ?: "dark"
         fontSize = prefs.getFloat("font_size", 22f)
-        follow = prefs.getBoolean("follow", true)
+        follow = prefs.getBoolean("follow", listeningOptions.autoScroll)
     }
 
-    fun refresh() = viewModelScope.launch {
-        val (active, deleted) = withContext(Dispatchers.IO) {
-            library.fillMissingWordCounts()
-            library.books() to library.trashed()
+    private var refreshJob: Job? = null
+    private var wordCountsChecked = false
+
+    fun refresh() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            safe("Pustaka tidak dapat diperbarui") {
+                val backfill = !wordCountsChecked
+                val (active, deleted) = withContext(Dispatchers.IO) {
+                    if (backfill) library.fillMissingWordCounts()
+                    library.books() to library.trashed()
+                }
+                wordCountsChecked = true
+                books = active
+                deletedBooks = deleted
+            }
         }
-        books = active
-        deletedBooks = deleted
     }
 
     fun open(id: String) {
@@ -731,10 +750,16 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun changeListeningOptions(value: ListeningOptions) {
+        val previous = listeningOptions
         listeningOptions = value
         value.save(app)
+        follow = value.autoScroll
+        prefs.edit().putBoolean("follow", follow).apply()
+        if (ReadingService.state.value.bookId != null &&
+            previous.copy(autoplay = value.autoplay, hideAutoplay = value.hideAutoplay,
+                autoScroll = value.autoScroll) != value
+        ) ReadingService.command(app, ReadingService.SETTINGS)
         TuturiumCloud.markDirty(app)
-        if (follow != value.autoScroll) changeFollow(value.autoScroll)
     }
 
     fun changeTheme(value: String) {
@@ -750,9 +775,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun changeFollow(value: Boolean) {
-        follow = value
-        prefs.edit().putBoolean("follow", value).apply()
-        TuturiumCloud.markDirty(app)
+        changeListeningOptions(listeningOptions.copy(autoScroll = value))
     }
 
     fun checkUpdate(automatic: Boolean = false) {

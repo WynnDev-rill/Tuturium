@@ -1,0 +1,11 @@
+.agents/
+.gradle/
+gradle/
+graphify-out/
+**/build/
+**/local.properties
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.apk
+**/.env*

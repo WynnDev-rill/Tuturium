@@ -41,7 +41,7 @@ import java.util.Locale
 @Composable
 fun Tuturium(model: TuturiumModel) {
     val context = LocalContext.current
-    val playback by ReadingService.state.collectAsStateWithLifecycle()
+    val playback by ReadingService.chromeState.collectAsStateWithLifecycle(Playback())
     var tab by rememberSaveable { mutableStateOf("home") }
     var showAddSheet by remember { mutableStateOf(false) }
     var showLinkDialog by remember { mutableStateOf(false) }
@@ -115,16 +115,8 @@ fun Tuturium(model: TuturiumModel) {
     }
 
     val dark = model.theme == "dark" || (model.theme == "system" && isSystemInDarkTheme())
-    SideEffect {
+    LaunchedEffect(context, dark) {
         (context as? Activity)?.window?.let { window ->
-            // Do not force 30 or 60 FPS: let Android select the device's active refresh rate.
-            // Compose uses display vsync and supports variable refresh rates.
-            val attributes = window.attributes
-            if (attributes.preferredRefreshRate != 0f || attributes.preferredDisplayModeId != 0) {
-                attributes.preferredRefreshRate = 0f
-                attributes.preferredDisplayModeId = 0
-                window.attributes = attributes
-            }
             // Avoid Android's grey contrast scrim blending into the black bottom bar.
             if (android.os.Build.VERSION.SDK_INT >= 29) {
                 window.isNavigationBarContrastEnforced = false
@@ -162,7 +154,7 @@ fun Tuturium(model: TuturiumModel) {
                     "reader" -> {
                         val book = model.reader
                         val document = model.content
-                        if (book != null && document != null) Reader(model, book, document, playback) { tab = "settings" }
+                        if (book != null && document != null) Reader(model, book, document) { tab = "settings" }
                     }
                     "home" -> ModernHome(model,
                         openProfile = { tab = "profile" },

@@ -18,15 +18,17 @@ internal class DriveArchive(private val context: Context) {
     )
     private val validName = Regex("""books/[0-9a-fA-F-]{36}\.(json|pdf)""")
 
-    fun export(destination: File) {
+    fun export(destination: File) = synchronized(library) {
         val active = library.books()
         val deleted = library.trashed()
+        val deletedIds = deleted.mapTo(HashSet()) { it.id }
+        val books = (active + deleted).distinctBy { it.id }.sortedBy { it.id }
         val index = JSONObject().put("schema", 1)
-            .put("written", System.currentTimeMillis())
+            .put("tombstones", JSONArray(library.tombstones()))
             .put("books", JSONArray())
             .put("preferences", JSONObject())
         val items = index.getJSONArray("books")
-        (active + deleted).distinctBy { it.id }.forEach { book ->
+        books.forEach { book ->
             items.put(JSONObject()
                 .put("id", book.id)
                 .put("title", book.title)
@@ -37,7 +39,7 @@ internal class DriveArchive(private val context: Context) {
                 .put("updated", book.updated)
                 .put("created", book.created)
                 .put("words", book.words)
-                .put("deleted", book.id in deleted.map { it.id }.toSet())
+                .put("deleted", book.id in deletedIds)
                 .put("marks", JSONArray().apply {
                     library.bookmarks(book.id).forEach { mark ->
                         put(JSONObject().put("position", mark.index).put("excerpt", mark.excerpt))
@@ -47,7 +49,7 @@ internal class DriveArchive(private val context: Context) {
         val prefObject = index.getJSONObject("preferences")
         preferences.forEach { file ->
             val values = JSONObject()
-            context.getSharedPreferences(file, Context.MODE_PRIVATE).all.forEach { (key, value) ->
+            context.getSharedPreferences(file, Context.MODE_PRIVATE).all.toSortedMap().forEach { (key, value) ->
                 val tag = when (value) {
                     is Boolean -> "boolean"
                     is Int -> "integer"
@@ -59,29 +61,27 @@ internal class DriveArchive(private val context: Context) {
                 }
                 if (tag != null) {
                     values.put(key, JSONObject().put("type", tag).put("value",
-                        if (value is Set<*>) JSONArray(value.toList()) else value))
+                        if (value is Set<*>) JSONArray(value.filterIsInstance<String>().sorted()) else value))
                 }
             }
             prefObject.put(file, values)
         }
         destination.parentFile?.mkdirs()
         ZipOutputStream(destination.outputStream().buffered()).use { out ->
-            fun addEntry(path: String, contents: ByteArray) {
-                out.putNextEntry(ZipEntry(path))
-                out.write(contents)
+            fun addEntry(path: String, write: () -> Unit) {
+                out.putNextEntry(ZipEntry(path).apply { time = 315_532_800_000L })
+                write()
                 out.closeEntry()
             }
-            addEntry("manifest.json", index.toString().toByteArray(Charsets.UTF_8))
-            (active + deleted).distinctBy { it.id }.forEach { book ->
-                val sections = JSONArray()
-                library.document(book.id).sections.forEach { section ->
-                    sections.put(JSONObject().put("title", section.title).put("text", section.text))
+            addEntry("manifest.json") { out.write(index.toString().toByteArray(Charsets.UTF_8)) }
+            books.forEach { book ->
+                addEntry("books/${book.id}.json") {
+                    library.openDocumentJson(book.id).use { it.copyTo(out, 65536) }
                 }
-                addEntry("books/${book.id}.json", sections.toString().toByteArray(Charsets.UTF_8))
                 library.originalPdf(book.id)?.let { pdf ->
-                    out.putNextEntry(ZipEntry("books/${book.id}.pdf"))
-                    pdf.inputStream().buffered().use { it.copyTo(out, 65536) }
-                    out.closeEntry()
+                    addEntry("books/${book.id}.pdf") {
+                        pdf.inputStream().buffered().use { it.copyTo(out, 65536) }
+                    }
                 }
             }
         }
@@ -126,6 +126,11 @@ internal class DriveArchive(private val context: Context) {
             val root = JSONObject(manifestFile.readText())
             require(root.getInt("schema") == 1) { "Versi arsip tidak didukung." }
             val records = root.getJSONArray("books")
+            val deletions = root.optJSONArray("tombstones") ?: JSONArray()
+            require(deletions.length() <= 100_000) { "Terlalu banyak riwayat penghapusan." }
+            val idsToErase = List(deletions.length()) { i ->
+                UUID.fromString(deletions.getString(i)).toString()
+            }
             var restored = 0
             for (i in 0 until records.length()) {
                 val value = records.getJSONObject(i)
@@ -152,6 +157,7 @@ internal class DriveArchive(private val context: Context) {
                         book, value.optBoolean("deleted"), content.readText(), bookmarks, pdf
                     )) restored++
             }
+            idsToErase.forEach(library::restoreTombstone)
             root.optJSONObject("preferences")?.let(::restorePreferences)
             return restored
         } finally {
@@ -164,11 +170,11 @@ internal class DriveArchive(private val context: Context) {
             val source = saved.optJSONObject(file) ?: return@forEach
             val prefs = context.getSharedPreferences(file, Context.MODE_PRIVATE)
             // A newer local preference must never be overwritten by a stale cloud archive.
-            if (prefs.all.isNotEmpty()) return@forEach
             val editor = prefs.edit()
             val keys = source.keys()
             while (keys.hasNext()) {
                 val key = keys.next()
+                if (prefs.contains(key)) continue
                 val item = source.optJSONObject(key) ?: continue
                 when (item.optString("type")) {
                     "boolean" -> editor.putBoolean(key, item.getBoolean("value"))

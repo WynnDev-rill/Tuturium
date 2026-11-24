@@ -15,7 +15,7 @@ internal data class ModelFile(val name: String, val url: String, val sha256: Str
 internal data class OfflineVoice(val id: String, val model: String, val label: String, val speaker: Int)
 internal data class OfflineModel(val id: String, val label: String, val files: List<ModelFile>,
     val labels: List<String>, val required: List<String>, val archive: Boolean = false) {
-    val voices get() = labels.mapIndexed { i, label -> OfflineVoice("offline:$id:$i", id, label, i) }
+    val voices = labels.mapIndexed { i, label -> OfflineVoice("offline:$id:$i", id, label, i) }
     val bytes get() = files.sumOf { it.size }
 }
 
@@ -23,7 +23,7 @@ internal object OfflineCatalog {
     private const val SHERPA = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/"
     private const val ARBO = "https://github.com/ARBO-TEAM/arboTTS/releases/download/"
     private const val ARBO_RAW = "https://raw.githubusercontent.com/ARBO-TEAM/arboTTS/f628060f0a3afdf86019c99eb057dcecb824d294/"
-    private const val KOKORO = "https://huggingface.co/onnx-community/Kokoro-82M-ONNX/resolve/main/"
+    private const val KOKORO = "https://huggingface.co/onnx-community/Kokoro-82M-ONNX/resolve/f46687f7e41512228ae953af24a11b2640ea0f22/"
     private fun file(name: String, base: String, sha: String, size: Long) = ModelFile(name, base + name, sha, size)
     private fun tar(id: String, label: String, name: String, sha: String, size: Long,
         labels: List<String>, required: List<String>) =
@@ -56,16 +56,17 @@ internal object OfflineCatalog {
         OfflineModel("arbo-kokoro", "ArboTTS · Kokoro",
             listOf(
                 ModelFile("model_quantized.onnx", KOKORO + "onnx/model_quantized.onnx",
-                    "0d55b15d4b735d61a21b0105136bc81b8768c4db94753193c19354fa863cd556", 0),
-                file("tokenizer.json", KOKORO, "", 0),
-                file("id_arbo.bin", ARBO_RAW + "arbotts/voices/", "", 524288),
-                file("id_arba.bin", ARBO_RAW + "arbotts/voices/", "", 524288)),
+                    "0d55b15d4b735d61a21b0105136bc81b8768c4db94753193c19354fa863cd556", 92360543),
+                file("tokenizer.json", KOKORO, "ee301fc39cf903ddbb463564630a28767785e3a11edd6d8226e92d4b4ef131bb", 4608),
+                file("id_arbo.bin", ARBO_RAW + "arbotts/voices/", "83549e23f9f89f0006d5403fd1e0ceb928661a06159c80819feb93693319d895", 524288),
+                file("id_arba.bin", ARBO_RAW + "arbotts/voices/", "70cb0982718e82dbca56bd44fe79bb23d9b936ae4c42c3c7691d8f417dadcd27", 524288)),
             listOf("Arbo Kokoro", "Arba Kokoro"),
             listOf("model_quantized.onnx", "tokenizer.json", "id_arbo.bin", "id_arba.bin"))
     )
-    fun voice(id: String?): OfflineVoice? = models.asSequence().flatMap { it.voices.asSequence() }
-        .firstOrNull { it.id == id }
-    fun model(id: String): OfflineModel = models.first { it.id == id }
+    private val voicesById = models.flatMap { it.voices }.associateBy { it.id }
+    private val modelsById = models.associateBy { it.id }
+    fun voice(id: String?): OfflineVoice? = voicesById[id]
+    fun model(id: String): OfflineModel = modelsById.getValue(id)
 }
 
 internal object OfflineModelStore {
@@ -89,6 +90,7 @@ internal object OfflineModelStore {
             try {
                 var done = 0L
                 val total = model.bytes
+                var lastPercent = -1
                 model.files.forEach { spec ->
                     ensureActive()
                     val target = File(temporary, spec.name)
@@ -113,15 +115,18 @@ internal object OfflineModelStore {
                                     digest.update(buffer, 0, n)
                                     output.write(buffer, 0, n)
                                     done += n
-                                    progress(if (total > 0 && model.files.all { it.size > 0 })
-                                        (done.toDouble() / total).toFloat().coerceIn(0f, 1f) else null)
+                                    val percent = (done * 100 / total).toInt().coerceIn(0, 100)
+                                    if (percent != lastPercent) {
+                                        lastPercent = percent
+                                        progress(percent / 100f)
+                                    }
                                 }
                                 if (spec.size > 0) check(count == spec.size) { "Unduhan model tidak lengkap." }
                                 check(count > 0)
                             }
                         }
                         val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
-                        if (spec.sha256.isNotEmpty()) check(hash == spec.sha256) { "Checksum model tidak cocok." }
+                        check(hash == spec.sha256) { "Checksum model tidak cocok." }
                     } finally { connection.disconnect() }
                 }
                 progress(null)
@@ -132,7 +137,7 @@ internal object OfflineModelStore {
                     TarArchiveInputStream(BZip2CompressorInputStream(archive.inputStream().buffered())).use { tar ->
                         while (true) {
                             ensureActive()
-                            val entry = tar.nextTarEntry ?: break
+                            val entry = tar.nextEntry ?: break
                             val relative = entry.name.removePrefix("./").substringAfter('/', "")
                             if (relative.isBlank()) continue
                             check(!entry.isSymbolicLink && !entry.isLink)

@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
 import kotlinx.coroutines.delay
 
@@ -39,7 +40,8 @@ private data class ReaderRow(val heading: String?, val text: String,
     val passes: List<IndexedValue<Pass>>, val paragraphEnd: Boolean = false)
 
 @Composable
-fun Reader(model: TuturiumModel, book: Book, document: ReadingDocument, playback: Playback, showSettings: () -> Unit) {
+fun Reader(model: TuturiumModel, book: Book, document: ReadingDocument, showSettings: () -> Unit) {
+    val playback by ReadingService.state.collectAsStateWithLifecycle()
     key(book.id) {
         ReaderContent(model, book, document, playback, showSettings)
     }
@@ -79,7 +81,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         buildList {
             document.sections.forEachIndexed { sectionIndex, section ->
                 if (document.sections.size > 1) add(ReaderRow(section.title, "", emptyList()))
-                val paragraphs = section.text.split(Regex("\\n+")).filter { it.isNotBlank() }
+                val paragraphs = document.paragraphs[sectionIndex]
                 val passes = indexed[sectionIndex].orEmpty().groupBy { it.value.paragraph }
                 paragraphs.forEachIndexed { paragraph, text ->
                     val phrases = passes[paragraph].orEmpty()
@@ -289,8 +291,10 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                                 val info = list.layoutInfo
                                 val item = info.visibleItemsInfo.firstOrNull { it.index == rowIndex } ?: return@LaunchedEffect
                                 val center = item.offset + (bounds.top + bounds.bottom) / 2f
+                                // Keep the current line comfortably in view without moving on each word.
+                                val comfortZone = (info.viewportEndOffset - info.viewportStartOffset) * 0.20f
                                 val delta = readerCenterDelta(center, info.viewportStartOffset,
-                                    info.viewportEndOffset, 44f, false)
+                                    info.viewportEndOffset, comfortZone, false)
                                 if (delta != 0f) list.scrollBy(delta)
                             }
                         }

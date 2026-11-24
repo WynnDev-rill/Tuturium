@@ -20,8 +20,8 @@ class DriveArchiveTest {
         val archive = File.createTempFile("tuturium-drive-", ".zip", context.cacheDir)
         try {
             DriveArchive(context).export(archive)
-            library.delete(book.id)
-            library.deletePermanently(book.id)
+            // A new device has no row or tombstone for this UUID.
+            library.writableDatabase.delete("books", "id = ?", arrayOf(book.id))
             assertNull(library.book(book.id))
             val imported = DriveArchive(context).restore(archive)
             assertTrue(imported >= 1)
@@ -33,6 +33,31 @@ class DriveArchiveTest {
             assertEquals(4, library.book(book.id)?.wordOffset)
         } finally {
             archive.delete()
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
+    @Test fun unchangedArchiveIsStableAndHardDeleteWinsOverStaleBackup() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val library = Library.get(context)
+        val archive = DriveArchive(context)
+        val first = File.createTempFile("tuturium-stale-", ".zip", context.cacheDir)
+        val second = File.createTempFile("tuturium-repeat-", ".zip", context.cacheDir)
+        val book = library.add("Permanently deleted", "TXT",
+            ReadingDocument(listOf(Section("Bab", "A book must never return after a hard delete."))))
+        try {
+            archive.export(first)
+            archive.export(second)
+            assertEquals(DriveAppDataClient.checksum(first), DriveAppDataClient.checksum(second))
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+            archive.restore(first)
+            assertNull(library.book(book.id))
+            assertTrue(book.id in library.tombstones())
+        } finally {
+            first.delete()
+            second.delete()
             library.delete(book.id)
             library.deletePermanently(book.id)
         }

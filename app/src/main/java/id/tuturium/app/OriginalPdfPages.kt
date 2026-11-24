@@ -3,6 +3,7 @@ package id.tuturium.app
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,19 +21,21 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Genuine PDF page rendering. Text extraction is retained separately for narration. */
 @Composable
 fun OriginalPdfPages(source: File) {
-    val count by produceState<Int?>(initialValue = null, key1 = source.path) {
+    val session = remember(source.path) { PdfPageSession(source) }
+    DisposableEffect(session) {
+        onDispose { CoroutineScope(Dispatchers.IO).launch { session.close() } }
+    }
+    val count by produceState<Int?>(initialValue = null, key1 = session) {
         value = withContext(Dispatchers.IO) {
-            runCatching {
-                ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                    PdfRenderer(fd).use { it.pageCount }
-                }
-            }.getOrElse { -1 }
+            runCatching { session.pageCount() }.getOrDefault(-1)
         }
     }
     when (val total = count) {
@@ -50,56 +53,80 @@ fun OriginalPdfPages(source: File) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             items(total, key = { it }) { index ->
-                PdfPageImage(source, index)
+                PdfPageImage(session, index)
             }
         }
     }
 }
 
 @Composable
-private fun PdfPageImage(source: File, index: Int) {
+private fun PdfPageImage(session: PdfPageSession, index: Int) {
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val pixelWidth = with(density) { (configuration.screenWidthDp.dp.toPx() * 1.6f)
         .toInt().coerceIn(720, 1600) }
     val result by produceState<Pair<Bitmap?, Boolean>>(null to false,
-        source.path, index, pixelWidth) {
+        session, index, pixelWidth) {
         value = withContext(Dispatchers.IO) {
-            runCatching {
-                ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-                    PdfRenderer(descriptor).use { renderer ->
-                        renderer.openPage(index).use { page ->
-                            val width = pixelWidth
-                            val height = (width.toFloat() / page.width * page.height)
-                                .toInt().coerceIn(1, 3500)
-                            val image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                            try {
-                                image.eraseColor(android.graphics.Color.WHITE)
-                                page.render(image, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                image
-                            } catch (error: Exception) {
-                                image.recycle()
-                                throw error
-                            }
-                        }
-                    }
-                }
-            }.getOrNull() to true
+            runCatching { session.render(index, pixelWidth) }.getOrNull() to true
         }
     }
     val bitmap = result.first
-    DisposableEffect(bitmap) {
-        val image = bitmap
-        onDispose { image?.takeUnless { it.isRecycled }?.recycle() }
-    }
     Surface(color = Color.White, modifier = Modifier.fillMaxWidth(), shadowElevation = 2.dp) {
         val shown = bitmap
-        if (shown != null && !shown.isRecycled) {
+        if (shown != null) {
             Image(shown.asImageBitmap(), "Halaman PDF ${index + 1}",
                 modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
         } else Box(Modifier.fillMaxWidth().height(450.dp), contentAlignment = Alignment.Center) {
             Text(if (result.second) "Halaman ${index + 1} gagal dirender."
                 else "Memuat halaman ${index + 1}", fontSize = 14.sp, color = Color.Gray)
+        }
+    }
+}
+
+private class PdfPageSession(private val source: File) {
+    private var renderer: PdfRenderer? = null
+    private var closed = false
+    private val pages = object : LruCache<Pair<Int, Int>, Bitmap>(24 * 1024 * 1024) {
+        override fun sizeOf(key: Pair<Int, Int>, value: Bitmap) = value.allocationByteCount
+    }
+
+    @Synchronized fun pageCount(): Int = open().pageCount
+
+    @Synchronized fun render(index: Int, width: Int): Bitmap {
+        val key = index to width
+        pages.get(key)?.let { return it }
+        return open().openPage(index).use { page ->
+            val height = (width.toFloat() / page.width * page.height).toInt().coerceIn(1, 3500)
+            val image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            try {
+                image.eraseColor(android.graphics.Color.WHITE)
+                page.render(image, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                pages.put(key, image)
+                image
+            } catch (error: Exception) {
+                image.recycle()
+                throw error
+            }
+        }
+    }
+
+    @Synchronized fun close() {
+        closed = true
+        pages.evictAll()
+        renderer?.close()
+        renderer = null
+    }
+
+    private fun open(): PdfRenderer {
+        check(!closed)
+        renderer?.let { return it }
+        val descriptor = ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
+        return try {
+            PdfRenderer(descriptor).also { renderer = it }
+        } catch (error: Exception) {
+            descriptor.close()
+            throw error
         }
     }
 }

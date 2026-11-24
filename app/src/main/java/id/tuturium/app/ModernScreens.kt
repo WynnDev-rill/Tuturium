@@ -52,9 +52,7 @@ fun ModernHome(model: TuturiumModel, openProfile: () -> Unit, openBook: (Book) -
                 verticalAlignment = Alignment.CenterVertically) {
                 Surface(onClick = openProfile, modifier = Modifier.size(44.dp),
                     shape = CircleShape, color = Tile) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Person, "Profil tamu", Modifier.size(27.dp), tint = Color.White)
-                    }
+                    HomeGoogleAvatar()
                 }
                 Spacer(Modifier.weight(1f))
                 Image(painterResource(R.drawable.brand), "Logo Tuturium", Modifier.size(32.dp))
@@ -373,14 +371,15 @@ fun ModernProfile(onBack: () -> Unit, onAccount: () -> Unit, onStats: () -> Unit
         item {
             Column(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                GoogleAvatar(if (cloud.connected) cloud.photoUrl else null, 102.dp)
+                GoogleAvatar(cloud.photoUrl, 102.dp,
+                    if (cloud.email != null) "Foto profil Google" else "Profil tamu")
                 Spacer(Modifier.height(10.dp))
-                Text(if (cloud.connected)
+                Text(if (cloud.email != null)
                     cloud.displayName?.takeIf { it.isNotBlank() }
                         ?: cloud.email?.substringBefore('@') ?: "Akun Google"
                     else "Akun tamu",
                     style = MaterialTheme.typography.titleMedium, color = Color.White)
-                Text(if (cloud.connected) "Terhubung dengan Google"
+                Text(if (cloud.email != null) "Masuk dengan Google"
                     else "Tuturium lokal · tanpa login",
                     color = Muted, style = MaterialTheme.typography.bodySmall)
             }
@@ -389,7 +388,7 @@ fun ModernProfile(onBack: () -> Unit, onAccount: () -> Unit, onStats: () -> Unit
             Surface(shape = RoundedCornerShape(22.dp), color = Tile, modifier = Modifier.fillMaxWidth()) {
                 Column {
                     ProfileEntry(Icons.Rounded.AccountCircle, "Akun", onAccount,
-                        if (cloud.connected) cloud.email else "Login Google opsional")
+                        cloud.email ?: "Login Google opsional")
                     HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                     ProfileEntry(Icons.Rounded.BarChart, "Statistik", onStats)
                 }
@@ -622,4 +621,10 @@ private fun SummaryCell(icon: androidx.compose.ui.graphics.vector.ImageVector,
 private fun durationLabel(durationMs: Long): String {
     val minutes = durationMs / 60_000
     return if (minutes < 60) "${minutes}min" else "${minutes / 60}h ${minutes % 60}min"
+}
+
+@Composable
+private fun HomeGoogleAvatar() {
+    val cloud by TuturiumCloud.state.collectAsStateWithLifecycle()
+    GoogleAvatar(cloud.photoUrl, 44.dp, "Buka profil")
 }

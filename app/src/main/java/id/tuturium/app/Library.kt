@@ -26,7 +26,7 @@ data class Book(
 data class Bookmark(val index: Int, val excerpt: String)
 
 class Library private constructor(context: Context) :
-    SQLiteOpenHelper(context, "library.db", null, 4) {
+    SQLiteOpenHelper(context, "library.db", null, 5) {
     private val appContext = context.applicationContext
     private val folder = File(context.filesDir, "books").apply { mkdirs() }
 
@@ -41,10 +41,16 @@ class Library private constructor(context: Context) :
             """CREATE TABLE bookmarks (book TEXT REFERENCES books(id) ON DELETE CASCADE,
                 position INTEGER NOT NULL, excerpt TEXT NOT NULL, PRIMARY KEY(book, position))"""
         )
+        createTombstones(db)
+    }
+
+    private fun createTombstones(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE book_tombstones (id TEXT PRIMARY KEY NOT NULL)")
     }
 
     override fun onConfigure(db: SQLiteDatabase) = db.setForeignKeyConstraintsEnabled(true)
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 5) createTombstones(db)
         if (oldVersion < 2) db.execSQL("ALTER TABLE books ADD COLUMN deleted_at INTEGER NOT NULL DEFAULT 0")
         if (oldVersion < 4) db.execSQL("ALTER TABLE books ADD COLUMN word_offset INTEGER NOT NULL DEFAULT 0")
         if (oldVersion < 3) {
@@ -133,6 +139,11 @@ class Library private constructor(context: Context) :
         return book
     }
 
+    internal fun openDocumentJson(id: String): java.io.InputStream {
+        require(UUID.fromString(id).toString() == id)
+        return documentFile(id).openRead()
+    }
+
     fun document(id: String): ReadingDocument {
         require(UUID.fromString(id).toString() == id)
         val json = JSONArray(documentFile(id).readFully().toString(Charsets.UTF_8))
@@ -180,12 +191,41 @@ class Library private constructor(context: Context) :
         TuturiumCloud.markDirty(appContext)
     }
 
+    @Synchronized
     fun deletePermanently(id: String) {
-        if (writableDatabase.delete("books", "id = ? AND deleted_at > 0", arrayOf(id)) != 0) {
+        if (eraseBook(id, trashOnly = true)) TuturiumCloud.markDirty(appContext)
+    }
+
+    internal fun tombstones(): List<String> = readableDatabase.query(
+        "book_tombstones", arrayOf("id"), null, null, null, null, "id"
+    ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+
+    @Synchronized
+    internal fun restoreTombstone(id: String) {
+        require(UUID.fromString(id).toString() == id)
+        eraseBook(id, trashOnly = false)
+    }
+
+    private fun eraseBook(id: String, trashOnly: Boolean): Boolean {
+        val db = writableDatabase
+        val removed: Boolean
+        db.beginTransaction()
+        try {
+            val where = if (trashOnly) "id = ? AND deleted_at > 0" else "id = ?"
+            removed = db.delete("books", where, arrayOf(id)) != 0
+            if (removed || !trashOnly) {
+                db.insertWithOnConflict("book_tombstones", null,
+                    ContentValues().apply { put("id", id) }, SQLiteDatabase.CONFLICT_IGNORE)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        if (removed) {
             documentFile(id).delete()
             File(folder, "$id.pdf").delete()
-            TuturiumCloud.markDirty(appContext)
         }
+        return removed
     }
 
     fun bookmarks(id: String): List<Bookmark> = readableDatabase.query(
@@ -218,6 +258,7 @@ class Library private constructor(context: Context) :
 
     /** Restore a Drive snapshot without replacing a newer local edit. Book ids
      * remain stable, so bookmarks and positions survive device migration. */
+    @Synchronized
     fun restoreCloudBook(
         incoming: Book, deleted: Boolean, sectionsJson: String,
         marks: List<Bookmark>, originalPdf: File?
@@ -230,6 +271,8 @@ class Library private constructor(context: Context) :
             require(item.has("title") && item.has("text"))
         }
         val db = writableDatabase
+        if (db.query("book_tombstones", arrayOf("id"), "id = ?",
+                arrayOf(incoming.id), null, null, null).use { it.moveToFirst() }) return false
         val old = db.query("books", arrayOf("updated"), "id = ?",
             arrayOf(incoming.id), null, null, null).use {
             if (it.moveToFirst()) it.getLong(0) else null

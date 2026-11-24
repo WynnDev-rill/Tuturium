@@ -7,9 +7,9 @@ data class Section(val title: String, val text: String)
 data class Pass(val text: String, val section: Int, val paragraph: Int, val offset: Int)
 
 data class ReadingDocument(val sections: List<Section>) {
-    val passes: List<Pass> = sections.flatMapIndexed { section, content ->
-        content.text.split(Regex("\\n+")).filter { it.isNotBlank() }
-            .flatMapIndexed { paragraph, text -> splitSpeech(text, section, paragraph) }
+    internal val paragraphs = sections.map { it.text.split(Regex("\\n+")).filter(String::isNotBlank) }
+    val passes: List<Pass> = paragraphs.flatMapIndexed { section, paragraphs ->
+        paragraphs.flatMapIndexed { paragraph, text -> splitSpeech(text, section, paragraph) }
     }
 }
 

@@ -56,7 +56,7 @@ class LibraryV2FlowTest {
 
     @Test fun guestStartsWithoutGoogleAndSignInIsOptionalInProfile() {
         compose.onNodeWithText("Beranda").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Profil tamu").performClick()
+        compose.onNodeWithContentDescription("Buka profil").performClick()
         compose.onNodeWithText("Akun tamu").assertIsDisplayed()
         compose.onNodeWithText("Akun").performClick()
         compose.onNodeWithText("Masuk dengan Google").assertIsDisplayed()
@@ -66,7 +66,7 @@ class LibraryV2FlowTest {
     }
 
     @Test fun guestAccountMenuIsAboveStatisticsAndCloudIsNotMandatory() {
-        compose.onNodeWithContentDescription("Profil tamu").performClick()
+        compose.onNodeWithContentDescription("Buka profil").performClick()
         compose.onNodeWithText("Akun").assertIsDisplayed()
         compose.onNodeWithText("Statistik").assertIsDisplayed()
         compose.onNodeWithText("Akun").performClick()
@@ -78,10 +78,29 @@ class LibraryV2FlowTest {
     }
 
     @Test fun storageDashboardExplainsLocalStorage() {
-        compose.onNodeWithContentDescription("Profil tamu").performClick()
+        compose.onNodeWithContentDescription("Buka profil").performClick()
         compose.onNodeWithText("Penyimpanan & Data").performClick()
         compose.onNodeWithText("Penyimpanan lokal").assertIsDisplayed()
         compose.onNodeWithText("File bacaan").assertIsDisplayed()
         compose.onNodeWithText("Database & progres").assertIsDisplayed()
+    }
+    @Test fun signedInProfileSurvivesDriveAuthorizationLoss() {
+        val context = compose.activity
+        val photo = "https://example.invalid/avatar"
+        try {
+            compose.runOnIdle {
+                TuturiumCloud.signIn(context, "example@example.invalid", "Pembaca", photo)
+                TuturiumCloud.needsAuthorization("Hubungkan kembali Drive")
+                TuturiumCloud.signIn(context, "example@example.invalid", null, null)
+            }
+            org.junit.Assert.assertEquals(photo, TuturiumCloud.state.value.photoUrl)
+            compose.onNodeWithContentDescription("Buka profil").performClick()
+            compose.onNodeWithText("Pembaca").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Foto profil Google").assertIsDisplayed()
+            compose.onNodeWithText("Akun").performClick()
+            compose.onNodeWithText("Belum terhubung").assertIsDisplayed()
+        } finally {
+            kotlinx.coroutines.runBlocking { TuturiumCloud.disconnect(context) }
+        }
     }
 }

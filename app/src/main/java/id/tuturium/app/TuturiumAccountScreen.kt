@@ -14,6 +14,8 @@ import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,28 +27,48 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.SubcomposeAsyncImage
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.disk.DiskCache
 
 private val accountSurface = Color(0xFF252525)
 private val accountMuted = Color(0xFFAAAAAA)
 private val accountAccent = Color(0xFF5362F5)
 
+private var cachedAvatarLoader: ImageLoader? = null
+
 @Composable
-internal fun GoogleAvatar(photoUrl: String?, size: Dp) {
-    Box(Modifier.size(size).clip(CircleShape).background(accountSurface),
+internal fun GoogleAvatar(photoUrl: String?, size: Dp, description: String = "Foto profil Google") {
+    val context = LocalContext.current.applicationContext
+    val loader = remember(context) {
+        cachedAvatarLoader ?: ImageLoader.Builder(context)
+            .diskCache {
+                DiskCache.Builder().directory(context.cacheDir.resolve("google-avatars"))
+                    .maxSizeBytes(4 * 1024 * 1024L).build()
+            }
+            .respectCacheHeaders(false)
+            .build().also { cachedAvatarLoader = it }
+    }
+    Box(Modifier.size(size).clip(CircleShape).background(accountSurface)
+        .semantics { contentDescription = description },
         contentAlignment = Alignment.Center) {
         @Composable
         fun Placeholder() {
             Icon(Icons.Rounded.Person, null, Modifier.size(size * 0.61f),
                 tint = Color.White)
         }
-        if (!photoUrl.isNullOrBlank() && photoUrl.startsWith("https://")) {
-            SubcomposeAsyncImage(
-                model = photoUrl, contentDescription = "Foto profil Google",
-                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
-                loading = { Placeholder() }, error = { Placeholder() }
-            )
-        } else Placeholder()
+        Placeholder()
+        if (photoUrl?.startsWith("https://") == true) {
+            key(photoUrl) {
+                AsyncImage(
+                    model = photoUrl, imageLoader = loader, contentDescription = null,
+                    modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                )
+            }
+        }
     }
 }
 

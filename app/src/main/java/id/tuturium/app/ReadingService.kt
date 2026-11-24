@@ -33,9 +33,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -135,21 +138,23 @@ class ReadingService : Service() {
     private var foreground = false
     private var activePrepared = PreparedSpeech("", IntArray(0))
     private var preparedStart = 0
+    private var preparedParagraph: PreparedSpeech? = null
+    private var preparedLocation: Pair<Int, Int>? = null
+    private var preparedOptions: ListeningOptions? = null
+    private var continuation: Job? = null
     private var listenedWords = 0
     private var listeningStart = 0L
     private var listeningSpeed = 1f
     private var current = Playback()
         set(value) {
             if (field.playing && !value.playing && listeningStart > 0L) {
-                runCatching {
-                    ListeningStats.recordDuration(this,
-                        SystemClock.elapsedRealtime() - listeningStart, listeningSpeed)
-                }.onFailure { android.util.Log.w("TuturiumPlayback", "Listening stats failed", it) }
+                recordListeningTime()
                 listeningStart = 0L
             } else if (!field.playing && value.playing) {
                 listeningStart = SystemClock.elapsedRealtime()
                 listeningSpeed = value.effectiveSpeed
             }
+            if (value.playing) listeningSpeed = value.effectiveSpeed
             field = value
             mutable.value = value
         }
@@ -166,7 +171,8 @@ class ReadingService : Service() {
     private val initTimeout = Runnable {
         if (!ready) {
             initializationFailed = true
-            if (current.loading && OfflineCatalog.voice(ReadingSettings.read(this).voice) == null)
+            if (current.loading && activeUtterance == null &&
+                OfflineCatalog.voice(ReadingSettings.read(this).voice) == null)
                 fail("Mesin TTS Android tidak merespons.")
         }
     }
@@ -254,7 +260,7 @@ class ReadingService : Service() {
             NEXT -> seek(current.index + 1)
             PREVIOUS -> seek(current.index - 1)
             SEEK -> seek(intent.getIntExtra("index", 0), offset = intent.getIntExtra("offset", 0).coerceAtLeast(0))
-            SETTINGS -> if (current.playing) {
+            SETTINGS -> if (current.playing || current.loading) {
                 speechOffset = current.range?.first ?: speechOffset
                 stopUtterance()
                 startCurrent()
@@ -280,6 +286,8 @@ class ReadingService : Service() {
         speechOffset = offset.coerceAtLeast(0)
         listenedWords = 0
         document = null
+        preparedParagraph = null
+        preparedLocation = null
         val ticket = ++request
         current = Playback(bookId = id, title = "Tuturium", loading = true, timerUntil = current.timerUntil)
         if (!promote()) return
@@ -321,7 +329,8 @@ class ReadingService : Service() {
 
     private fun startCurrentInternal() {
         startupStage = "menyiapkan dokumen"
-        val pass = document?.passes?.getOrNull(current.index) ?: return
+        val document = document ?: return
+        val pass = document.passes.getOrNull(current.index) ?: return
         startupStage = "layanan audio"
         if (!promote()) return
         val settings = ReadingSettings.read(this)
@@ -338,46 +347,58 @@ class ReadingService : Service() {
         startupStage = "membaca pengaturan"
         val options = ListeningOptions.read(this)
         startupStage = "menyiapkan teks"
-        // On some devices skip-filter preparation throws even though the
-        // unfiltered passage speaks successfully in Google TTS previews.
-        // Never abort playback for an optional text filter.
-        val prepared = safePreparedSpeech(pass.text, options)
-        val from = if (speechOffset <= 0) 0
-            else prepared.offsets.indexOfFirst { it >= speechOffset }
-        if (prepared.text.isEmpty() || (speechOffset > 0 && from < 0)) {
+        val location = pass.section to pass.paragraph
+        val prepared = if (options.skipEnabled) {
+            if (location != preparedLocation || options != preparedOptions || preparedParagraph == null) {
+                preparedParagraph = safePreparedSpeech(document.paragraphs[pass.section][pass.paragraph], options)
+                preparedLocation = location
+                preparedOptions = options
+            }
+            checkNotNull(preparedParagraph).forPass(pass)
+        } else prepareSpeech(pass.text, options)
+        val from = if (speechOffset <= 0) 0 else prepared.offsets.indexOfFirst { it >= speechOffset }
+        if (prepared.text.isBlank() || from < 0) {
             speechOffset = 0
             if (current.index < current.total - 1) {
-                current = current.copy(index = current.index + 1, range = null)
-                persist(current.index)
-                handler.post { startCurrent() }
-            } else {
-                persist(current.total)
-                current = current.copy(index = 0, completed = true, range = null)
-                pause()
-            }
+                val next = current.index + 1
+                current = current.copy(index = next, range = null, playing = false, loading = true)
+                val skipped = current
+                handler.post { if (current === skipped) startCurrent() }
+            } else completeBook()
             return
         }
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
         startupStage = "memilih suara Indonesia"
         if (offline == null) {
-        val engine = tts ?: return
-        if (cachedVoices.isEmpty() || (settings.voice != null &&
-                cachedVoices.none { it.name == settings.voice })) {
-            cachedVoices = engine.indonesianCandidates()
-        }
-        val choice = resolveIndonesianVoice(cachedVoices, settings.voice)
-        if (choice == null) {
-            fail("Google TTS tidak menyediakan suara Indonesia. Periksa Pustaka Suara.")
-            return
-        }
-        if (appliedVoiceName != choice.name) {
-            if (!engine.activateIndonesianVoice(choice)) {
-                fail("Suara Indonesia tidak dapat dipakai. Periksa jaringan atau data Google TTS.")
+            val engine = tts ?: return
+            if (cachedVoices.isEmpty() || (settings.voice != null &&
+                    cachedVoices.none { it.name == settings.voice })) {
+                cachedVoices = engine.indonesianCandidates()
+            }
+            val choice = resolveIndonesianVoice(cachedVoices, settings.voice)
+            val defaultVoice = if (settings.voice == null && !options.matchLanguage) {
+                val language = java.util.Locale.getDefault().language
+                engine.voice?.takeIf { it.locale.language == language && !it.isNetworkConnectionRequired }
+                    ?: engine.availableVoices().firstOrNull {
+                        it.locale.language == language && !it.isNetworkConnectionRequired
+                    }
+            } else null
+            val name = defaultVoice?.name ?: choice?.name
+            if (name == null) {
+                fail("Google TTS tidak menyediakan suara Indonesia. Periksa Pustaka Suara.")
                 return
             }
-            appliedVoiceName = choice.name
-        }
+            if (appliedVoiceName != name) {
+                val activated = if (defaultVoice != null) {
+                    runCatching { engine.setVoice(defaultVoice) == TextToSpeech.SUCCESS }.getOrDefault(false)
+                } else engine.activateIndonesianVoice(checkNotNull(choice))
+                if (!activated) {
+                    fail("Suara tidak dapat dipakai. Periksa data Google TTS.")
+                    return
+                }
+                appliedVoiceName = name
+            }
         }
         // Unlike preview, the reader owns audio focus, a media notification and
         // a wakelock. An OEM exception in these optional components must not
@@ -408,12 +429,14 @@ class ReadingService : Service() {
         val requestedSpeed = if (normalSpeedRetryPass == current.index) 1f
             else rampedSpeed(settings.speed, listenedWords, options.autoRamp)
         if (offline != null) {
+            runCatching { lock.acquire(300_000) }
             val token = (++utterance).toString()
             activeUtterance = token
             current = current.copy(playing = false, loading = true, completed = false,
                 effectiveSpeed = requestedSpeed, range = null, error = null)
             publish()
             offlineAudio.play(scope, offline, prepared.text.substring(preparedStart), requestedSpeed,
+                pitch = settings.pitch, onRange = { start, end -> listener.onRangeStart(token, start, end, 0) },
                 onStart = {
                     if (activeUtterance == token) {
                         runCatching { lock.acquire(300_000) }
@@ -438,7 +461,7 @@ class ReadingService : Service() {
         activeUtterance = token
         runCatching { lock.acquire(300_000) }
             .onFailure { android.util.Log.w("TuturiumPlayback", "WakeLock unavailable", it) }
-        current = current.copy(playing = true, loading = false, completed = false,
+        current = current.copy(playing = false, loading = true, completed = false,
             effectiveSpeed = usableSpeed, range = null, error = null)
         startupStage = "mengirim teks ke Google TTS"
         val result = runCatching {
@@ -470,11 +493,18 @@ class ReadingService : Service() {
     }
 
     private val listener = object : UtteranceProgressListener() {
-        override fun onStart(utteranceId: String?) = Unit
+        override fun onStart(utteranceId: String?) {
+            handler.post {
+                if (utteranceId != null && utteranceId == activeUtterance) {
+                    current = current.copy(playing = true, loading = false)
+                    publish()
+                }
+            }
+        }
 
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
             handler.post {
-                if (utteranceId == activeUtterance && start >= 0 && end > start) {
+                if (utteranceId != null && utteranceId == activeUtterance && start >= 0 && end > start) {
                     val mappedStart = activePrepared.offsets.getOrNull(preparedStart + start)
                     val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
                     if (mappedStart != null && mappedEnd != null) {
@@ -491,14 +521,12 @@ class ReadingService : Service() {
 
         override fun onDone(utteranceId: String?) {
             handler.post {
-                if (utteranceId != activeUtterance || !current.playing) return@post
-                runCatching {
-                    ListeningStats.recordUtterance(this@ReadingService, activePrepared.text,
-                        current.effectiveSpeed)
-                }.onFailure {
-                    android.util.Log.w("TuturiumPlayback", "Listening statistics failed", it)
-                }
-                listenedWords += countDocumentWords(activePrepared.text)
+                if (utteranceId == null || utteranceId != activeUtterance) return@post
+                val words = countDocumentWords(activePrepared.text.substring(preparedStart))
+                val speed = current.effectiveSpeed
+                val context = applicationContext
+                positionWrites.launch { ListeningStats.recordUtterance(context, words, speed) }
+                listenedWords += words
                 runCatching { if (lock.isHeld) lock.release() }
                     .onFailure { android.util.Log.w("TuturiumPlayback", "Release wakelock failed", it) }
                 if (current.index + 1 < current.total) {
@@ -507,23 +535,7 @@ class ReadingService : Service() {
                     current = current.copy(index = current.index + 1, range = null)
                     persist(current.index)
                     startCurrent()
-                } else {
-                    persist(current.total)
-                    normalSpeedRetryPass = -1
-                    speechOffset = 0
-                    current = current.copy(index = 0, completed = true, range = null)
-                    pause()
-                    // Continue queued books only when the current book ends normally.
-                    val library = Library.get(this@ReadingService)
-                    var next: String? = null
-                    repeat(50) {
-                        if (next == null) {
-                            val candidate = BookActions.dequeue(this@ReadingService)
-                            if (candidate != null && library.book(candidate) != null) next = candidate
-                        }
-                    }
-                    next?.let { open(it, -1) }
-                }
+                } else completeBook()
             }
         }
 
@@ -535,6 +547,39 @@ class ReadingService : Service() {
         override fun onError(utteranceId: String?, errorCode: Int) {
             reportSpeechError(utteranceId, errorCode)
         }
+    }
+
+    private fun completeBook() {
+        persist(current.total)
+        normalSpeedRetryPass = -1
+        speechOffset = 0
+        current = current.copy(index = 0, completed = true, range = null)
+        pause()
+        val completed = current
+        continuation = scope.launch {
+            val next = withContext(positionDispatcher) {
+                var result: String? = null
+                for (attempt in 0 until 50) {
+                    val candidate = BookActions.dequeue(applicationContext) ?: break
+                    if (Library.get(applicationContext).book(candidate) != null) {
+                        result = candidate
+                        break
+                    }
+                }
+                result
+            }
+            if (next != null && current == completed) open(next, -1)
+        }
+    }
+
+    private fun recordListeningTime() {
+        if (listeningStart == 0L) return
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = now - listeningStart
+        val speed = listeningSpeed
+        val context = applicationContext
+        listeningStart = now
+        positionWrites.launch { ListeningStats.recordDuration(context, elapsed, speed) }
     }
 
     /** Retry only genuine synthesis errors: a successful 1× preview may not
@@ -556,7 +601,7 @@ class ReadingService : Service() {
 
     private fun reportSpeechError(id: String?, code: Int) {
         handler.post {
-            if (id == activeUtterance) {
+            if (id != null && id == activeUtterance) {
                 if (retryAtNormalSpeed(code)) return@post
                 val message = when (code) {
                     TextToSpeech.ERROR_NOT_INSTALLED_YET -> "Suara Google TTS belum diunduh."
@@ -622,6 +667,8 @@ class ReadingService : Service() {
 
     private fun finish() {
         pause()
+        continuation?.cancel()
+        continuation = null
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION)
         stopSelf()
     }
@@ -698,6 +745,7 @@ class ReadingService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        recordListeningTime()
         if (current.total > 0 && !current.completed) persist(current.index, current.range?.first ?: speechOffset)
         stopUtterance()
         if (hasFocus) runCatching { audio.abandonAudioFocusRequest(focus) }
@@ -726,6 +774,7 @@ class ReadingService : Service() {
         private val positionWrites = CoroutineScope(SupervisorJob() + positionDispatcher)
         private val mutable = MutableStateFlow(Playback())
         val state = mutable.asStateFlow()
+        val chromeState = state.map { it.copy(range = null, timerUntil = 0L, effectiveSpeed = 1f) }.distinctUntilChanged()
 
         fun command(context: Context, action: String, book: String? = null,
             index: Int = -1, minutes: Int = 0, offset: Int = -1): Boolean {

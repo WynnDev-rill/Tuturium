@@ -70,8 +70,6 @@ data class ListeningOptions(
             putBoolean("skipCurly", skipCurly)
             putBoolean("autoRamp", autoRamp)
         }.apply()
-        if (ReadingService.state.value.bookId != null)
-            ReadingService.command(context, ReadingService.SETTINGS)
     }
 }
 
@@ -107,38 +105,56 @@ fun seekBySeconds(passes: List<Pass>, current: Int, seconds: Int, speed: Float):
 /** A mapping for word highlighting after skip filters remove text. */
 data class PreparedSpeech(val text: String, val offsets: IntArray)
 
+private val headerPattern = Regex("""(?im)^[ \t]*(?:(?:bab|chapter)[ \t]+(?:\d+|[ivxlcdm]+|satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh)\b[^\n]*|daftar isi|pendahuluan)[ \t]*$""")
+private val footerPattern = Regex("""(?im)^[ \t]*(?:halaman|page)[ \t]+\d+(?:[ \t]*(?:/|dari|of)[ \t]*\d+)?[ \t]*$""")
+private val footnotePattern = Regex("""(?m)^[ \t]*(?:\[\d{1,3}]|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[ \t]+[^\n]+$""")
+private val tablePattern = Regex("""(?m)^[ \t]*(?:\|[^|\n]+\|[^|\n]+\|[^\n]*|[^\t\n]+\t[^\t\n]+\t[^\n]+)$""")
+private val formulaPattern = Regex("""(?m)^[ \t]*[A-Za-zα-ωΑ-Ω][A-Za-z0-9_]*[ \t]*=[ \t]*[^\n]+$""")
+private val citationPattern = Regex("""\([^()\r\n]{2,80},[ \t]*(?:19|20)\d\d(?:[ \t]*:[ \t]*\d+)?\)""")
+private val urlPattern = Regex("""(?i)(?:https?://|www\.)[^\s<>()]+""")
+private val roundPattern = Regex("""\([^()\n]{1,200}\)""")
+private val squarePattern = Regex("""\[[^\[\]\n]{1,200}]""")
+private val curlyPattern = Regex("""\{[^{}\n]{1,200}}""")
+
 fun prepareSpeech(source: String, settings: ListeningOptions): PreparedSpeech {
     if (!settings.skipEnabled) return PreparedSpeech(source, IntArray(source.length) { it })
     val blocked = BooleanArray(source.length)
-    fun block(match: MatchResult) {
-        for (i in match.range) if (i in blocked.indices) blocked[i] = true
-    }
-    fun patterns(regex: Regex) { regex.findAll(source).forEach(::block) }
-    // Only very distinctive entire-line structures are skipped.
-    if (settings.skipHeaders) patterns(Regex(
-        """(?im)^\s*(?:bab|chapter|daftar isi|pendahuluan)\s+[0-9ivxlcdm]+\b[^\n]*$"""))
-    if (settings.skipFooters) patterns(Regex("""(?im)^\s*(?:halaman|page)\s+\d+\s*$"""))
-    if (settings.skipFootnotes) patterns(Regex("""(?m)^\s*(?:\[\d{1,3}]|\d{1,3}[.)])\s+.{6,100}$"""))
-    if (settings.skipTables) patterns(Regex("""(?m)^\s*\|[^|\n]+\|[^|\n]+\|[^\n]*$"""))
-    if (settings.skipFormulas) patterns(Regex("""(?m)^\s*[A-Za-zα-ωΑ-Ω][A-Za-z0-9_]*\s*=\s*[^\n]+$"""))
-    if (settings.skipCitations) patterns(Regex("""\((?:[^()]|\s){2,45},\s*(?:19|20)\d\d(?:\s*:\s*\d+)?\)"""))
-    if (settings.skipUrls) patterns(Regex("""(?i)(?:https?://|www\.)[^\s<>()]+"""))
-    if (settings.skipRound) patterns(Regex("""\([^()\n]{1,200}\)"""))
-    if (settings.skipSquare) patterns(Regex("""\[[^\[\]\n]{1,200}]"""))
-    if (settings.skipCurly) patterns(Regex("""\{[^{}\n]{1,200}}"""))
-    val result = StringBuilder()
-    val indices = ArrayList<Int>()
-    for (i in source.indices) {
-        if (!blocked[i]) {
-            result.append(source[i])
-            indices.add(i)
+    fun block(enabled: Boolean, pattern: Regex) {
+        if (enabled) pattern.findAll(source).forEach { match ->
+            java.util.Arrays.fill(blocked, match.range.first, match.range.last + 1, true)
         }
     }
-    val first = result.indexOfFirst { !it.isWhitespace() }
-    if (first < 0) return PreparedSpeech("", IntArray(0))
-    val last = result.indexOfLast { !it.isWhitespace() }
-    return PreparedSpeech(result.substring(first, last + 1),
-        indices.subList(first, last + 1).toIntArray())
+    block(settings.skipHeaders, headerPattern)
+    block(settings.skipFooters, footerPattern)
+    block(settings.skipFootnotes, footnotePattern)
+    block(settings.skipTables, tablePattern)
+    block(settings.skipFormulas, formulaPattern)
+    block(settings.skipCitations, citationPattern)
+    block(settings.skipUrls, urlPattern)
+    block(settings.skipRound, roundPattern)
+    block(settings.skipSquare, squarePattern)
+    block(settings.skipCurly, curlyPattern)
+
+    val result = StringBuilder(source.length)
+    val offsets = IntArray(source.length)
+    for (index in source.indices) {
+        if (!blocked[index] && (result.isNotEmpty() || !source[index].isWhitespace())) {
+            offsets[result.length] = index
+            result.append(source[index])
+        }
+    }
+    while (result.isNotEmpty() && result.last().isWhitespace()) result.setLength(result.length - 1)
+    return PreparedSpeech(result.toString(), offsets.copyOf(result.length))
+}
+
+/** Keep document coordinates stable even when a filter spans several TTS passes. */
+internal fun PreparedSpeech.forPass(pass: Pass): PreparedSpeech {
+    fun atOrAfter(position: Int) = offsets.binarySearch(position).let { if (it < 0) -it - 1 else it }
+    var first = atOrAfter(pass.offset)
+    var until = atOrAfter(pass.offset + pass.text.length)
+    while (first < until && text[first].isWhitespace()) first++
+    while (until > first && text[until - 1].isWhitespace()) until--
+    return PreparedSpeech(text.substring(first, until), IntArray(until - first) { offsets[first + it] - pass.offset })
 }
 
 /** A voice that works in the 1× preview may reject a custom speaking rate.

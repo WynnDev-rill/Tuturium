@@ -18,6 +18,12 @@ Jaga antarmuka utama dalam bahasa Indonesia.
 - `Updates` menerima rilis stabil dari `WynnDev-rill/Tuturium`, memeriksa ukuran, SHA-256, paket, nomor versi, dan sertifikat. Pertahankan pemeriksaan sebelum membuka pemasang sistem.
 - `Tuturium.kt`, `Reader.kt`, `SettingsScreen.kt`, dan `Theme.kt` berisi layar dan tema Compose. Pertahankan semantik pembaca layar, target sentuh, tema gelap, dukungan ukuran font, dan navigasi tanpa bergantung pada gestur eksklusif.
 
+## Graphify
+
+- Baca `graphify-out/GRAPH_REPORT.md` saat memulai perubahan lintas modul. Jalankan `graphify explain ReadingService`, `graphify explain DriveArchive`, atau `graphify path ReadingService Library --undirected` dari akar repo. Konfirmasi jalur dan baris di source sebelum mengedit.
+- Instal CLI dengan `uv tool install --with anyio graphifyy==0.9.118` dan skill Codex dengan `graphify install --platform codex`. Setelah mengubah source atau skrip build, jalankan `scripts/update-graph.sh` dan commit `graphify-out/graph.json` serta `GRAPH_REPORT.md` bila berubah.
+- Graphify menggunakan AST lokal. Parser versi ini dapat melewatkan beberapa deklarasi Kotlin, Gradle Kotlin DSL, dan hubungan yang dibuat melalui refleksi. Periksa source dan pengujian untuk melengkapi hasil grafik. Atur cakupan dengan `.graphifyignore`; jangan masukkan kunci, APK, atau dokumen pengguna.
+
 ## Rilis
 
 Naikkan `versionCode` dan `versionName` bersama. Tag stabil menggunakan `vMAJOR.MINOR.PATCH`, nama aset `Tuturium.apk`. Workflow rilis membutuhkan secrets `TUTURIUM_KEYSTORE_BASE64` dan `TUTURIUM_STORE_PASSWORD`. Pinned fingerprint publik ada di `docs/signing-certificate.sha256`.

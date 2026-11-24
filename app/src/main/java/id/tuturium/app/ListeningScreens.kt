@@ -65,11 +65,12 @@ fun ListeningSettingsV2(model: TuturiumModel, onBack: () -> Unit) {
         item { SwitchRow(Icons.Rounded.PlayCircle, "Putar Audio Otomatis",
             checked = p.autoplay, onChecked = { model.changeListeningOptions(p.copy(autoplay = it)) }) }
         item { SwitchRow(Icons.Rounded.VisibilityOff, "Sembunyikan Putar Otomatis",
+            "Sembunyikan pintasan putar otomatis di menu pembaca.",
             checked = p.hideAutoplay, onChecked = { model.changeListeningOptions(p.copy(hideAutoplay = it)) }) }
         item { SwitchRow(Icons.Rounded.AutoAwesomeMotion, "Gulir otomatis",
             checked = p.autoScroll, onChecked = { model.changeListeningOptions(p.copy(autoScroll = it)) }) }
         item { SwitchRow(Icons.Rounded.Translate, "Cocokkan Suara dengan Bahasa",
-            "Prioritaskan bahasa Indonesia saat otomatis memilih suara.",
+            "Prioritaskan Indonesia. Jika nonaktif, coba suara luring sesuai bahasa perangkat.",
             checked = p.matchLanguage,
             onChecked = { model.changeListeningOptions(p.copy(matchLanguage = it)) }) }
         item { SwitchRow(Icons.Rounded.MusicNote, "Padukan dengan Musik Latar",

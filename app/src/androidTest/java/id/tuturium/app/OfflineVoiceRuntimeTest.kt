@@ -7,6 +7,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -17,7 +18,7 @@ class OfflineVoiceRuntimeTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         // The slow network/inference check runs only when CI explicitly requests it.
-        if (InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") != "true") return@runBlocking
+        assumeTrue(InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") == "true")
         for (pack in OfflineCatalog.models) {
             OfflineModelStore.install(context, pack) {}
             assertTrue("Model not installed: " + pack.id, OfflineModelStore.installed(context, pack))
