@@ -83,7 +83,8 @@ class ReaderFlowTest {
         compose.onNodeWithContentDescription("Tingkatkan kecepatan otomatis").performClick()
         compose.onNodeWithContentDescription("Pilih 1,0×").performClick()
         compose.onNodeWithText("Selesai").assertDoesNotExist()
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
         compose.onNodeWithContentDescription("Opsi pembaca").performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed().performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed()
