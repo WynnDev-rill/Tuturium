@@ -64,7 +64,7 @@ fun Tuturium(model: TuturiumModel) {
             recognizer.process(InputImage.fromBitmap(bitmap, 0))
                 .addOnSuccessListener { result ->
                     if (result.text.isBlank()) model.status = "Tidak ada tulisan yang terdeteksi."
-                    else model.addText("Hasil pindai", result.text)
+                    else model.addText("Hasil pindai", result.text, format = "SCAN")
                 }
                 .addOnFailureListener { model.status = "Pemindaian teks gagal." }
                 .addOnCompleteListener { recognizer.close() }

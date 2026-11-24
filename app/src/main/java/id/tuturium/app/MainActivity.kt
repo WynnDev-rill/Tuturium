@@ -349,10 +349,10 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         DocumentImporter(app).import(uri) { importing = it }
     }
 
-    fun addText(title: String, text: String) = addDocument {
+    fun addText(title: String, text: String, format: String = "TXT") = addDocument {
         require(text.length <= DocumentImporter.MAX_TEXT) { "Teks terlalu panjang." }
         val heading = title.trim().ifBlank { "Teks pribadi" }
-        library.add(heading, "TXT", ReadingDocument(listOf(Section(heading, text.trim()
+        library.add(heading, format, ReadingDocument(listOf(Section(heading, text.trim()
             .replace("\r\n", "\n").replace('\r', '\n')))))
     }
 

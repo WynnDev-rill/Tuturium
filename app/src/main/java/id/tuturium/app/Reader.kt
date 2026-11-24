@@ -298,7 +298,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     val latestPlay by rememberUpdatedState<(WordSelection) -> Unit>({
                         manualBrowsing = false
                         jump = it.passIndex
-                        model.playFromWord(book, it)
+                        if (!model.savingReader) model.playFromWord(book, it)
                     })
                     val readableSize = (model.fontSize * 0.86f).coerceIn(16f, 29f)
                     Text(highlighted, modifier = Modifier.fillMaxWidth()
