@@ -8,6 +8,7 @@ import com.tom_roush.pdfbox.text.TextPosition
 import android.content.Context
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.tasks.await
 
 private val pdfWordPattern = Regex("[\\p{L}\\p{N}\\p{M}]+")
 private fun pdfKey(word: String) = java.text.Normalizer.normalize(word, java.text.Normalizer.Form.NFKC)
@@ -42,15 +43,22 @@ internal fun readPdfWordHits(context: Context, source: File, pageIndex: Int,
                 if (textPositions.isEmpty() || text.isBlank()) return
                 // PDFBox emits individual words with their associated glyphs.
                 val tokens = pdfWordPattern.findAll(text).toList()
-                if (tokens.size != 1) return
                 val first = textPositions.first()
                 val width = first.pageWidth.coerceAtLeast(1f)
                 val height = first.pageHeight.coerceAtLeast(1f)
-                val left = textPositions.minOf { it.x / width }
-                val right = textPositions.maxOf { (it.x + it.width) / width }
-                val top = textPositions.minOf { (it.y - it.height) / height }
-                val bottom = textPositions.maxOf { it.y / height }
-                hits.add(PdfWordHit(tokens.single().value, left, top, right, bottom))
+                val glyphs = textPositions.flatMap { glyph ->
+                    List(glyph.unicode?.length?.coerceAtLeast(1) ?: 1) { glyph }
+                }
+                for (token in tokens) {
+                    val positions = if (tokens.size == 1) textPositions else
+                        glyphs.drop(token.range.first).take(token.value.length)
+                    if (positions.isEmpty()) continue
+                    val left = positions.minOf { it.x / width }
+                    val right = positions.maxOf { (it.x + it.width) / width }
+                    val top = positions.minOf { (it.y - it.height) / height }
+                    val bottom = positions.maxOf { it.y / height }
+                    hits.add(PdfWordHit(token.value, left, top, right, bottom))
+                }
             }
         }.apply {
             sortByPosition = true
@@ -61,4 +69,33 @@ internal fun readPdfWordHits(context: Context, source: File, pageIndex: Int,
     }
     val selections = matchPdfWords(hits.map { it.text }, passes)
     return hits.mapIndexed { i, hit -> hit.copy(selection = selections[i]) }
+}
+
+/** Allow a small finger-touch margin around actual glyphs, never a distant word. */
+internal fun nearestPdfWord(hits: List<PdfWordHit>, x: Float, y: Float): PdfWordHit? =
+    hits.filter { x in (it.left - .014f)..(it.right + .014f) &&
+        y in (it.top - .012f)..(it.bottom + .012f) }
+        .minByOrNull {
+            val dx = maxOf(it.left - x, x - it.right, 0f)
+            val dy = maxOf(it.top - y, y - it.bottom, 0f)
+            dx * dx + 4f * dy * dy + .001f * kotlin.math.abs(x - (it.left + it.right) / 2f)
+        }
+
+/** OCR runs only for pages whose native or PDFBox text layer cannot resolve a touch.
+ * Coordinates are from the actual rendered bitmap, so scanned and unusual PDFs work. */
+internal suspend fun ocrPdfWordHits(bitmap: android.graphics.Bitmap,
+    passes: List<IndexedValue<Pass>>): List<PdfWordHit> {
+    val recognizer = com.google.mlkit.vision.text.TextRecognition.getClient(
+        com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS)
+    try {
+        val result = recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0)).await()
+        val hits = result.textBlocks.flatMap { it.lines }.flatMap { it.elements }.mapNotNull { element ->
+            val rect = element.boundingBox ?: return@mapNotNull null
+            PdfWordHit(element.text, rect.left.toFloat() / bitmap.width,
+                rect.top.toFloat() / bitmap.height, rect.right.toFloat() / bitmap.width,
+                rect.bottom.toFloat() / bitmap.height)
+        }
+        val selections = matchPdfWords(hits.map { it.text.trim { ch -> !ch.isLetterOrDigit() } }, passes)
+        return hits.mapIndexed { i, hit -> hit.copy(selection = selections[i]) }
+    } finally { recognizer.close() }
 }

@@ -223,7 +223,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             } else {
                 spokenText.trimStart().substringBefore(' ').take(28)
             }
-            Row(Modifier.fillMaxWidth().padding(top = if (pdfSource != null) 52.dp else 0.dp, bottom = 9.dp),
+            Row(Modifier.fillMaxWidth().padding(top = if (pdfSource != null) 32.dp else 0.dp, bottom = 9.dp),
                 horizontalArrangement = Arrangement.Center) {
                 Surface(onClick = {
                     showPdf = false
@@ -263,7 +263,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         val ink = if (!warm) scheme.onBackground else if (dark) Color(0xFFF7E6D4) else Color(0xFF382719)
         LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth()
             .background(paper),
-            contentPadding = PaddingValues(start = if (focusMode) 38.dp else 24.dp, end = if (focusMode) 38.dp else 24.dp, top = if (pdfSource != null) 52.dp else 17.dp, bottom = 17.dp),
+            contentPadding = PaddingValues(start = if (focusMode) 38.dp else 24.dp, end = if (focusMode) 38.dp else 24.dp, top = if (pdfSource != null) 32.dp else 17.dp, bottom = 17.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)) {
             itemsIndexed(rows) { rowIndex, row ->
                 if (row.heading != null) {
@@ -359,13 +359,21 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         if (!model.savingReader) model.playFromWord(book, it)
                     })
                     val readableSize = model.fontSize.coerceIn(16f, 34f)
+                    var selectedWord by remember(row) { mutableStateOf<WordSelection?>(null) }
+                    var anchor by remember(row) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+                    Box(Modifier.fillMaxWidth().padding(bottom = if (row.paragraphEnd) 17.dp else 0.dp)) {
                     Text(highlighted, modifier = Modifier.fillMaxWidth()
-                        .padding(bottom = if (row.paragraphEnd) 17.dp else 0.dp)
                         .pointerInput(row) {
-                        detectTapGestures { point ->
-                            val offset = layout?.getOffsetForPosition(point) ?: return@detectTapGestures
-                            selectSpokenWord(row.text, row.passes, offset)?.let(latestPlay)
-                        }
+                        detectTapGestures(onTap = { point ->
+                            layout?.getOffsetForPosition(point)?.let {
+                                selectSpokenWord(row.text, row.passes, it)?.let(latestPlay)
+                            }
+                        }, onLongPress = { point ->
+                            anchor = point
+                            selectedWord = layout?.getOffsetForPosition(point)?.let {
+                                selectSpokenWord(row.text, row.passes, it)
+                            }
+                        })
                     }, onTextLayout = { layout = it },
                         fontFamily = readerTypeface(model.readerFont),
                         fontWeight = if (model.readerBold) FontWeight.Bold else FontWeight.Normal,
@@ -373,6 +381,25 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         lineHeight = (readableSize * if (focusMode) 1.66f else 1.48f).sp,
                         textAlign = TextAlign.Start,
                         color = ink)
+                    Box(Modifier.offset {
+                        androidx.compose.ui.unit.IntOffset(anchor.x.toInt(), anchor.y.toInt())
+                    }) {
+                        DropdownMenu(expanded = selectedWord != null, onDismissRequest = { selectedWord = null }) {
+                            DropdownMenuItem(text = { Text("Baca") }, onClick = {
+                                selectedWord?.let(latestPlay); selectedWord = null
+                            })
+                            DropdownMenuItem(text = { Text("Salin") }, onClick = {
+                                selectedWord?.let { selection ->
+                                    val word = document.passes[selection.passIndex].text.substring(selection.offset)
+                                        .takeWhile { it.isLetterOrDigit() }
+                                    context.getSystemService(android.content.ClipboardManager::class.java)
+                                        .setPrimaryClip(android.content.ClipData.newPlainText("Teks", word))
+                                }
+                                selectedWord = null
+                            })
+                        }
+                    }
+                    }
                 }
             }
         }
@@ -381,20 +408,20 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         if (pdfSource != null) {
             val colors = MaterialTheme.colorScheme
             Surface(Modifier.align(Alignment.TopCenter).padding(top = 3.dp),
-                shape = RoundedCornerShape(25.dp), color = colors.surface.copy(alpha = 0.94f),
+                shape = RoundedCornerShape(16.dp), color = colors.surface.copy(alpha = 0.94f),
                 border = BorderStroke(1.dp, colors.outlineVariant)) {
-                Row(Modifier.selectableGroup().padding(3.dp)) {
+                Row(Modifier.selectableGroup().padding(2.dp)) {
                     listOf(true to "PDF", false to "Teks").forEach { (pdf, label) ->
                         val selected = showPdf == pdf
-                        Box(Modifier.size(width = 54.dp, height = 44.dp)
+                        Box(Modifier.size(width = 38.dp, height = 28.dp)
                             .selectable(selected, role = Role.Tab) {
                                 showPdf = pdf
                                 if (!pdf) { manualBrowsing = false; jump = current }
                             }, contentAlignment = Alignment.Center) {
-                            Surface(Modifier.size(50.dp, 32.dp), shape = RoundedCornerShape(18.dp),
+                            Surface(Modifier.size(35.dp, 24.dp), shape = RoundedCornerShape(13.dp),
                                 color = if (selected) colors.primaryContainer else Color.Transparent,
                                 contentColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant) {
-                                Box(contentAlignment = Alignment.Center) { Text(label, style = MaterialTheme.typography.labelMedium) }
+                                Box(contentAlignment = Alignment.Center) { Text(label, style = MaterialTheme.typography.labelSmall) }
                             }
                         }
                     }

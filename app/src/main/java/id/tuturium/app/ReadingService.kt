@@ -129,7 +129,7 @@ class ReadingService : Service() {
         if (id <= 0) null else runCatching {
             val effect = android.media.audiofx.LoudnessEnhancer(id)
             try {
-                effect.setTargetGain(600)
+                effect.setTargetGain(narrationBoostMb(ReadingSettings.read(this).volume))
                 check(effect.setEnabled(true) == android.media.audiofx.AudioEffect.SUCCESS)
                 narrationEnhancer = effect
                 id
@@ -285,10 +285,13 @@ class ReadingService : Service() {
             NEXT -> seek(current.index + 1)
             PREVIOUS -> seek(current.index - 1)
             SEEK -> seek(intent.getIntExtra("index", 0), offset = intent.getIntExtra("offset", 0).coerceAtLeast(0))
-            VOLUME -> offlineSession?.let {
+            VOLUME -> {
                 val volume = ReadingSettings.read(this).volume
-                it.settings = it.settings.copy(volume = volume)
-                offlineAudio.setVolume(volume)
+                runCatching { narrationEnhancer?.setTargetGain(narrationBoostMb(volume)) }
+                offlineSession?.let {
+                    it.settings = it.settings.copy(volume = volume)
+                    offlineAudio.setVolume(volume)
+                }
             }
             SETTINGS, RESET_SPEED_RAMP -> {
                 val nextSettings = ReadingSettings.read(this)
@@ -489,6 +492,7 @@ class ReadingService : Service() {
             effectiveSpeed = usableSpeed, range = null, error = null)
         startupStage = "mengirim teks ke Google TTS"
         val sessionId = narrationSessionId
+        runCatching { narrationEnhancer?.setTargetGain(narrationBoostMb(settings.volume)) }
         val result = runCatching {
             engine.speak(prepared.text.substring(preparedStart),
                 TextToSpeech.QUEUE_FLUSH, android.os.Bundle().apply {

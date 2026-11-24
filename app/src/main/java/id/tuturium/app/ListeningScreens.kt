@@ -388,13 +388,13 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
         model.choosePlaybackSpeed(rounded.coerceIn(PLAYBACK_SPEED_RANGE))
     }
 
-    TuturiumSheet(onDismissRequest = dismiss, containerColor = colors.surfaceContainerHigh) {
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = colors.surface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
             .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(Modifier.weight(1f).heightIn(min = 260.dp),
+                Column(Modifier.weight(1f).heightIn(min = 268.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -422,7 +422,7 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        for (preset in listOf(0.8f, 1f, 1.25f)) {
+                        for (preset in listOf(0.8f, 1f, 1.2f)) {
                             TextButton(onClick = { setSpeed(preset) }, modifier = Modifier.semantics {
                                 contentDescription = "Pilih ${formatPlaybackSpeed(preset)}"
                             }) {
@@ -436,21 +436,6 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                     dragSpeed = null
                 })
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                for (preset in listOf(2f, 3f, 4f)) {
-                    val selected = kotlin.math.abs(speed - preset) < 0.01f
-                    Surface(onClick = { setSpeed(preset) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics {
-                            contentDescription = "Pilih ${formatPlaybackSpeed(preset)}"
-                        }, shape = RoundedCornerShape(14.dp),
-                        color = if (selected) colors.primaryContainer else colors.surface,
-                        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(formatPlaybackSpeed(preset), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-            HorizontalDivider()
             Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Tingkatkan Kecepatan Otomatis", style = MaterialTheme.typography.titleSmall)
@@ -461,7 +446,6 @@ fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, curr
                     onCheckedChange = { model.changeListeningOptions(options.copy(autoRamp = it)) },
                     modifier = Modifier.semantics { contentDescription = "Tingkatkan kecepatan otomatis" })
             }
-            TextButton(onClick = dismiss, modifier = Modifier.align(Alignment.End)) { Text("Selesai") }
         }
     }
 }
@@ -474,7 +458,7 @@ private fun VerticalSpeedSlider(value: Float, onPreview: (Float?) -> Unit, onCom
     val preview by rememberUpdatedState(onPreview)
     val commit by rememberUpdatedState(onCommit)
     val colors = MaterialTheme.colorScheme
-    Box(Modifier.size(58.dp, 260.dp)
+    Box(Modifier.size(58.dp, 268.dp)
         .clip(RoundedCornerShape(22.dp)).background(colors.surface)
         .semantics {
             contentDescription = "Penggeser kecepatan"

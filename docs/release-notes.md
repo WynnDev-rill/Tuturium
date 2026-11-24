@@ -1,3 +1,10 @@
+## Tuturium 1.3.15
+
+- Tiga preset kecepatan 0,8× / 1× / 1,2×, tanpa tombol Selesai; slider 0,5×–4×.
+- Sakelar PDF/Teks lebih ringkas; tekan lama teks untuk Baca/Salin di kedua mode.
+- Lapisan posisi kata PDF disiapkan per halaman, dengan Android PDF API 35 dan OCR bitmap sebagai fallback.
+- Penguatan audio sesi Google TTS dan Supertonic hingga +9,5 dB, dengan kompresi platform dan kontrol volume perangkat tetap berlaku. Hasil aktual bergantung pada dukungan OEM dan output audio.
+
 ## Tuturium 1.3.14
 
 - Panel laju 0,5×–4× bergaya Speechify, tanpa kunci; kenaikan otomatis tetap opsional.

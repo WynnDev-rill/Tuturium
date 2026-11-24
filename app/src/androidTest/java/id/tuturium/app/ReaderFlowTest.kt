@@ -1,6 +1,8 @@
 package id.tuturium.app
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasScrollAction
@@ -69,7 +71,7 @@ class ReaderFlowTest {
         compose.runOnIdle {
             assertTrue(ReadingSettings.read(compose.activity).speed > 2f)
         }
-        compose.onNodeWithContentDescription("Pilih 2,0×").performClick()
+        compose.onNodeWithContentDescription("Penggeser kecepatan").performSemanticsAction(SemanticsActions.SetProgress) { it(2f) }
         compose.onNodeWithContentDescription("Percepat").performClick()
         assertTrue(compose.onAllNodesWithText("2,05×").fetchSemanticsNodes().isNotEmpty())
         compose.runOnIdle {
@@ -80,7 +82,8 @@ class ReaderFlowTest {
         compose.onNodeWithText("+0,05× tiap 600 kata · hingga 4×").assertIsDisplayed()
         compose.onNodeWithContentDescription("Tingkatkan kecepatan otomatis").performClick()
         compose.onNodeWithContentDescription("Pilih 1,0×").performClick()
-        compose.onNodeWithText("Selesai").performClick()
+        compose.onNodeWithText("Selesai").assertDoesNotExist()
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithContentDescription("Opsi pembaca").performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed().performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed()

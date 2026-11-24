@@ -104,7 +104,7 @@ internal fun OriginalPdfPages(
     Box(Modifier.fillMaxSize()) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize().nestedScroll(scrollInput)
             .semantics { contentDescription = "Dokumen PDF" },
-            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 52.dp, bottom = 4.dp),
+            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 32.dp, bottom = 4.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(total, key = { it }) { index ->
                 val pass = firstPassByPage[index]
@@ -158,6 +158,11 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
             runCatching { session.render(index, pixelWidth) }.getOrNull() to true
         }
     }
+    var layer by remember(source, index, passes) { mutableStateOf<List<PdfWordHit>?>(null) }
+    var ocrLayer by remember(source, index, passes) { mutableStateOf<List<PdfWordHit>?>(null) }
+    LaunchedEffect(source, index, passes) {
+        layer = withContext(Dispatchers.IO) { runCatching { readPdfWordHits(context, source, index, passes) }.getOrDefault(emptyList()) }
+    }
     val bitmap = result.first
     val ratio = bitmap?.let { it.width.toFloat() / it.height } ?: session.cachedRatio(index)
     Box(Modifier.fillMaxWidth().aspectRatio(ratio.coerceIn(0.25f, 3f)),
@@ -176,15 +181,21 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
                         selectionJob?.cancel()
                         selectionJob = scope.launch {
                             val hit = withContext(Dispatchers.IO) {
-                                runCatching { readPdfWordHits(context, source, index, passes) }
+                                val hits = layer ?: runCatching { readPdfWordHits(context, source, index, passes) }
                                     .getOrDefault(emptyList())
-                                    .filter { x >= it.left - 0.006f && x <= it.right + 0.006f &&
-                                        y >= it.top - 0.008f && y <= it.bottom + 0.008f }
-                                    .minByOrNull { kotlin.math.abs(x - (it.left + it.right) / 2f) +
-                                        kotlin.math.abs(y - (it.top + it.bottom) / 2f) }
+                                nearestPdfWord(hits, x, y) ?: runCatching {
+                                    session.nativeWord(index, x, y, passes)
+                                }.getOrNull()
                             }
-                            selected = hit
-                            if (hit == null) android.widget.Toast.makeText(context,
+                            val resolved = if (hit?.selection != null) hit else {
+                                val recognized = ocrLayer ?: withContext(Dispatchers.Default) {
+                                    runCatching { ocrPdfWordHits(bitmap, passes) }.getOrDefault(emptyList())
+                                }.also { ocrLayer = it }
+                                nearestPdfWord(recognized, x, y)?.takeIf { it.selection != null }
+                                    ?: hit ?: nearestPdfWord(recognized, x, y)
+                            }
+                            selected = resolved
+                            if (resolved == null) android.widget.Toast.makeText(context,
                                 "Teks tidak dapat dipilih pada lokasi ini. Gunakan mode Teks.",
                                 android.widget.Toast.LENGTH_SHORT).show()
                         }
@@ -221,6 +232,31 @@ private class PdfPageSession(private val source: File) {
     }
 
     @Synchronized fun pageCount(): Int = open().pageCount
+
+    @Synchronized fun nativeWord(index: Int, x: Float, y: Float,
+        passes: List<IndexedValue<Pass>>): PdfWordHit? {
+        if (android.os.Build.VERSION.SDK_INT < 35) return null
+        return open().openPage(index).use { page ->
+            val px = (x * page.width).roundToInt().coerceIn(0, page.width - 1)
+            val py = (y * page.height).roundToInt().coerceIn(0, page.height - 1)
+            val boundary = android.graphics.pdf.models.selection.SelectionBoundary(android.graphics.Point(px, py))
+            val end = android.graphics.pdf.models.selection.SelectionBoundary(
+                android.graphics.Point((px + 5).coerceAtMost(page.width - 1), py))
+            val contents = page.selectContent(boundary, end)?.selectedTextContents.orEmpty()
+            val text = contents.joinToString(" ") { it.text }.trim()
+            if (text.isBlank()) return@use null
+            val boxes = contents.flatMap { it.bounds }
+            if (boxes.isEmpty()) return@use null
+            // Use native selection only when it actually resolves a complete, unique word.
+            val tokens = passes.flatMap { (i, pass) ->
+                Regex("[\\\\p{L}\\\\p{N}]+").findAll(pass.text).filter { it.value.equals(text, true) }
+                    .map { WordSelection(i, it.range.first) }.toList()
+            }
+            if (tokens.size != 1) return@use null
+            PdfWordHit(text, boxes.minOf { it.left } / page.width, boxes.minOf { it.top } / page.height,
+                boxes.maxOf { it.right } / page.width, boxes.maxOf { it.bottom } / page.height, tokens.single())
+        }
+    }
 
     @Synchronized fun render(index: Int, width: Int): Bitmap {
         val key = index to width

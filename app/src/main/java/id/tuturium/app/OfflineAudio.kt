@@ -63,6 +63,9 @@ internal class OfflineAudio(
     private val synthesize: suspend (Context, OfflineVoice, String, File) -> SynthesizedAudio = OfflineSynth::write
 ) {
     private var player: ExoPlayer? = null
+    private var enhancer: android.media.audiofx.LoudnessEnhancer? = null
+    private var effectSession = 0
+    private var narrationVolume = 1f
     private var producer: Job? = null
     private var progress: Job? = null
     private var rebuffering: Job? = null
@@ -82,7 +85,28 @@ internal class OfflineAudio(
     }
 
     fun setVolume(volume: Float) {
-        player?.volume = volume.coerceIn(0f, 1f)
+        narrationVolume = volume.coerceIn(0f, 1f)
+        player?.volume = narrationVolume
+        runCatching { enhancer?.setTargetGain(narrationBoostMb(narrationVolume)) }
+    }
+
+    private fun attachEnhancer(id: Int) {
+        if (id == effectSession) return
+        enhancer?.release()
+        enhancer = null
+        effectSession = id
+        if (id <= 0) return
+        runCatching {
+            val effect = android.media.audiofx.LoudnessEnhancer(id)
+            try {
+                effect.setTargetGain(narrationBoostMb(narrationVolume))
+                check(effect.setEnabled(true) == android.media.audiofx.AudioEffect.SUCCESS)
+                enhancer = effect
+            } catch (error: Exception) {
+                effect.release()
+                throw error
+            }
+        }
     }
 
     fun stop() {
@@ -96,6 +120,9 @@ internal class OfflineAudio(
         producer = null
         progress = null
         active = null
+        enhancer?.release()
+        enhancer = null
+        effectSession = 0
         old?.release()
         clips.values.forEach { it.file.delete() }
         clips.clear()
@@ -129,6 +156,7 @@ internal class OfflineAudio(
             .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), false)
         setRate(speed, pitch)
         setVolume(volume)
+        attachEnhancer(engine.audioSessionId)
 
         fun finishPass() {
             val previous = active ?: return
@@ -160,6 +188,7 @@ internal class OfflineAudio(
         }
 
         engine.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) { attachEnhancer(audioSessionId) }
             override fun onPlayerError(error: PlaybackException) = fail(error)
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
