@@ -499,13 +499,19 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
             .replace("\r\n", "\n").replace('\r', '\n')))))
     }
 
+    var importTargetFolder: String? = null
+
     private fun addDocument(insert: suspend () -> Book) {
         if (importJob?.isActive == true) return
+        val targetFolder = importTargetFolder
+        importTargetFolder = null
         importing = "Membuka dokumen…"
         importJob = viewModelScope.launch {
             try {
                 safe("Impor gagal") {
-                    val book = withContext(Dispatchers.IO) { insert() }
+                    val book = withContext(Dispatchers.IO) {
+                        insert().also { if (targetFolder != null) FolderStore.assign(app, it.id, targetFolder) }
+                    }
                     refresh()
                     open(book.id)
                 }
