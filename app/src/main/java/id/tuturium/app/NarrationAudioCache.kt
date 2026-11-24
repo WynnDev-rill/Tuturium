@@ -13,8 +13,8 @@ internal fun narrationGain(samples: FloatArray): Float {
         sum += sample.toDouble() * sample
         count++
     }
-    if (count == 0) return 2f
-    return (0.21 / sqrt(sum / count)).toFloat().coerceIn(2f, 4f)
+    if (count == 0) return 1f
+    return (0.32 / sqrt(sum / count)).toFloat().coerceIn(1f, 8f)
 }
 
 internal fun amplifyNarration(sample: Float, gain: Float): Float {
