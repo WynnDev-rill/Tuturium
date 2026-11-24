@@ -163,6 +163,23 @@ class ReadingService : Service() {
     private data class OfflineSession(var settings: ReadingSettings, var options: ListeningOptions)
     private var speechOffset = 0
     private var lastCheckpoint = 0L
+    private var mediaSpeech: PreparedSpeech? = null
+    private var mediaSpeechIndex = -1
+    private var mediaSpeechBook: String? = null
+    private var publishedMediaText: Pair<String, String>? = null
+    private var lastMediaTextUpdate = -1_000L
+    private val mediaTextUpdate = Runnable { refreshMediaText() }
+
+    @SuppressLint("NotificationPermission")
+    private fun refreshMediaText() {
+        if (foreground && (current.playing || current.loading)) {
+            runCatching {
+                if (updateMediaMetadata()) {
+                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification())
+                }
+            }.onFailure { android.util.Log.w("TuturiumPlayback", "Media text update failed", it) }
+        }
+    }
     private var resumeOnFocus = false
     private var hasFocus = false
     private var foreground = false
@@ -497,6 +514,8 @@ class ReadingService : Service() {
         runCatching { engine.setPitch(settings.pitch) }
             .onFailure { android.util.Log.w("TuturiumPlayback", "Set TTS pitch failed", it) }
         startupStage = "mengaktifkan pemutar"
+        rememberMediaSpeech(PreparedSpeech(prepared.text.substring(preparedStart),
+            prepared.offsets.copyOfRange(preparedStart, prepared.offsets.size)), current.index)
         val token = (++utterance).toString()
         activeUtterance = token
         utteranceAudio.reset(token)
@@ -555,6 +574,7 @@ class ReadingService : Service() {
         val paceProfile = PaceProfile.forPlayback(settings, options, 1f)
         val first = PreparedSpeech(initial.text.substring(offset),
             initial.offsets.copyOfRange(offset, initial.offsets.size))
+        rememberMediaSpeech(first, startIndex)
         val passages = sequence {
             val initialPause = document.pauseAfter(startIndex, options)
             yield(OfflinePass(startIndex, first, initialPause.totalMs, initialPause.extraMs))
@@ -573,8 +593,10 @@ class ReadingService : Service() {
         publish()
         offlineAudio.play(scope, voice, passages, speed, settings.pitch, volume = settings.volume,
             onPass = { pass ->
+                rememberMediaSpeech(pass.speech, pass.index)
                 speechOffset = pass.speech.offsets.first()
                 current = current.copy(index = pass.index, offset = speechOffset, range = null)
+                scheduleMediaText()
                 applyOfflineRate(session)
                 persist(pass.index, speechOffset)
                 runCatching { lock.acquire(300_000) }
@@ -589,6 +611,7 @@ class ReadingService : Service() {
             },
             onRange = { range ->
                 current = current.copy(range = range, offset = range.first)
+                scheduleMediaText()
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastCheckpoint >= 2_000L) {
                     lastCheckpoint = now
@@ -640,6 +663,7 @@ class ReadingService : Service() {
                     val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
                     if (mappedStart != null && mappedEnd != null) {
                         current = current.copy(range = mappedStart..mappedEnd, offset = mappedStart)
+                        scheduleMediaText()
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastCheckpoint >= 2000L) {
                             lastCheckpoint = now
@@ -840,6 +864,52 @@ class ReadingService : Service() {
         }
     }
 
+    private fun rememberMediaSpeech(speech: PreparedSpeech, index: Int) {
+        mediaSpeech = speech
+        mediaSpeechIndex = index
+        mediaSpeechBook = current.bookId
+    }
+
+    private fun mediaSubtitle(): String {
+        if (current.completed) return "Bacaan selesai"
+        if (current.error != null) return "Pembacaan terhenti"
+        val speech = mediaSpeech?.takeIf {
+            mediaSpeechBook == current.bookId && mediaSpeechIndex == current.index
+        }
+        val offset = current.range?.first ?: current.offset
+        val excerpt = if (speech != null) {
+            val index = speech.offsets.binarySearch(offset).let { if (it < 0) (-it - 1).coerceAtMost(speech.text.lastIndex) else it }
+            mediaReadingExcerpt(speech.text, index)
+        } else if (!current.loading) {
+            mediaReadingExcerpt(document?.passes?.getOrNull(current.index)?.text.orEmpty(), offset)
+        } else ""
+        return excerpt.ifBlank { if (current.loading) "Menyiapkan suara" else "Tuturium" }
+    }
+
+    private fun updateMediaMetadata(): Boolean {
+        val title = current.title.ifBlank { "Tuturium" }
+        val subtitle = mediaSubtitle()
+        val display = title to subtitle
+        if (publishedMediaText == display) return false
+        session.setMetadata(MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, subtitle)
+            .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
+            .build())
+        publishedMediaText = display
+        lastMediaTextUpdate = SystemClock.elapsedRealtime()
+        return true
+    }
+
+    private fun scheduleMediaText() {
+        if (!foreground) return
+        handler.removeCallbacks(mediaTextUpdate)
+        val wait = (750L - (SystemClock.elapsedRealtime() - lastMediaTextUpdate)).coerceAtLeast(0)
+        if (wait == 0L) mediaTextUpdate.run()
+        else handler.postDelayed(mediaTextUpdate, wait)
+    }
+
     // Android exempts MediaStyle notifications backed by an active media session.
     @SuppressLint("NotificationPermission")
     private fun publish() {
@@ -850,9 +920,8 @@ class ReadingService : Service() {
             current.playing -> PlaybackState.STATE_PLAYING
             else -> PlaybackState.STATE_PAUSED
         }
-        session.setMetadata(MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, current.title)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, "Tuturium").build())
+        handler.removeCallbacks(mediaTextUpdate)
+        updateMediaMetadata()
         session.setPlaybackState(PlaybackState.Builder().setActions(
             PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE or
                 PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS or PlaybackState.ACTION_STOP
@@ -877,9 +946,7 @@ class ReadingService : Service() {
     private fun notification(): Notification = Notification.Builder(this, CHANNEL)
         .setSmallIcon(R.drawable.status_audio)
         .setContentTitle(current.title.ifBlank { "Tuturium" })
-        .setContentText(if (current.loading) "Menyiapkan suara" else if (current.total > 0) {
-            "Bagian ${current.index + 1} dari ${current.total}"
-        } else "Pemutar dokumen")
+        .setContentText(mediaSubtitle())
         .setContentIntent(openApp())
         .setOnlyAlertOnce(true)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
