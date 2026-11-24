@@ -107,14 +107,14 @@ data class PreparedSpeech(val text: String, val offsets: IntArray)
 
 private val headerPattern = Regex("""(?im)^[ \t]*(?:(?:bab|chapter)[ \t]+(?:\d+|[ivxlcdm]+|satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh)\b[^\n]*|daftar isi|pendahuluan)[ \t]*$""")
 private val footerPattern = Regex("""(?im)^[ \t]*(?:halaman|page)[ \t]+\d+(?:[ \t]*(?:/|dari|of)[ \t]*\d+)?[ \t]*$""")
-private val footnotePattern = Regex("""(?m)^[ \t]*(?:\[\d{1,3}]|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[ \t]+[^\n]+$""")
+private val footnotePattern = Regex("""(?m)^[ \t]*(?:\[\d{1,3}\]|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[ \t]+[^\n]+$""")
 private val tablePattern = Regex("""(?m)^[ \t]*(?:\|[^|\n]+\|[^|\n]+\|[^\n]*|[^\t\n]+\t[^\t\n]+\t[^\n]+)$""")
 private val formulaPattern = Regex("""(?m)^[ \t]*[A-Za-zα-ωΑ-Ω][A-Za-z0-9_]*[ \t]*=[ \t]*[^\n]+$""")
 private val citationPattern = Regex("""\([^()\r\n]{2,80},[ \t]*(?:19|20)\d\d(?:[ \t]*:[ \t]*\d+)?\)""")
 private val urlPattern = Regex("""(?i)(?:https?://|www\.)[^\s<>()]+""")
 private val roundPattern = Regex("""\([^()\n]{1,200}\)""")
-private val squarePattern = Regex("""\[[^\[\]\n]{1,200}]""")
-private val curlyPattern = Regex("""\{[^{}\n]{1,200}}""")
+private val squarePattern = Regex("""\[[^\[\]\n]{1,200}\]""")
+private val curlyPattern = Regex("""\{[^{}\n]{1,200}\}""")
 
 fun prepareSpeech(source: String, settings: ListeningOptions): PreparedSpeech {
     if (!settings.skipEnabled) return PreparedSpeech(source, IntArray(source.length) { it })

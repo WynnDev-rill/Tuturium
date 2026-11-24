@@ -13,6 +13,13 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PlaybackNoCrashTest {
+    @Test fun filtersCompileAndUseLiteralClosingBracketsOnAndroidIcu() {
+        val source = "Baca [sela] kata {rumus} lagi."
+        val filtered = prepareSpeech(source, ListeningOptions(skipEnabled = true))
+        assertEquals("Baca  kata  lagi.", filtered.text)
+        assertEquals(source.indexOf("lagi"), filtered.offsets[filtered.text.indexOf("lagi")])
+    }
+
     @Test fun playOnFreshImportNeverCrashesEvenIfGoogleVoiceDataIsUnavailable(): Unit = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val library = Library.get(context)
