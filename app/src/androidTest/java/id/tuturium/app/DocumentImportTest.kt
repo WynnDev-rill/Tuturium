@@ -9,6 +9,8 @@ import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
@@ -94,6 +96,29 @@ class DocumentImportTest {
         }) { _, doc ->
             assertEquals(listOf("Halaman 1", "Halaman 2"), doc.sections.map { it.title })
             assertEquals(listOf("Halaman satu.", "Halaman dua."), doc.passes.map { it.text })
+        }
+    }
+
+    @Test fun pdfImportsAesEncryptedTextWhenTheFileAllowsOpeningWithoutAPassword() = runBlocking {
+        checkImport("Enkripsi.pdf", { file ->
+            PDFBoxResourceLoader.init(context)
+            PDDocument().use { pdf ->
+                val page = PDPage().also(pdf::addPage)
+                PDPageContentStream(pdf, page).use { stream ->
+                    stream.beginText()
+                    stream.setFont(PDType1Font.HELVETICA, 28f)
+                    stream.newLineAtOffset(50f, 700f)
+                    stream.showText("PDF terenkripsi.")
+                    stream.endText()
+                }
+                pdf.protect(StandardProtectionPolicy("owner-test", "", AccessPermission()).apply {
+                    encryptionKeyLength = 128
+                    setPreferAES(true)
+                })
+                pdf.save(file)
+            }
+        }) { _, document ->
+            assertEquals(listOf("PDF terenkripsi."), document.passes.map { it.text })
         }
     }
 

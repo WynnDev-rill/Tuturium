@@ -1,7 +1,6 @@
-## Tuturium 1.3.8
+## Tuturium 1.3.9
 
-- Tombol filter terpisah di sebelah Buku; menu titik tiga kembali untuk tata letak dan urutan.
-- Indikator simpan ditampilkan pada dokumen setelah kembali.
-- Paket suara Indonesia opsional: Supertonic 3 (10), Piper News (1), ArboTTS (6 pilihan lintas tier).
-- Model diunduh terpisah, disimpan lokal, dan digunakan tanpa API; suara Google tetap tersedia.
-- Model neural lokal memakai progres kalimat, bukan timestamp kata yang tidak disediakan model.
+- Foto Google tampil di beranda dan profil. Sesi Google tetap terlihat saat Drive meminta izin lagi.
+- Lewati URL, kutipan, dan elemen halaman sebelum teks dipecah untuk dibacakan. Posisi sorotan tetap mengikuti dokumen.
+- Enam paket suara neural Indonesia tersedia untuk diunduh. Perekaman statistik mengikuti audio, dengan pengelolaan memori suara dan render PDF yang lebih hemat.
+- Cadangan Drive mempertahankan progres, markah, dan riwayat penghapusan permanen. Tabel kriptografi yang tidak dipakai dikeluarkan dari APK.

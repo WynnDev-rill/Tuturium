@@ -94,6 +94,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     packaging.resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/{LICENSE,NOTICE}*", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+    // PDFBox's supported PDF encryption uses conventional algorithms. The provider also
+    // ships lookup tables for the unused Picnic signatures and SIKE key encapsulation.
+    packaging.resources.excludes += setOf(
+        "org/bouncycastle/pqc/crypto/picnic/lowmc.properties",
+        "org/bouncycastle/pqc/crypto/sike/*.properties"
+    )
     packaging.jniLibs.pickFirsts += setOf("**/libc++_shared.so")
 }
 kotlin { compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
