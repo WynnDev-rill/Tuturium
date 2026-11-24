@@ -1,7 +1,7 @@
 name: Export unsigned Tuturium release
 on:
   push:
-    branches: [main]
+    branches: [main, build/tuturium-1-3-8]
   workflow_dispatch:
 
 permissions:
