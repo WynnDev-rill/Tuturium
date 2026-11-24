@@ -1,6 +1,5 @@
-## Tuturium 1.3.12
+## Tuturium 1.3.13
 
-- Panel Tampilan punya pilihan tema, mode Standar/Sepia/Fokus, font dengan pratinjau, dan tombol ukuran serta teks tebal. Warna sorotan dan sorotan kalimat dapat disesuaikan.
-- Narasi Supertonic lebih kuat dengan pembatas puncak audio. Google TTS meminta penguatan di sesi narasi jika mesin dan perangkat mendukung.
-- Supertonic mempersiapkan model saat pembaca dibuka, mengisi antrean dengan target adaptif 3–5 menit, dan memakai kembali cache audio lokal. Saat antrean benar-benar habis, pemutar mengisi cadangan sebelum lanjut dari bagian berikutnya.
-- [Benchmark Supertonic dan batas pengujian](https://github.com/WynnDev-rill/Tuturium/blob/main/docs/supertonic-benchmark.md).
+- Mode PDF menggulir halaman asli secara vertikal. Sakelar PDF/Teks lebih ringkas dan narasi tetap dapat mengikuti halaman yang dibaca.
+- Panel kecepatan memiliki penggeser vertikal, tombol ±, pilihan cepat, dan perkiraan waktu tersisa. Semua laju 0,5×–4× dapat digunakan.
+- Kecepatan otomatis naik 0,05× setiap 600 kata yang selesai diputar, hingga 4×. Kecepatan awal dapat disetel kapan saja.

@@ -5,21 +5,24 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -58,58 +61,53 @@ internal fun OriginalPdfPages(
     }
 
     val target = readingPage.coerceIn(0, total - 1)
-    val pager = rememberPagerState(initialPage = target) { total }
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = target)
     val scope = rememberCoroutineScope()
     var browsing by rememberSaveable(source.path) { mutableStateOf(false) }
-    val dragging by pager.interactionSource.collectIsDraggedAsState()
-    LaunchedEffect(dragging) { if (dragging) browsing = true }
-    LaunchedEffect(target, follow, browsing) {
-        if (follow && !browsing && pager.currentPage != target) pager.scrollToPage(target)
-    }
-    val visiblePage = pager.settledPage
-    val pass = firstPassByPage[visiblePage]
-
-    Column(Modifier.fillMaxSize()) {
-        HorizontalPager(pager, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
-            pageSpacing = 10.dp, beyondViewportPageCount = 1,
-            key = { it }) { index ->
-            PdfPageImage(session, index)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically) {
-            IconButton(enabled = visiblePage > 0, onClick = {
-                browsing = true
-                scope.launch { pager.animateScrollToPage(visiblePage - 1) }
-            }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Halaman sebelumnya") }
-            Text("Halaman ${visiblePage + 1} dari $total", style = MaterialTheme.typography.labelMedium)
-            IconButton(enabled = visiblePage < total - 1, onClick = {
-                browsing = true
-                scope.launch { pager.animateScrollToPage(visiblePage + 1) }
-            }) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Halaman berikutnya") }
-        }
-        if (reading && visiblePage != target) {
-            TextButton(onClick = {
-                browsing = false
-                scope.launch { pager.scrollToPage(target) }
-            }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text("Kembali ke halaman bacaan")
+    val dragging by list.interactionSource.collectIsDraggedAsState()
+    val scrollInput = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y != 0f) browsing = true
+                return Offset.Zero
             }
         }
-        if (pass != null && (!reading || visiblePage != target)) {
-            TextButton(onClick = {
+    }
+    LaunchedEffect(dragging) { if (dragging) browsing = true }
+    LaunchedEffect(target, follow, browsing) {
+        if (follow && !browsing && list.firstVisibleItemIndex != target) list.scrollToItem(target)
+    }
+    val awayFromReading by remember(target, list) {
+        derivedStateOf { list.layoutInfo.visibleItemsInfo.none { it.index == target } }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize().nestedScroll(scrollInput)
+            .semantics { contentDescription = "Dokumen PDF" },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(total, key = { it }) { index ->
+                val pass = firstPassByPage[index]
+                PdfPageImage(session, index, onRead = pass
+                    ?.takeUnless { reading && index == target }
+                    ?.let { { browsing = false
+                        onReadPage(it)
+                    } })
+            }
+        }
+        if (reading && awayFromReading && (browsing || !follow)) {
+            FilledTonalIconButton(onClick = {
                 browsing = false
-                onReadPage(pass)
-            }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Icon(Icons.Rounded.PlayArrow, null)
-                Text("Baca halaman ini")
+                scope.launch { list.scrollToItem(target) }
+            }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+                Icon(Icons.Rounded.MyLocation, "Kembali ke halaman bacaan")
             }
         }
     }
 }
 
 @Composable
-private fun PdfPageImage(session: PdfPageSession, index: Int) {
+private fun PdfPageImage(session: PdfPageSession, index: Int, onRead: (() -> Unit)?) {
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val pixelWidth = with(density) { (configuration.screenWidthDp.dp.toPx() * 1.6f)
@@ -121,21 +119,26 @@ private fun PdfPageImage(session: PdfPageSession, index: Int) {
         }
     }
     val bitmap = result.first
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    val ratio = bitmap?.let { it.width.toFloat() / it.height } ?: session.cachedRatio(index)
+    Box(Modifier.fillMaxWidth().aspectRatio(ratio.coerceIn(0.25f, 3f)),
+        contentAlignment = Alignment.Center) {
         if (bitmap != null) {
-            val shown = bitmap
-            val image = remember(shown) { shown.asImageBitmap() }
-            Image(image, "Halaman PDF ${index + 1}", modifier = Modifier.fillMaxSize(),
+            val image = remember(bitmap) { bitmap.asImageBitmap() }
+            val action = if (onRead == null) Modifier else
+                Modifier.clickable(onClickLabel = "Baca halaman ini", onClick = onRead)
+            Image(image, "Halaman PDF ${index + 1}", modifier = Modifier.fillMaxSize().then(action),
                 contentScale = ContentScale.Fit)
-        } else Text(if (result.second) "Halaman ${index + 1} gagal dirender."
-            else "Memuat halaman ${index + 1}", fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else Text(if (result.second) "Halaman PDF gagal dirender."
+            else "Memuat halaman", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 private class PdfPageSession(private val source: File) {
     private var renderer: PdfRenderer? = null
     private var closed = false
+    private val ratios = java.util.concurrent.ConcurrentHashMap<Int, Float>()
+
+    fun cachedRatio(index: Int): Float = ratios[index] ?: 0.707f
     private val pages = object : LruCache<Pair<Int, Int>, Bitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: Pair<Int, Int>, value: Bitmap) = value.allocationByteCount
     }
@@ -146,6 +149,7 @@ private class PdfPageSession(private val source: File) {
         val key = index to width
         pages.get(key)?.let { return it }
         return open().openPage(index).use { page ->
+            ratios[index] = page.width.toFloat() / page.height
             val scale = minOf(width.toFloat() / page.width, 3500f / page.height)
             val bitmapWidth = (page.width * scale).toInt().coerceAtLeast(1)
             val bitmapHeight = (page.height * scale).toInt().coerceAtLeast(1)

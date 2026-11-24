@@ -21,9 +21,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import java.util.Locale
-import kotlin.math.round
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import kotlin.math.roundToInt
 
 internal val SpeechifyPanel = Color(0xFF202020)
 internal val SpeechifyAccent = Color(0xFF4F60F7)
@@ -369,63 +372,98 @@ fun IndonesianVoiceAvatar(modifier: Modifier = Modifier) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SpeedControlSheet(model: TuturiumModel, playback: Playback, dismiss: () -> Unit) {
-    val p = model.listeningOptions
-    val speed = model.settings.speed
-    TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Normal", style = MaterialTheme.typography.titleLarge)
-            Text(if (p.autoRamp) "Naik setiap 500 kata · maksimal 4×"
-                else "Kecepatan pemutaran", color = SpeechifyMuted,
-                style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = {
-                    model.changeSettings(model.settings.copy(speed =
-                        (round((speed - 0.1f).coerceAtLeast(0.5f) * 10f) / 10f)))
-                }, enabled = speed > 0.5f) { Icon(Icons.Rounded.Remove, "Perlambat") }
-                Text(String.format(Locale.forLanguageTag("id-ID"), "%.1f×",
-                    if (p.autoRamp && playback.playing) playback.effectiveSpeed else speed),
-                    style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                IconButton(onClick = {
-                    model.changeSettings(model.settings.copy(speed =
-                        (round((speed + 0.1f).coerceAtMost(4f) * 10f) / 10f)))
-                }, enabled = speed < 4f) { Icon(Icons.Rounded.Add, "Percepat") }
+fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: Book, current: Int,
+    totalPasses: Int, dismiss: () -> Unit) {
+    val options = model.listeningOptions
+    val base = model.settings.speed
+    val currentSession = playback.bookId == book.id && playback.total > 0 && !playback.completed
+    var dragSpeed by remember { mutableStateOf<Float?>(null) }
+    val speed = dragSpeed ?: if (currentSession) playback.effectiveSpeed else base
+    val remaining = book.words * (1f - current / totalPasses.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+    val seconds = (remaining * 60f / (150f * speed.coerceAtLeast(0.5f))).toInt()
+    val colors = MaterialTheme.colorScheme
+    fun setSpeed(value: Float) {
+        val rounded = (value * 20).roundToInt() / 20f
+        model.choosePlaybackSpeed(rounded.coerceIn(PLAYBACK_SPEED_RANGE))
+    }
+
+    TuturiumSheet(onDismissRequest = dismiss, containerColor = colors.surfaceContainerHigh) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Kecepatan", style = MaterialTheme.typography.titleLarge)
+                    Text("Perkiraan sisa · ${formatPlaybackTime(seconds)}",
+                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedIconButton(onClick = { setSpeed(speed - SPEED_STEP) },
+                            enabled = speed > PLAYBACK_SPEED_RANGE.start) {
+                            Icon(Icons.Rounded.Remove, "Perlambat")
+                        }
+                        Text(formatPlaybackSpeed(speed), style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold, color = colors.primary)
+                        OutlinedIconButton(onClick = { setSpeed(speed + SPEED_STEP) },
+                            enabled = speed < PLAYBACK_SPEED_RANGE.endInclusive) {
+                            Icon(Icons.Rounded.Add, "Percepat")
+                        }
+                    }
+                    if (options.autoRamp && currentSession && speed != base && dragSpeed == null) {
+                        Text("Kecepatan awal ${formatPlaybackSpeed(base)}",
+                            color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                Surface(shape = RoundedCornerShape(22.dp), color = colors.surface,
+                    modifier = Modifier.size(56.dp, 182.dp)) {
+                    Slider(value = speed.coerceIn(PLAYBACK_SPEED_RANGE),
+                        onValueChange = { dragSpeed = (it * 20).roundToInt() / 20f },
+                        onValueChangeFinished = {
+                            dragSpeed?.let { setSpeed(it) }
+                            dragSpeed = null
+                        },
+                        valueRange = PLAYBACK_SPEED_RANGE,
+                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp)
+                            .layout { measurable, constraints ->
+                                val width = constraints.maxWidth
+                                val height = constraints.maxHeight
+                                val slider = measurable.measure(Constraints.fixed(height, width))
+                                layout(width, height) {
+                                    slider.placeWithLayer((width - height) / 2, (height - width) / 2) {
+                                        rotationZ = -90f
+                                    }
+                                }
+                            }.semantics { contentDescription = "Penggeser kecepatan" })
+                }
             }
-            Slider(value = speed, onValueChange = {
-                model.changeSettings(model.settings.copy(speed = round(it * 10f) / 10f), persist = false)
-            }, onValueChangeFinished = { model.changeSettings(model.settings) },
-            valueRange = 0.5f..4f, colors = SliderDefaults.colors(
-                thumbColor = SpeechifyAccent, activeTrackColor = SpeechifyAccent))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf(0.8f, 1f, 1.2f, 2f, 3f, 4f).forEach { x ->
-                    TextButton(onClick = { model.changeSettings(model.settings.copy(speed = x)) }) {
-                        Text(String.format(Locale.US, "%.1f×", x),
-                            color = if (kotlin.math.abs(speed - x) < 0.05f) SpeechifyAccent else Color.White,
-                            style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for (preset in listOf(0.8f, 1f, 1.25f, 2f, 3f, 4f)) {
+                    val selected = kotlin.math.abs(speed - preset) < 0.01f
+                    Surface(onClick = { setSpeed(preset) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics {
+                            contentDescription = "Pilih ${formatPlaybackSpeed(preset)}"
+                        }, shape = RoundedCornerShape(14.dp),
+                        color = if (selected) colors.primaryContainer else colors.surface,
+                        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(formatPlaybackSpeed(preset), style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 }
             }
-            HorizontalDivider(color = Color(0xFF454545))
-            Row(Modifier.fillMaxWidth().clickable {
-                model.changeListeningOptions(p.copy(autoRamp = !p.autoRamp))
-            }, verticalAlignment = Alignment.CenterVertically) {
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Tingkatkan Kecepatan Otomatis",
-                        style = MaterialTheme.typography.bodyLarge)
-                    Text("+0,1× setiap 500 kata yang selesai didengarkan",
-                        color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
+                    Text("Tingkatkan Kecepatan Otomatis", style = MaterialTheme.typography.titleSmall)
+                    Text("+0,05× tiap $AUTO_SPEED_WORDS kata · hingga 4×",
+                        color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(p.autoRamp,
-                    onCheckedChange = { model.changeListeningOptions(p.copy(autoRamp = it)) },
-                    colors = SwitchDefaults.colors(checkedTrackColor = SpeechifyAccent))
+                Switch(options.autoRamp,
+                    onCheckedChange = { model.changeListeningOptions(options.copy(autoRamp = it)) },
+                    modifier = Modifier.semantics { contentDescription = "Tingkatkan kecepatan otomatis" })
             }
-            Spacer(Modifier.height(30.dp))
         }
     }
 }

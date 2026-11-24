@@ -11,6 +11,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -182,7 +185,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 17.dp),
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (pdfSource == null) 17.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = model::closeReader, enabled = !model.savingReader) {
                 if (model.savingReader) CircularProgressIndicator(Modifier.size(23.dp), strokeWidth = 2.dp)
@@ -200,29 +203,29 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                 Icon(Icons.Rounded.MoreHoriz, "Opsi pembaca", Modifier.size(27.dp))
             }
         }
-        if (book.format == "PDF" && pdfSource != null) {
-            Row(Modifier.fillMaxWidth().padding(bottom = 11.dp),
-                horizontalArrangement = Arrangement.Center) {
-                Surface(shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                    Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        listOf(true to "PDF", false to "Teks").forEach { (pdf, label) ->
-                            val selected = showPdf == pdf
-                            Surface(onClick = {
+        if (pdfSource != null) {
+            val colors = MaterialTheme.colorScheme
+            Box(Modifier.align(Alignment.CenterHorizontally)) {
+                Surface(Modifier.align(Alignment.Center).size(108.dp, 30.dp),
+                    shape = RoundedCornerShape(15.dp), color = colors.surface,
+                    border = BorderStroke(1.dp, colors.outlineVariant)) {}
+                Row(Modifier.selectableGroup()) {
+                    listOf(true to "PDF", false to "Teks").forEach { (pdf, label) ->
+                        val selected = showPdf == pdf
+                        Box(Modifier.size(width = 54.dp, height = 48.dp)
+                            .selectable(selected, role = Role.Tab) {
                                 showPdf = pdf
                                 if (!pdf) {
                                     manualBrowsing = false
                                     jump = current
                                 }
-                            }, shape = RoundedCornerShape(20.dp),
-                                color = if (selected) MaterialTheme.colorScheme.primaryContainer
-                                    else Color.Transparent) {
-                                Text(label, modifier = Modifier.padding(horizontal = 22.dp, vertical = 9.dp),
-                                    fontSize = 14.sp,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                                        else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }, contentAlignment = Alignment.Center) {
+                            Surface(Modifier.size(50.dp, 26.dp), shape = RoundedCornerShape(13.dp),
+                                color = if (selected) colors.primaryContainer else Color.Transparent,
+                                contentColor = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(label, style = MaterialTheme.typography.labelMedium)
+                                }
                             }
                         }
                     }
@@ -427,7 +430,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             })
         "voices" -> ReaderVoiceSheet(model) { panel = null }
         "timer" -> ReaderTimerSheet(playback) { panel = null }
-        "speed" -> SpeedControlSheet(model, playback) { panel = null }
+        "speed" -> SpeedControlSheet(model, playback, book, current, document.passes.size) { panel = null }
         "queue" -> ReaderQueueSheet(model) { panel = null }
         "notes" -> ReaderNotesSheet(book, current) { panel = null }
         "skip" -> SkipOptionsSheet(model) { panel = null }

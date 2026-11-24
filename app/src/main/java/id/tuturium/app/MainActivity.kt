@@ -811,6 +811,14 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    internal fun choosePlaybackSpeed(speed: Float) {
+        if (settings.speed == speed && listeningOptions.autoRamp && ReadingService.state.value.bookId != null) {
+            ReadingService.command(app, ReadingService.RESET_SPEED_RAMP)
+        } else {
+            changeSettings(settings.copy(speed = speed))
+        }
+    }
+
     fun changeListeningOptions(value: ListeningOptions) {
         val previous = listeningOptions
         listeningOptions = value

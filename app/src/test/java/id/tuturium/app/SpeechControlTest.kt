@@ -4,12 +4,33 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SpeechControlTest {
-    @Test fun autoRampingEveryFiveHundredWordsCappedAtFour() {
-        assertEquals(1.0f, rampedSpeed(1f, 499, true), 0.0001f)
-        assertEquals(1.1f, rampedSpeed(1f, 500, true), 0.0001f)
-        assertEquals(1.2f, rampedSpeed(1f, 1000, true), 0.0001f)
-        assertEquals(4f, rampedSpeed(3.8f, 2000, true), 0.0001f)
-        assertEquals(1f, rampedSpeed(1f, 2000, false), 0.0001f)
+    @Test fun autoRampingEverySixHundredWordsPreservesTheBaseAndCapsAtFour() {
+        assertEquals(1.25f, rampedSpeed(1.25f, 599, true), 0.0001f)
+        assertEquals(1.30f, rampedSpeed(1.25f, 600, true), 0.0001f)
+        assertEquals(1.35f, rampedSpeed(1.25f, 1200, true), 0.0001f)
+        assertEquals(4f, rampedSpeed(3.95f, 2000, true), 0.0001f)
+        assertEquals(1.25f, rampedSpeed(1.25f, 2000, false), 0.0001f)
+    }
+
+    @Test fun aNewBaseOrToggleResetsCompletedWordsButReapplyingTheSameSettingsKeepsProgress() {
+        val speed = AutomaticSpeed()
+        speed.spoken(600)
+        speed.configure(1.25f, true)
+        speed.spoken(420)
+        speed.configure(1.25f, true)
+        speed.spoken(180)
+        assertEquals(1.30f, speed.rate, 0.0001f)
+        speed.configure(1.25f, false)
+        speed.spoken(1000)
+        speed.configure(1.25f, true)
+        assertEquals(1.25f, speed.rate, 0.0001f)
+        speed.spoken(Int.MAX_VALUE)
+        assertEquals(4f, speed.rate, 0.0001f)
+        speed.configure(2f, true)
+        assertEquals(2f, speed.rate, 0.0001f)
+        speed.spoken(600)
+        speed.reset()
+        assertEquals(2f, speed.rate, 0.0001f)
     }
 
     @Test fun inlineSkippedContentPreservesOriginalOffsets() {

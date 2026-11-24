@@ -11,6 +11,12 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
@@ -57,6 +63,20 @@ class ReaderFlowTest {
             "Kalimat pertama. Kalimat kedua. Kalimat ketiga. Kalimat keempat.")
         compose.onNodeWithText("Simpan").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText(EXAMPLE).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Atur kecepatan").performClick()
+        compose.onNodeWithContentDescription("Penggeser kecepatan").performTouchInput { swipeUp(durationMillis = 400) }
+        compose.runOnIdle {
+            assertTrue(ReadingSettings.read(compose.activity).speed > 2f)
+        }
+        compose.onNodeWithContentDescription("Pilih 2,0×").performClick()
+        compose.onNodeWithContentDescription("Percepat").performClick()
+        compose.onNodeWithText("2,05×").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Penggeser kecepatan").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tingkatkan kecepatan otomatis").performClick()
+        compose.onNodeWithText("+0,05× tiap 600 kata · hingga 4×").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tingkatkan kecepatan otomatis").performClick()
+        compose.onNodeWithContentDescription("Pilih 1,0×").performClick()
+        androidx.test.espresso.Espresso.pressBack()
         compose.onNodeWithContentDescription("Opsi pembaca").performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed().performClick()
         compose.onNodeWithText("Tampilan").assertIsDisplayed()
@@ -104,7 +124,7 @@ class ReaderFlowTest {
         compose.onNodeWithText("Pustaka Suara").assertIsDisplayed()
     }
 
-    @Test fun originalPdfTurnsPagesAndSwitchesToReadableText() {
+    @Test fun originalPdfScrollsVerticallyAndSwitchesToReadableText() {
         val context = compose.activity.applicationContext
         val library = Library.get(context)
         val book = library.add("Tata letak halaman", "PDF", ReadingDocument(listOf(
@@ -129,15 +149,22 @@ class ReaderFlowTest {
             compose.waitUntil(15_000) { compose.onAllNodesWithText(book.title).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(book.title).performClick()
             compose.waitUntil(15_000) {
-                compose.onAllNodesWithText("Halaman 1 dari 3").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithContentDescription("Halaman PDF 1").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("Halaman 1 dari 3").assertIsDisplayed()
-            compose.onNodeWithContentDescription("Halaman berikutnya").performClick()
-            compose.onNodeWithText("Halaman 2 dari 3").assertIsDisplayed()
-            compose.onNodeWithText("Baca halaman ini").assertDoesNotExist()
-            compose.onNodeWithContentDescription("Halaman berikutnya").performClick()
-            compose.onNodeWithText("Halaman 3 dari 3").assertIsDisplayed()
-            compose.onNodeWithText("Baca halaman ini").assertIsDisplayed()
+            compose.onNodeWithText("Halaman 1 dari 3").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Halaman berikutnya").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Halaman PDF 1").assertHasClickAction()
+            val pdfList = compose.onNodeWithContentDescription("Dokumen PDF")
+            pdfList.performTouchInput { swipeUp(durationMillis = 480) }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("Halaman PDF 2").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Halaman PDF 2").assertIsDisplayed().assertHasNoClickAction()
+            pdfList.performScrollToIndex(2)
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("Halaman PDF 3").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("Halaman PDF 3").assertIsDisplayed().assertHasClickAction()
             compose.onNodeWithText("Teks").performClick()
             compose.onNodeWithText("Teks halaman pertama.").assertIsDisplayed()
         } finally {

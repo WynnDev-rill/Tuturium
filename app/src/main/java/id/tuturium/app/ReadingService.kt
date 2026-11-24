@@ -167,7 +167,7 @@ class ReadingService : Service() {
     private var preparedLocation: Pair<Int, Int>? = null
     private var preparedOptions: ListeningOptions? = null
     private var continuation: Job? = null
-    private var listenedWords = 0
+    private val automaticSpeed = AutomaticSpeed()
     private var listeningStart = 0L
     private var listeningSpeed = 1f
     private var current = Playback()
@@ -290,11 +290,15 @@ class ReadingService : Service() {
                 it.settings = it.settings.copy(volume = volume)
                 offlineAudio.setVolume(volume)
             }
-            SETTINGS -> if (current.playing || current.loading) {
+            SETTINGS, RESET_SPEED_RAMP -> {
                 val nextSettings = ReadingSettings.read(this)
                 val nextOptions = ListeningOptions.read(this)
+                automaticSpeed.configure(nextSettings.speed, nextOptions.autoRamp)
+                if (intent.action == RESET_SPEED_RAMP) automaticSpeed.reset()
                 val session = offlineSession
-                if (session != null && session.settings.voice == nextSettings.voice &&
+                if (!current.playing && !current.loading) {
+                    if (current.bookId != null) current = current.copy(effectiveSpeed = automaticSpeed.rate)
+                } else if (session != null && session.settings.voice == nextSettings.voice &&
                     session.options.copy(autoRamp = nextOptions.autoRamp) == nextOptions
                 ) {
                     session.settings = nextSettings
@@ -326,7 +330,7 @@ class ReadingService : Service() {
         cachedVoices = emptyList()
         appliedVoiceName = null
         speechOffset = offset.coerceAtLeast(0)
-        listenedWords = 0
+        automaticSpeed.reset()
         document = null
         preparedParagraph = null
         preparedLocation = null
@@ -389,6 +393,7 @@ class ReadingService : Service() {
         }
         startupStage = "membaca pengaturan"
         val options = ListeningOptions.read(this)
+        automaticSpeed.configure(settings.speed, options.autoRamp)
         startupStage = "menyiapkan teks"
         val prepared = preparePass(document, pass, options)
         val from = if (speechOffset <= 0) 0 else prepared.offsets.indexOfFirst { it >= speechOffset }
@@ -462,7 +467,7 @@ class ReadingService : Service() {
         }
         startupStage = "mengatur suara"
         val requestedSpeed = if (normalSpeedRetryPass == current.index) 1f
-            else rampedSpeed(settings.speed, listenedWords, options.autoRamp)
+            else automaticSpeed.rate
         if (offline != null) {
             startOffline(document, offline, settings, options, prepared, from)
             return
@@ -515,7 +520,7 @@ class ReadingService : Service() {
     }
 
     private fun applyOfflineRate(session: OfflineSession) {
-        val speed = rampedSpeed(session.settings.speed, listenedWords, session.options.autoRamp)
+        val speed = automaticSpeed.rate
         if (current.playing && current.effectiveSpeed != speed) recordListeningTime()
         offlineAudio.setRate(speed, session.settings.pitch)
         current = current.copy(effectiveSpeed = speed)
@@ -537,7 +542,7 @@ class ReadingService : Service() {
                 if (speech.text.isNotBlank()) yield(OfflinePass(index, speech))
             }
         }
-        val speed = rampedSpeed(settings.speed, listenedWords, options.autoRamp)
+        val speed = automaticSpeed.rate
         current = current.copy(playing = false, loading = true, completed = false,
             effectiveSpeed = speed, range = null, error = null)
         runCatching { lock.acquire(300_000) }
@@ -554,7 +559,7 @@ class ReadingService : Service() {
                 val words = countDocumentWords(pass.speech.text)
                 val rate = current.effectiveSpeed
                 val context = applicationContext
-                listenedWords += words
+                automaticSpeed.spoken(words)
                 positionWrites.launch { ListeningStats.recordUtterance(context, words, rate) }
             },
             onRange = { range ->
@@ -621,7 +626,7 @@ class ReadingService : Service() {
                 val speed = current.effectiveSpeed
                 val context = applicationContext
                 positionWrites.launch { ListeningStats.recordUtterance(context, words, speed) }
-                listenedWords += words
+                automaticSpeed.spoken(words)
                 runCatching { if (lock.isHeld) lock.release() }
                     .onFailure { android.util.Log.w("TuturiumPlayback", "Release wakelock failed", it) }
                 if (current.index + 1 < current.total) {
@@ -865,6 +870,7 @@ class ReadingService : Service() {
         const val SEEK = "SEEK"
         const val TIMER = "TIMER"
         const val SETTINGS = "SETTINGS"
+        internal const val RESET_SPEED_RAMP = "RESET_SPEED_RAMP"
         const val VOLUME = "VOLUME"
         private const val CHANNEL = "reading"
         private const val NOTIFICATION = 41

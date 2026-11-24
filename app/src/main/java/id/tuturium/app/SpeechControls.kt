@@ -2,9 +2,6 @@ package id.tuturium.app
 
 import android.content.Context
 import java.util.Locale
-import kotlin.math.ceil
-import kotlin.math.floor
-import kotlin.math.round
 
 /** These preferences only affect playback, never change stored books or their contents. */
 data class ListeningOptions(
@@ -73,12 +70,41 @@ data class ListeningOptions(
     }
 }
 
-/** The user-selected speed is the starting point, not a hard 30 fps audio dependency. */
-fun rampedSpeed(base: Float, listenedWords: Int, enabled: Boolean): Float {
-    val bounded = base.coerceIn(0.5f, 4f)
+internal const val AUTO_SPEED_WORDS = 600
+internal const val SPEED_STEP = 0.05f
+internal val PLAYBACK_SPEED_RANGE = 0.5f..4f
+
+internal fun rampedSpeed(base: Float, listenedWords: Int, enabled: Boolean): Float {
+    val bounded = base.coerceIn(PLAYBACK_SPEED_RANGE)
     if (!enabled) return bounded
-    return ((round(bounded * 10f) / 10f) +
-        floor(listenedWords.coerceAtLeast(0) / 500f) * 0.1f).coerceAtMost(4f)
+    val steps = listenedWords.coerceAtLeast(0) / AUTO_SPEED_WORDS
+    return (bounded + steps * SPEED_STEP).coerceAtMost(PLAYBACK_SPEED_RANGE.endInclusive)
+}
+
+/** Counts completed speech within the current document and base setting. */
+internal class AutomaticSpeed {
+    private var base = 1f
+    private var enabled = false
+    private var completedWords = 0
+
+    val rate: Float get() = rampedSpeed(base, completedWords, enabled)
+
+    fun configure(speed: Float, ramp: Boolean) {
+        if (speed != base || ramp != enabled) {
+            base = speed
+            enabled = ramp
+            reset()
+        }
+    }
+
+    fun spoken(words: Int) {
+        if (enabled && words > 0 && rate < PLAYBACK_SPEED_RANGE.endInclusive) {
+            val limit = 70 * AUTO_SPEED_WORDS // 0.5× to 4× in 0.05× steps.
+            completedWords += words.coerceAtMost(limit - completedWords)
+        }
+    }
+
+    fun reset() { completedWords = 0 }
 }
 
 /** 10 seconds is an approximate word-based seek; Android TTS does not expose exact PCM timeline. */

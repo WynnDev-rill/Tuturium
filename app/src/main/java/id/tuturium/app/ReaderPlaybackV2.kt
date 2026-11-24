@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import java.util.Locale
 
 @Composable
@@ -20,7 +22,7 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
     playback: Playback, current: Int, playing: Boolean, loading: Boolean,
     speedPanel: () -> Unit, voicePanel: () -> Unit, seek: (Int) -> Unit) {
     val progress = (current + 1f) / document.passes.size.coerceAtLeast(1)
-    val actual = if (playing) playback.effectiveSpeed else model.settings.speed
+    val actual = if (playback.bookId == book.id && (playing || loading)) playback.effectiveSpeed else model.settings.speed
     val wholeSeconds = (book.words * 60f / (150f * actual.coerceAtLeast(0.5f))).toInt().coerceAtLeast(1)
     val elapsedSeconds = (wholeSeconds * progress).toInt()
     Surface(color = Color.Black,
@@ -60,9 +62,11 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
                     Icon(Icons.Rounded.Forward10, "Maju sekitar 10 detik", Modifier.size(34.dp))
                 }
                 Surface(onClick = speedPanel, color = Color(0xFF272727),
-                    modifier = Modifier.size(56.dp), shape = CircleShape) {
+                    modifier = Modifier.size(56.dp).semantics {
+                        contentDescription = "Atur kecepatan"
+                    }, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(String.format(Locale.forLanguageTag("id-ID"), "%.1f×", actual),
+                        Text(formatPlaybackSpeed(actual),
                             color = Color.White, fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelLarge)
                     }
@@ -75,6 +79,9 @@ fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: ReadingDocumen
         }
     }
 }
+
+internal fun formatPlaybackSpeed(speed: Float): String =
+    String.format(Locale.forLanguageTag("id-ID"), "%.2f", speed).removeSuffix("0") + "×"
 
 internal fun formatPlaybackTime(seconds: Int): String {
     val time = seconds.coerceAtLeast(0)
