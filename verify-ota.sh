@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 trap 'adb shell dumpsys activity activities | grep -i -E "resumed|mFocused" || true; python3 -c "from xml.etree import ElementTree as E; print([n.get(\"text\") for n in E.parse(\"window.xml\").iter(\"node\") if n.get(\"text\")])" || true' ERR
-curl -fLsS https://github.com/WynnDev-rill/Tuturium/releases/download/v1.3.17/Tuturium.apk -o baseline.apk
+curl -fLsS https://github.com/WynnDev-rill/Tuturium/releases/download/v1.3.23/Tuturium.apk -o baseline.apk
 adb shell settings put global hide_error_dialogs 1
 adb shell settings put secure anr_show_background 0
 adb shell am force-stop com.google.android.apps.nexuslauncher
 release=""
 for attempt in {1..12}; do
   release=$(curl -fsSL --max-time 12 https://api.github.com/repos/WynnDev-rill/Tuturium/releases/latest |
-    jq -e '{tag_name, assets: [.assets[] | {name, state, digest}]} | select(.tag_name=="v1.3.19")') && break
+    jq -e '{tag_name, assets: [.assets[] | {name, state, digest}]} | select(.tag_name=="v1.3.24")') && break
   sleep 5
 done
 test -n "$release"
@@ -42,10 +42,14 @@ PY
   done
   return 1
 }
-if ! button=$(find_text 'Unduh pembaruan' 4); then
+if button=$(find_text 'Unduh pembaruan' 6); then
+  echo 'First launch detected the update automatically.'
+else
   adb shell am force-stop id.tuturium.app
   adb shell am start -W -n id.tuturium.app/.MainActivity
-  if ! button=$(find_text 'Unduh pembaruan' 4); then
+  if button=$(find_text 'Unduh pembaruan' 6); then
+    echo 'Relaunch detected the update automatically.'
+  else
     echo 'Opening a manual check after startup did not show the release.'
     profile=$(find_text 'Buka profil' 10)
     adb shell input tap $profile
@@ -54,6 +58,7 @@ if ! button=$(find_text 'Unduh pembaruan' 4); then
     check=$(find_text 'Periksa pembaruan' 10)
     adb shell input tap $check
     button=$(find_text 'Unduh pembaruan' 15)
+    echo 'Manual release check detected the update.'
   fi
 fi
 echo 'The previous app exposed its download button for the published release.'
@@ -71,7 +76,7 @@ echo 'Android displayed an installation confirmation for the verified download.'
 adb shell input tap $install
 for attempt in {1..30}; do
   adb shell dumpsys package id.tuturium.app > package.txt
-  if grep -F 'versionName=1.3.19' package.txt; then
+  if grep -F 'versionName=1.3.24' package.txt; then
     echo 'In-app installation completed.'
     exit 0
   fi
