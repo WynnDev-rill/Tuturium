@@ -56,7 +56,7 @@ class OfflineVoiceRuntimeTest {
         }
     }
     @Test(timeout = 360_000L)
-    fun optimizedGraphKeepsIndonesianCuesAndPlaysInOrderAtFourTimesSpeed() = runBlocking {
+    fun optimizedGraphKeepsIndonesianCuesAndPlaysInOrderAtFourTimesSpeed(): Unit = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         assumeTrue(InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") == "true")
         val context = instrumentation.targetContext

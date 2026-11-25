@@ -85,7 +85,7 @@ Model tetap menyintesis pada 1×. Graf akselerasi menargetkan 6 langkah saat mem
 
 ## Pengukuran POCO F6
 
-Pengujian perangkat fisik belum dilakukan. Untuk membandingkan sebelum dan sesudah, gunakan dokumen Indonesia yang sama, suara yang sama, dan bersihkan **cache audio Supertonic** di Setelan Penyimpanan sebelum masing-masing sesi. Jalankan 2×, 3×, dan 4× sendiri-sendiri. Untuk setiap laju, ukur 30 menit dengan jaringan mati setelah model terpasang, lalu ulangi dengan layar terkunci. Hentikan playback untuk menutup log sesi.
+Pengujian perangkat fisik belum dilakukan. Ukur jalur dasar pada APK yang sama sebelum mengunduh akselerasi, lalu ulangi setelah estimator terpasang. Gunakan dokumen Indonesia yang sama, suara yang sama, dan bersihkan **cache audio Supertonic** di Setelan Penyimpanan sebelum masing-masing sesi. Jalankan 2×, 3×, dan 4× sendiri-sendiri. Untuk setiap laju, ukur 30 menit dengan jaringan mati setelah model terpasang, lalu ulangi dengan layar terkunci. Hentikan playback untuk menutup log sesi.
 
 ```bash
 adb logcat -d -s TuturiumSupertonic:I TuturiumVoice:W
