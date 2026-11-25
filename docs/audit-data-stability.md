@@ -49,3 +49,5 @@ Tanpa login, impor, pemutaran offline, progres, sampah, dan pengaturan tetap ber
 | P50 | 85 ms | 97 ms |
 | P95 | 400 ms | 450 ms |
 | P99 | 900 ms | 500 ms |
+
+Pengujian ulang menyelesaikan 54 tes Android pada emulator Android 15 dengan build debug dan rilis serta lint. Cakupan meliputi impor OCR/PDF, progres, markah, sinkronisasi berbasis arsip, Supertonic, dan kontrol pemutar latar belakang. Satu skenario Supertonic dengan graf optimasi melaporkan nol buffering pada 4× untuk fixture sintetis. Sintesis enam langkah saat pengujian graf menghasilkan RTF sekitar 0,33 tanpa graf tambahan dan 0,38 dengan graf tambahan pada emulator itu. Perbedaan ini tidak menunjukkan hasil NPU, CPU ARM64 asli, atau kestabilan sesi panjang. [Pengujian Android lengkap](https://github.com/WynnDev-rill/Tuturium/actions/runs/45560969300)
