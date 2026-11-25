@@ -28,6 +28,14 @@ class IndonesianNormalizationTest {
         assertEquals("lima sampai sepuluh", prepare("5–10").text)
         assertEquals("Bab empat", prepare("Bab IV").text)
         assertEquals("MIX", prepare("MIX").text)
+
+        val math = ReadingDocument(listOf(Section("Matematika", "Rumus di bawah ini.\nx = 2^3 + 4\nHasilnya dibahas.")))
+        val formula = math.passes.indexOfFirst { it.text.startsWith("x =") }
+        assertEquals("x sama dengan dua pangkat tiga tambah empat",
+            NarrationPipeline(math, ListeningOptions()).prepare(formula).text)
+        val filtered = NarrationPipeline(math, ListeningOptions(skipEnabled = true))
+        assertEquals("", filtered.prepare(formula).text)
+        assertEquals("Hasilnya dibahas.", filtered.prepare(formula + 1).text)
     }
 
     @Test fun leavesProtectedStringsAndSpellsPhonesAndCodes() {

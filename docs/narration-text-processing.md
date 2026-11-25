@@ -38,6 +38,6 @@ Margin memakai proporsi relatif terhadap halaman PDF yang ditampilkan. Perubahan
 
 ## Pengujian host
 
-86 uji unit, lint debug, dan build instrumentasi lulus. Korpus unit mencakup contoh 1.874.161, desimal dengan nol sesudah koma, mata uang, tanggal, waktu, pecahan, pangkat, persentase, satuan, Romawi dalam konteks, telepon, kode, dan indeks sorotan. Tes layout mencakup header berulang, judul bab berbeda, nomor halaman, dan margin dengan pengecualian satu halaman.
+87 uji unit, lint debug, dan build instrumentasi lulus. Korpus unit mencakup contoh 1.874.161, desimal dengan nol sesudah koma, mata uang, tanggal, waktu, pecahan, pangkat, persentase, satuan, Romawi dalam konteks, telepon, kode, dan indeks sorotan. Tes layout mencakup header berulang, judul bab berbeda, nomor halaman, dan margin dengan pengecualian satu halaman.
 
 Mikrobenchmark JVM host mengukur fungsi normalisasi saja menggunakan dua jenis kalimat Indonesia, tujuh batch masing-masing 2.000 pemanggilan setelah pemanasan. Median jalur akhir sekitar 10 µs per kalimat prosa dan 53 µs per kalimat padat angka. Ini tidak mencakup sintesis suara atau OCR dan bukan benchmark buffering pada ponsel.
