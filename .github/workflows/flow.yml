@@ -1,7 +1,7 @@
-name: Focused narration, keyboard and library tests
+name: Verify reader time and speed panel
 on:
   push:
-    branches: [verify/narration-1-3-19]
+    branches: [verify/stable-clock-1-3-22]
 permissions:
   contents: read
 jobs:
@@ -10,13 +10,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 81a5befd045bd9ccd3cd7bee42bccfff95dd62b7
+          ref: c5dfb8fe0767573730204caa2303af0c37ef776d
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest
+      - run: ./gradlew --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -31,12 +31,12 @@ jobs:
           disable-animations: true
           script: >-
             bash -c 'adb shell settings put secure show_ime_with_hard_keyboard 1;
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.ReaderFlowTest,id.tuturium.app.LibraryV2FlowTest,id.tuturium.app.OfflineVoiceRuntimeTest -Pandroid.testInstrumentationRunnerArguments.offlineVoiceSmoke=true;
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.ReaderFlowTest#libraryAndReaderAgreeOnSavedWordsAndRemainingDuration;
             result=$?; if [ "$result" -ne 0 ]; then adb logcat -d -s AndroidRuntime:E TuturiumPlayback:V TuturiumVoice:V;
             find app/build/outputs/androidTest-results -name "TEST-*.xml" -exec sed -n "/<failure/,/<\/failure>/p" {} +; fi;
             exit "$result"'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: voice-regression-evidence
+          name: reader-remaining-duration-evidence
           path: app/build/outputs/androidTest-results/
