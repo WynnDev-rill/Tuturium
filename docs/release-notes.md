@@ -2,6 +2,7 @@
 
 - Pulihkan hanya cadangan Drive yang lolos pemeriksaan isi. Pulihkan PDF asli yang hilang sambil mempertahankan progres dan markah lokal yang lebih baru.
 - Tampilkan kembali buku di tingkat utama bila folder rujukannya tidak tersedia. Perbarui pustaka dan setelan sesudah menerima data Drive. Pembaca tetap bisa ditutup setelah dokumennya dihapus melalui sinkronisasi.
+- Ikut bersihkan catatan lokal dan salinan berbagi sementara ketika buku dihapus permanen.
 - Siapkan susunan teks dan indeks PDF di luar thread antarmuka. Pertahankan isi pembaca sampai transisi kembali selesai.
 - Pemeriksaan pembaruan otomatis bisa dicoba lagi ketika aplikasi kembali ke depan.
 ## Tuturium 1.3.24

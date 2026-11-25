@@ -236,12 +236,27 @@ class Library private constructor(context: Context) :
         } finally {
             db.endTransaction()
         }
-        if (removed) {
+        if (removed || !trashOnly) {
             documentFile(id).delete()
             File(folder, "$id.pdf").delete()
+            File(appContext.cacheDir, "shared/Tuturium-$id.txt").delete()
             PdfMarginStore.write(appContext, id, PdfMarginSettings())
+            val prefs = notePreferences()
+            val keys = prefs.all.keys.filter { it.startsWith("$id:") }
+            if (keys.isNotEmpty()) prefs.edit().apply { keys.forEach { remove(it) } }.apply()
         }
         return removed
+    }
+
+    private fun notePreferences() = appContext.getSharedPreferences("book_notes", Context.MODE_PRIVATE)
+
+    internal fun note(id: String, index: Int): String =
+        notePreferences().getString("$id:$index", "").orEmpty()
+
+    @Synchronized
+    internal fun saveNote(id: String, index: Int, text: String): Boolean {
+        if (book(id) == null) return false
+        return notePreferences().edit().putString("$id:$index", text.take(3000)).commit()
     }
 
     fun bookmarks(id: String): List<Bookmark> = readableDatabase.query(

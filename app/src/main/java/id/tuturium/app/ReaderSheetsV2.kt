@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -216,12 +219,11 @@ fun ReaderQueueSheet(model: TuturiumModel, dismiss: () -> Unit) {
 @Composable
 fun ReaderNotesSheet(book: Book, index: Int, dismiss: () -> Unit) {
     val context = LocalContext.current
-    val preferences = remember(book.id) {
-        context.getSharedPreferences("book_notes", android.content.Context.MODE_PRIVATE)
-    }
-    var value by remember(book.id, index) {
-        mutableStateOf(preferences.getString("${book.id}:$index", "").orEmpty())
-    }
+    val library = remember(context) { Library.get(context) }
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    var value by remember(book.id, index) { mutableStateOf(library.note(book.id, index)) }
     TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Column(Modifier.fillMaxWidth().padding(22.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -230,9 +232,18 @@ fun ReaderNotesSheet(book: Book, index: Int, dismiss: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(value, { value = it.take(3000) },
                 modifier = Modifier.fillMaxWidth(), label = { Text("Catatan pribadi") }, minLines = 3)
+            if (failed) Text("Catatan gagal disimpan. Periksa apakah dokumen masih tersedia.",
+                color = MaterialTheme.colorScheme.error)
             Button(onClick = {
-                preferences.edit().putString("${book.id}:$index", value).apply(); dismiss()
-            }, modifier = Modifier.fillMaxWidth(),
+                val text = value
+                saving = true
+                failed = false
+                scope.launch {
+                    val saved = withContext(Dispatchers.IO) { library.saveNote(book.id, index, text) }
+                    if (saved) dismiss() else failed = true
+                    saving = false
+                }
+            }, modifier = Modifier.fillMaxWidth(), enabled = !saving,
                 colors = ButtonDefaults.buttonColors(containerColor = SpeechifyAccent)) {
                 Text("Simpan catatan")
             }

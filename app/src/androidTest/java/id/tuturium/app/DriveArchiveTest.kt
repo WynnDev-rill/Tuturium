@@ -137,6 +137,26 @@ class DriveArchiveTest {
         }
     }
 
+    @Test fun notesSurviveTrashButAreErasedAfterPermanentDeletion() {
+        val library = Library.get(InstrumentationRegistry.getInstrumentation().targetContext)
+        val book = library.add("Catatan lokal", "TXT",
+            ReadingDocument(listOf(Section("Bab", "Dokumen untuk catatan lokal."))))
+        try {
+            assertTrue(library.saveNote(book.id, 0, "Catatan pribadi."))
+            library.delete(book.id)
+            assertEquals("Catatan pribadi.", library.note(book.id, 0))
+            library.restore(book.id)
+            assertEquals("Catatan pribadi.", library.note(book.id, 0))
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+            assertEquals("", library.note(book.id, 0))
+            assertFalse(library.saveNote(book.id, 0, "Catatan dari pembaca lama."))
+        } finally {
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     private fun record(id: String) = JSONObject().put("id", id).put("title", "Judul dari Drive")
         .put("format", "TXT").put("count", 1).put("position", 0).put("updated", 1L)
 
