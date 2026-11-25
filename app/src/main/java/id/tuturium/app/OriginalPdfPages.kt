@@ -413,9 +413,11 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
                                         ?: hit ?: nearestPdfWord(recognized, x, y)
                                 }
                                 selected = resolved
-                                if (resolved == null) android.widget.Toast.makeText(context,
-                                    "Teks tidak dapat dipilih pada lokasi ini. Gunakan mode Teks.",
-                                    android.widget.Toast.LENGTH_SHORT).show()
+                                if (resolved == null) withContext(Dispatchers.Main.immediate) {
+                                    android.widget.Toast.makeText(context,
+                                        "Teks tidak dapat dipilih pada lokasi ini. Gunakan mode Teks.",
+                                        android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             }
                         })
                     }, contentScale = ContentScale.Fit, colorFilter = filter)

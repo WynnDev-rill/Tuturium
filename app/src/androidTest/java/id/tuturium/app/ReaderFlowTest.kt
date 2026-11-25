@@ -296,9 +296,12 @@ class ReaderFlowTest {
             compose.onNodeWithContentDescription("Halaman berikutnya").assertDoesNotExist()
             compose.onNodeWithContentDescription("Halaman PDF 1").assertHasClickAction()
             val pdfList = compose.onNodeWithContentDescription("Dokumen PDF")
-            pdfList.performTouchInput { down(center) }
+            pdfList.performTouchInput {
+                down(center)
+                advanceEventTime(80)
+                cancel()
+            }
             compose.onNodeWithText("1 dari 3").assertIsDisplayed()
-            pdfList.performTouchInput { cancel() }
             compose.waitUntil(5_000) {
                 compose.onAllNodesWithText("1 dari 3").fetchSemanticsNodes().isEmpty()
             }
