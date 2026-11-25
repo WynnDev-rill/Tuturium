@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: e755e204c4d892252f41a8da074903840989d89f
+          ref: b960af111366f048647d0f416288f87015dcce5c
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -31,7 +31,7 @@ jobs:
           disable-animations: true
           script: >-
             bash -c 'adb shell settings put secure show_ime_with_hard_keyboard 1;
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.OfflineVoiceRuntimeTest#optimizedGraphKeepsIndonesianCuesAndPlaysInOrderAtFourTimesSpeed -Pandroid.testInstrumentationRunnerArguments.offlineVoiceSmoke=true;
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.OfflineVoiceRuntimeTest -Pandroid.testInstrumentationRunnerArguments.offlineVoiceSmoke=true;
             result=$?; adb logcat -d -s TuturiumVoiceBenchmark:I TuturiumSupertonic:I; if [ "$result" -ne 0 ]; then adb logcat -d -s AndroidRuntime:E TuturiumPlayback:V TuturiumVoice:V;
             find app/build/outputs/androidTest-results -name "TEST-*.xml" -exec sed -n "/<failure/,/<\/failure>/p" {} +; fi;
             exit "$result"'
