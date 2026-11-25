@@ -38,5 +38,6 @@ private fun PreparedSpeech.excluding(ranges: List<IntRange>): PreparedSpeech {
         display.append(text[i])
     }
     val result = display.toString().trimEnd()
+    if (result.none(Char::isLetterOrDigit)) return PreparedSpeech("", IntArray(0))
     return PreparedSpeech(result, kept.copyOf(result.length))
 }

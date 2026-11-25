@@ -142,9 +142,10 @@ private data class PdfLine(val page: Int, val words: List<PdfWordHit>) {
         center > .915f -> 2
         else -> 0
     }
-    val number = text.trim().removePrefix("Halaman ").removePrefix("Page ").toIntOrNull()
-    val repeatedText = text.lowercase(Locale.ROOT).replace(numberAtEnd, "").trim()
+    val number = text.lowercase(Locale.ROOT).trim().removePrefix("halaman ").removePrefix("page ").toIntOrNull()
     val chapter = chapterHeading.containsMatchIn(text)
+    private val normalized = text.lowercase(Locale.ROOT)
+    val repeatedText = if (chapter) normalized else normalized.replace(numberAtEnd, "").trim()
 }
 
 private val numberAtEnd = Regex("""\s+\d+\s*$""")
@@ -193,7 +194,10 @@ internal fun buildPdfNarrationPlan(document: ReadingDocument, pages: Map<Int, Li
                 }
             }
         }
-    lines.filter { it.band != 0 && it.number != null }.groupBy {
+    lines.filter {
+        it.number != null && (it.center < .06f || it.center > .95f) &&
+            (bodyHeight == null || it.height <= bodyHeight * 1.15f)
+    }.groupBy {
         it.band to (checkNotNull(it.number) - it.page)
     }.values.forEach { sequence ->
         if (sequence.map { it.page }.distinct().size >= 3)

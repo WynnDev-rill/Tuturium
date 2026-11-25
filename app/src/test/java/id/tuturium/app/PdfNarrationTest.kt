@@ -36,6 +36,18 @@ class PdfNarrationTest {
         assertFalse(filtered.prepare(positions.getValue(0).last().index).text.isBlank())
     }
 
+    @Test fun distinctArabicNumberedChapterHeadingsRemainAudible() {
+        val doc = ReadingDocument((1..4).map { Section("Halaman $it", "Bab $it") })
+        val pages = doc.passes.indices.associateWith { page ->
+            alignPdfHits(listOf(PdfWordHit("Bab", .10f, .05f, .18f, .065f),
+                PdfWordHit("${page + 1}", .20f, .05f, .23f, .065f)),
+                listOf(IndexedValue(page, doc.passes[page])))
+        }
+        doc.narrationLayout = buildPdfNarrationPlan(doc, pages, PdfMarginSettings(), detect = true)
+        val pipeline = NarrationPipeline(doc, ListeningOptions(skipEnabled = true))
+        assertEquals(listOf("Bab satu", "Bab dua", "Bab tiga", "Bab empat"), doc.passes.indices.map(pipeline::prepare).map { it.text })
+    }
+
     @Test fun pageOverridesAndRelativeMarginsWorkWithoutAutomaticSkip() {
         val text = "Pinggir. Isi utama dibaca."
         val doc = ReadingDocument(listOf(Section("Halaman 1", text), Section("Halaman 2", text)))
