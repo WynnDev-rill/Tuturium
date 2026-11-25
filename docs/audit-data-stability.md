@@ -41,3 +41,11 @@ Tanpa login, impor, pemutaran offline, progres, sampah, dan pengaturan tetap ber
 - Build debug, build rilis, lint, dan 87 tes unit selesai. Putaran emulator pertama menghasilkan kegagalan resolusi DNS GitHub pada tujuh tes yang memerlukan paket suara dan dua kegagalan interaksi panel kecepatan. Seluruh tujuh tes DriveArchive lulus. DNS dan kesiapan panel ditangani di penyiapan pengujian. [Putaran pertama](https://github.com/WynnDev-rill/Tuturium/actions/runs/45559588202) · [Pengujian ulang](https://github.com/WynnDev-rill/Tuturium/actions/runs/45560969300)
 - APK 1.3.25 bertanda tangan sertifikat lama lulus pemeriksaan paket, checksum, alignment, dan pemasangan di atas 1.3.24. Waktu aplikasi pertama kali dipasang tetap sama dan dokumen lama berhasil dibuka. Ukuran APK naik dari 41.899.573 menjadi 41.955.016 byte, selisih 55.443 byte atau 0,13%. [Verifikasi APK dan pemasangan](https://github.com/WynnDev-rill/Tuturium/actions/runs/45560336656)
 - Lima pembukaan dan penutupan menu pembaca pada APK rilis 1.3.25 menghasilkan 140 frame aplikasi yang tercatat, dengan 138 janky dan P95 450 ms di emulator CI. Sampel 1.3.24 untuk skenario menu yang sama gagal dikumpulkan. Angka tersebut belum memberi perbandingan sebelum dan sesudah, serta tidak mengukur jank atau FPS pada POCO F6. [Log pengambilan sampel menu](https://github.com/WynnDev-rill/Tuturium/actions/runs/45560336656)
+- Pengukuran ulang memakai kedua APK bertanda tangan pada satu emulator Android 15 dan dokumen sintetis yang sama. Lima siklus menu diverifikasi dari label UI untuk setiap versi. P95 naik 50 ms, P99 turun 400 ms, dan rasio jank tetap sekitar 96%. Variasi ini belum menunjukkan tren peningkatan kelancaran menu. `gfxinfo` melaporkan frame aplikasi selama interaksi, termasuk kerja di sekitar jendela menu. [Perbandingan APK bertanda tangan](https://github.com/WynnDev-rill/Tuturium/actions/runs/45561298909)
+
+| Ukuran menu pembaca pada emulator | 1.3.24 | 1.3.25 |
+|---|---:|---:|
+| Frame janky/tercatat | 151/157 (96,18%) | 132/138 (95,65%) |
+| P50 | 85 ms | 97 ms |
+| P95 | 400 ms | 450 ms |
+| P99 | 900 ms | 500 ms |
