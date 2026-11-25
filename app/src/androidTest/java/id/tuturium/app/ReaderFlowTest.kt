@@ -42,6 +42,19 @@ class ReaderFlowTest {
         }
     }
 
+    private fun openSpeedControls() {
+        val decor = compose.activity.window.decorView
+        val ime = WindowInsetsCompat.Type.ime()
+        compose.waitUntil(10_000) {
+            androidx.core.view.ViewCompat.getRootWindowInsets(decor)?.isVisible(ime) == false
+        }
+        val speed = compose.onNodeWithContentDescription("Atur kecepatan")
+        compose.waitUntil(10_000) { runCatching { speed.assertIsDisplayed() }.isSuccess }
+        speed.performClick()
+        val slider = compose.onNodeWithContentDescription("Penggeser kecepatan")
+        compose.waitUntil(10_000) { runCatching { slider.assertIsDisplayed() }.isSuccess }
+    }
+
     @Test fun bottomNavigationClearsSystemButtons() {
         compose.onNodeWithText("Beranda").assertIsDisplayed()
         compose.onNodeWithText("Perpustakaan").assertIsDisplayed()
@@ -108,8 +121,10 @@ class ReaderFlowTest {
             val elapsed = parseTime(times[0])
             val total = parseTime(times[1])
             assertTrue(elapsed in 0..total)
-            compose.onNodeWithContentDescription("Atur kecepatan").performClick()
-            compose.onNodeWithText("≈${formatPlaybackTime(total - elapsed)} tersisa").assertIsDisplayed()
+            openSpeedControls()
+            val remaining = compose.onNodeWithText("≈${formatPlaybackTime(total - elapsed)} tersisa")
+            compose.waitUntil(10_000) { runCatching { remaining.assertIsDisplayed() }.isSuccess }
+            remaining.assertIsDisplayed()
         } finally {
             library.delete(book.id)
             library.deletePermanently(book.id)
@@ -170,7 +185,7 @@ class ReaderFlowTest {
         compose.onNodeWithText("Simpan").performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText(EXAMPLE).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Putar").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Atur kecepatan").performClick()
+        openSpeedControls()
         compose.onNodeWithContentDescription("Penggeser kecepatan").performTouchInput { swipeUp(durationMillis = 400) }
         compose.runOnIdle {
             assertTrue(ReadingSettings.read(compose.activity).speed > 2f)
