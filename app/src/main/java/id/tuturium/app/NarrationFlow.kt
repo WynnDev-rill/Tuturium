@@ -30,11 +30,15 @@ private val maybeRomanHeading = Regex("""\b[IVXLCDM]{1,15}\b""")
 private val sensitiveTokens = Regex("""(?i:https?://|www\.)[^\s<>]+|[\p{L}\d._%+-]+@[\p{L}\d.-]+\.[\p{L}]{2,}""")
 
 internal fun PreparedSpeech.normalizedForNarration(): PreparedSpeech {
-    if (text.none { it.isDigit() || it in ".×÷=≠<>≤≥√⁰¹²³⁴⁵⁶⁷⁸⁹" ||
-            it in "\u00ad\u200b\ufb01\ufb02\r\n\t\u00a0\u202f+−-*±≈∞" } &&
-        !maybeRomanHeading.containsMatchIn(text)) return this
-    val protected = sensitiveTokens.findAll(text).map { it.range }.toList()
-    val replacements = (indonesianNumberReplacements(text) + abbreviations.findAll(text).filter { word ->
+    val mutableTypography = "\u00ad\u200b\ufb01\ufb02\r\n\t\u00a0\u202f"
+    val needsNumbers = text.any { it.isDigit() || it in "×÷=≠<>≤≥√⁰¹²³⁴⁵⁶⁷⁸⁹+−-*±≈∞" } ||
+        maybeRomanHeading.containsMatchIn(text)
+    val abbreviationsInText = if ('.' in text) abbreviations.findAll(text).toList() else emptyList()
+    if (!needsNumbers && abbreviationsInText.isEmpty() && text.none { it in mutableTypography }) return this
+    val protected = if (abbreviationsInText.isEmpty()) emptyList() else
+        sensitiveTokens.findAll(text).map { it.range }.toList()
+    val numbers = if (needsNumbers) indonesianNumberReplacements(text) else emptySequence()
+    val replacements = (numbers + abbreviationsInText.asSequence().filter { word ->
         protected.none { word.range.first in it }
     }.map { it.range to expandedAbbreviation(it.value) }).sortedBy { it.first.first }.iterator()
     var replacement = if (replacements.hasNext()) replacements.next() else null

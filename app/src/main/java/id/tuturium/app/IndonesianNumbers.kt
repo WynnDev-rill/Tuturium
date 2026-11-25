@@ -31,7 +31,7 @@ private val integerGrouping = Regex("""\d{1,3}(?:\.\d{3})+""")
 private val englishGrouping = Regex("""\d{1,3}(?:,\d{3})+(?:\.\d+)?""")
 private val rangeDash = Regex("[–—-]")
 private val numberTokens = Regex(
-    """(?<protected>(?i:https?://|www\.)[^\s<>]+|[\p{L}\d._%+-]+@[\p{L}\d.-]+\.[\p{L}]{2,}|\b[vV]\d+(?:\.\d+){2,}\b)""" +
+    """(?<protected>(?i:https?://|www\.)[^\s<>]+|(?<![\p{L}\d._%+-])[\p{L}\d._%+-]+@[\p{L}\d.-]+\.[\p{L}]{2,}|\b[vV]\d+(?:\.\d+){2,}\b)""" +
     """|(?<date>\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}(?<dateSep>[/.-])\d{1,2}\k<dateSep>\d{4})\b)""" +
     """|(?<clock>\b(?:(?i:pukul|jam)\s+\d{1,2}[.:]\d{2}|\d{1,2}:\d{2})(?::\d{2})?\b)""" +
     """|(?<phone>(?<![\p{L}\d])(?:\+62|08)(?:[ \t-]?\d){7,12}(?![\p{L}\d]))""" +
@@ -85,7 +85,8 @@ private fun String.spellNumber(englishDecimal: Boolean = false): String {
         else -> raw.indexOf('.')
     }
     val whole = (if (separator < 0) raw else raw.take(separator)).filter { it in '0'..'9' }
-    val spoken = whole.spellInteger()
+    val integer = if (separator < 0) whole else whole.trimStart('0').ifEmpty { "0" }
+    val spoken = integer.spellInteger()
     return prefix + spoken + if (separator < 0) "" else " koma ${raw.substring(separator + 1).spellDigits()}"
 }
 
