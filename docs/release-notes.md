@@ -1,3 +1,8 @@
+## Tuturium 1.3.26
+
+- Mode PDF menampilkan nomor halaman di kanan atas. Indikator menampilkan jumlah halaman saat layar disentuh atau digulir.
+- Halaman PDF memakai lebar pembaca. Renggangkan dua jari untuk memperbesar dan cubit untuk memperkecil. Geser bagian yang diperbesar untuk melihat sisi halaman.
+
 ## Tuturium 1.3.25
 
 - Pulihkan hanya cadangan Drive yang lolos pemeriksaan isi. Pulihkan PDF asli yang hilang sambil mempertahankan progres dan markah lokal yang lebih baru.

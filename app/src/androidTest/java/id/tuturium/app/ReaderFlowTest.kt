@@ -3,6 +3,8 @@ package id.tuturium.app
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasScrollAction
@@ -15,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.assertHasClickAction
@@ -288,10 +291,33 @@ class ReaderFlowTest {
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithContentDescription("Halaman PDF 1").fetchSemanticsNodes().isNotEmpty()
             }
-            compose.onNodeWithText("Halaman 1 dari 3").assertDoesNotExist()
+            compose.onNodeWithText("1").assertIsDisplayed()
+            compose.onNodeWithText("1 dari 3").assertDoesNotExist()
             compose.onNodeWithContentDescription("Halaman berikutnya").assertDoesNotExist()
             compose.onNodeWithContentDescription("Halaman PDF 1").assertHasClickAction()
             val pdfList = compose.onNodeWithContentDescription("Dokumen PDF")
+            pdfList.performTouchInput { down(center) }
+            compose.onNodeWithText("1 dari 3").assertIsDisplayed()
+            pdfList.performTouchInput { cancel() }
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("1 dari 3").fetchSemanticsNodes().isEmpty()
+            }
+            fun zoomPercent(): Int =
+                pdfList.fetchSemanticsNode().config[SemanticsProperties.StateDescription]
+                    .substringAfter("Pembesaran ").substringBefore(" persen").toInt()
+            fun pinchBy(from: Float, to: Float) {
+                pdfList.performTouchInput {
+                    val inner = width * from
+                    val outer = width * to
+                    pinch(center - Offset(inner, 0f), center + Offset(outer, 0f),
+                        center + Offset(inner, 0f), center - Offset(outer, 0f), durationMillis = 500)
+                }
+            }
+            pinchBy(.10f, .19f)
+            compose.waitUntil(5_000) { zoomPercent() > 130 }
+            compose.onNodeWithContentDescription("Halaman PDF 1").assertIsDisplayed()
+            pinchBy(.19f, .10f)
+            compose.waitUntil(5_000) { zoomPercent() in 95..105 }
             pdfList.performTouchInput { swipeUp(durationMillis = 480) }
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithContentDescription("Halaman PDF 2").fetchSemanticsNodes().isNotEmpty()
