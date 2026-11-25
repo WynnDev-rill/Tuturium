@@ -14,6 +14,7 @@ Jaga antarmuka utama dalam bahasa Indonesia.
 
 - `DocumentImporter` membaca URI Storage Access Framework dan mengekstrak isi. `Library` menyimpan metadata, markah, dan posisi di SQLite, serta menyimpan teks sebagai dokumen internal.
 - `ReadingModel` menghasilkan rentang kalimat yang dipakai pemutar dan pembaca. Perubahan pemenggalan kalimat bisa mengubah arti indeks yang sudah disimpan. Pertahankan kompatibilitas posisi pengguna atau migrasikan indeks saat mengganti aturan.
+- `NarrationPipeline` memproses teks sebelum sintesis dan memetakan rentang hasil pengucapan ke teks asli. `PdfNarrationPlan` menyimpan rentang turunan berdasarkan koordinat, sedangkan `PdfMarginStore` menyimpan area bacaan lokal per dokumen. Pertahankan teks sumber dan indeksnya untuk progres dan markah.
 - `ReadingService` adalah pemilik sesi TTS, audio focus, dan notifikasi media. Callback paket suara disaring dengan ID utterance. Pengendali layar membaca StateFlow dari layanan.
 - `Updates` menerima rilis stabil dari `WynnDev-rill/Tuturium`, memeriksa ukuran, SHA-256, paket, nomor versi, dan sertifikat. Pertahankan pemeriksaan sebelum membuka pemasang sistem.
 - `Tuturium.kt`, `Reader.kt`, `SettingsScreen.kt`, dan `Theme.kt` berisi layar dan tema Compose. Pertahankan semantik pembaca layar, target sentuh, tema gelap, dukungan ukuran font, dan navigasi tanpa bergantung pada gestur eksklusif.

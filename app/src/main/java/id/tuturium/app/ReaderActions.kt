@@ -53,7 +53,16 @@ internal fun ReaderSearchBar(
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) { focus.requestFocus(); keyboard?.show() }
+    val windowFocused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(windowFocused) {
+        if (windowFocused) {
+            // The options sheet has its own window. Wait for focus to return before opening IME.
+            withFrameNanos { }
+            focus.requestFocus()
+            withFrameNanos { }
+            keyboard?.show()
+        }
+    }
     Surface(Modifier.fillMaxWidth().imePadding().padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(25.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(Modifier.padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically) {
