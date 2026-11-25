@@ -1,28 +1,27 @@
-# Graph Report - Tuturium  (2026-11-24)
+# Graph Report - Tuturium  (2026-11-25)
 
 ## Corpus Check
-- 105 files · ~69,121 words
+- 107 files · ~70,048 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 17 file(s) not represented in the graph (top: .xml 6, .ttf 5, (none) 2)
 
 ## Summary
-- 1368 nodes · 3201 edges · 100 communities (35 shown, 65 thin omitted)
-- Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 337 edges (avg confidence: 0.85)
+- 1395 nodes · 3283 edges · 96 communities (37 shown, 59 thin omitted)
+- Extraction: 89% EXTRACTED · 11% INFERRED · 0% AMBIGUOUS · INFERRED: 359 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ecb97117`
+- Built from commit: `7f79565d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- DocumentImporter
-- Updates
+- DocumentImporter.kt
+- ReaderActions.kt
 - DocumentImportTest.kt
-- DriveArchive
 - ListeningScreens.kt
 - Design System: Tuturium
-- OfflineVoices.kt
+- TuturiumMenus.kt
 - steps
 - Tuturium
 - with
@@ -32,94 +31,93 @@
 - ModernScreens.kt
 - Riset Tuturium
 - GoogleAccountAccess.kt
-- ListeningScreens.kt
+- Tuturium.kt
 - with
 - benchmark-adaptive-supertonic.py
-- TuturiumAccountScreen.kt
+- PdfPageImage
 - ListeningOptions
 - Benchmark Supertonic 3 · Tuturium 1.3.12
-- Pass
+- PdfWordSelection.kt
 - Test
 - StorageScreenV2.kt
 - OriginalPdfPages.kt
 - file
-- NarrationOpus.kt
+- .write
 - Audit Google dan pembaruan Tuturium 1.3.6
-- LibraryV2FlowTest
+- PlaybackTest.kt
 - Theme.kt
 - MainActivity
+- ReaderFlowTest.kt
 - release-notes.md
 - check-release.sh
 - setup-signing-secrets.sh
 - test-playback.sh
 - ReaderContent
-- NarrationFlow.kt
+- LibraryScreenV2.kt
 - profile-android.sh
 - update-graph.sh
-- OfflineSynth
-- file
+- Pass
+- ReaderVoiceParityTest.kt
 - Library
 - ReadingService
-- README.md
+- Supertonic adaptif · Tuturium 1.3.17
 - Reader.kt
+- isInLibraryFolder
 - isCompatibleCloudAccount
 - ListeningStats.kt
-- .endPage
-- narration-flow.md
-- .install
-- GoogleUpdateRegressionTest
+- Synchronized
+- README.md
+- AndroidJUnit4
+- .highlightUsesOnlyCurrentPassAndIntersectingWords
+- Test
 - Updates.kt
 - SettingsScreen.kt
 - ReadingDocument
-- narrationGain
-- .write
-- synthesisRanges
-- Test
+- .mapsRepeatedPdfWordsInReadingOrder
 - isMatchingDriveAccount
-- LibraryControlsTest
 - UtteranceProgressListener
 - Alur kode
 
 ## God Nodes (most connected - your core abstractions)
-1. `ReadingService` - 50 edges
-2. `ReadingDocument` - 38 edges
+1. `ReadingService` - 55 edges
+2. `ReadingDocument` - 39 edges
 3. `ReaderContent()` - 33 edges
 4. `Library` - 32 edges
 5. `LibraryV2()` - 32 edges
-6. `Section` - 27 edges
-7. `ListeningOptions` - 26 edges
-8. `Book` - 26 edges
-9. `TuturiumCloud` - 23 edges
-10. `Tuturium()` - 23 edges
+6. `Book` - 28 edges
+7. `Section` - 28 edges
+8. `ListeningOptions` - 27 edges
+9. `Tuturium()` - 24 edges
+10. `TuturiumCloud` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `Alur kode` --references--> `ReadingService`  [INFERRED]
+  AGENTS.md → app/src/main/java/id/tuturium/app/ReadingService.kt
 - `Alur kode` --references--> `DocumentImporter`  [INFERRED]
   AGENTS.md → app/src/main/java/id/tuturium/app/DocumentImporter.kt
 - `Alur kode` --references--> `Updates`  [INFERRED]
   AGENTS.md → app/src/main/java/id/tuturium/app/Updates.kt
 - `Alur kode` --references--> `Library`  [INFERRED]
   AGENTS.md → app/src/main/java/id/tuturium/app/Library.kt
-- `Alur kode` --references--> `ReadingService`  [INFERRED]
-  AGENTS.md → app/src/main/java/id/tuturium/app/ReadingService.kt
-- `TuturiumAccountScreen()` --calls--> `TuturiumCloudState`  [INFERRED]
-  app/src/main/java/id/tuturium/app/TuturiumAccountScreen.kt → app/src/main/java/id/tuturium/app/TuturiumCloud.kt
+- `SettingsScreen()` --calls--> `rate()`  [INFERRED]
+  app/src/main/java/id/tuturium/app/SettingsScreen.kt → app/src/main/java/id/tuturium/app/Reader.kt
 
 ## Import Cycles
 - None detected.
 
-## Communities (100 total, 65 thin omitted)
+## Communities (96 total, 59 thin omitted)
+
+### Community 1 - "ReaderActions.kt"
+Cohesion: 0.14
+Nodes (10): AppearanceChoice(), AppearanceSwitch(), findReaderMatches(), NarrationPauseControl(), ReaderAppearanceSheet(), ReaderAudioSheet(), readerCursorColor(), ReaderMatch (+2 more)
 
 ### Community 4 - "ListeningScreens.kt"
-Cohesion: 0.08
-Nodes (34): IndonesianVoiceAvatar(), ListeningSettingsV2(), OfflineModelCard(), SkipOptionsSheet(), SpeedControlSheet(), SwitchRow(), VerticalSpeedSlider(), VoiceDetailPanel() (+26 more)
+Cohesion: 0.09
+Nodes (27): IndonesianVoiceAvatar(), ListeningSettingsV2(), OfflineModelCard(), SkipOptionsSheet(), SwitchRow(), VerticalSpeedSlider(), VoiceDetailPanel(), voiceLabel() (+19 more)
 
 ### Community 5 - "Design System: Tuturium"
 Cohesion: 0.20
 Nodes (10): Avoid (Anti-patterns), Colors, Design Dials, Design System: Tuturium, Key Effects, Motion, Pattern, Pre-Delivery Checklist (+2 more)
-
-### Community 6 - "OfflineVoices.kt"
-Cohesion: 0.20
-Nodes (3): ModelFile, OfflineCatalog, OfflineVoice
 
 ### Community 7 - "steps"
 Cohesion: 0.06
@@ -138,16 +136,16 @@ Cohesion: 0.28
 Nodes (4): isMatchingDriveAccount(), TuturiumCloud, DriveConsentRequired, TuturiumCloudState
 
 ### Community 11 - "MainActivity.kt"
-Cohesion: 0.07
-Nodes (5): hasPosition(), libraryReadingLabel(), narrationMillisPerWord(), readingPosition(), readingSpeed()
+Cohesion: 0.06
+Nodes (11): newReaderPace(), NarrationPaceSnapshot, PaceProfile, PaceSample, ReadingPace, estimatedReadingSpeed(), hasPosition(), libraryReadingLabel() (+3 more)
 
 ### Community 12 - "OfflineAudio.kt"
-Cohesion: 0.08
-Nodes (11): OfflineVoiceRuntimeTest, narrationBoostMb(), OfflineAudio, Clip, Listener, OfflinePass, SupertonicBuffer, findReaderMatches() (+3 more)
+Cohesion: 0.07
+Nodes (7): OfflineAudio, Clip, Listener, OfflinePass, SupertonicBuffer, synthesisRanges(), ContinuousReadingTest
 
 ### Community 13 - "ModernScreens.kt"
-Cohesion: 0.15
-Nodes (19): DocumentArt(), durationLabel(), HomeGoogleAvatar(), MetricPair(), ModernDetailHeader(), ModernHome(), ModernNavigation(), ModernProfile() (+11 more)
+Cohesion: 0.18
+Nodes (16): DocumentArt(), durationLabel(), HomeGoogleAvatar(), MetricPair(), ModernDetailHeader(), ModernHome(), ModernNavigation(), ModernProfile() (+8 more)
 
 ### Community 14 - "Riset Tuturium"
 Cohesion: 0.29
@@ -157,6 +155,10 @@ Nodes (7): Aset dan komponen, PDF vertikal dan kecepatan otomatis 1.3.13, Pembac
 Cohesion: 0.22
 Nodes (3): driveAuthorization(), googleAccessMessage(), isAccountReauthFailure()
 
+### Community 17 - "Tuturium.kt"
+Cohesion: 0.13
+Nodes (6): BookRow(), LibraryScreen(), ModernUpdateMenu(), PasteDialog(), Tuturium(), TuturiumDialog()
+
 ### Community 18 - "with"
 Cohesion: 0.09
 Nodes (21): jobs, package, name, on, push, workflow_dispatch, runs-on, steps (+13 more)
@@ -165,107 +167,111 @@ Nodes (21): jobs, package, name, on, push, workflow_dispatch, runs-on, steps (+1
 Cohesion: 0.13
 Nodes (8): chunks(), engine(), replay(), run_synthesis(), generate(), score(), word_errors(), main()
 
-### Community 20 - "TuturiumAccountScreen.kt"
-Cohesion: 0.16
-Nodes (3): AccountDetailRow(), GoogleAvatar(), TuturiumAccountScreen()
+### Community 20 - "PdfPageImage"
+Cohesion: 0.26
+Nodes (3): OriginalPdfPages(), PdfPageImage(), PdfPageSession
 
 ### Community 22 - "ListeningOptions"
-Cohesion: 0.07
-Nodes (16): documentWordEnds(), readingTimeline(), PaceProfile, PaceSample, ReadingPace, UtteranceAudioLength, ReadingTimeline, timelineOptions() (+8 more)
+Cohesion: 0.08
+Nodes (22): documentWordEnds(), MediaReadingCaption, Cue, clausePause(), continuesAcrossPdfPage(), expandedAbbreviation(), NarrationPause, normalizedCharacter() (+14 more)
 
 ### Community 23 - "Benchmark Supertonic 3 · Tuturium 1.3.12"
 Cohesion: 0.33
 Nodes (6): Benchmark Supertonic 3 · Tuturium 1.3.12, Kandidat akselerasi, Pengujian lanjutan di POCO F6, Perbandingan perubahan aplikasi, Regresi dan pengukuran emulator Android 15, Reproduksi
 
-### Community 25 - "Pass"
-Cohesion: 0.06
-Nodes (22): isInLibraryFolder(), OriginalPdfPages(), PdfPageImage(), PdfPageSession, pdfWordOutsideViewport(), matchPdfWords(), nearestPdfWord(), ocrPdfWordHits() (+14 more)
+### Community 25 - "PdfWordSelection.kt"
+Cohesion: 0.20
+Nodes (8): matchPdfWords(), nearestPdfWord(), ocrPdfWordHits(), pdfHighlightWords(), pdfKey(), PdfWordHit, readPdfWordHits(), PDFTextStripper
 
 ### Community 27 - "StorageScreenV2.kt"
-Cohesion: 0.27
+Cohesion: 0.22
 Nodes (4): humanSize(), LocalStorage, StorageInspector, StorageV2()
 
 ### Community 29 - "file"
 Cohesion: 0.20
 Nodes (5): DriveAppDataClient, RemoteFile, nextDriveUploadOffset(), CloudAccessException, DriveHttpException
 
+### Community 31 - ".write"
+Cohesion: 0.06
+Nodes (17): refreshOfflineModels(), amplifyNarration(), NarrationAudioCache, narrationGain(), spokenPcmRange(), encodeNarrationOpus(), NarrationResampler, AudioCue (+9 more)
+
 ### Community 34 - "Audit Google dan pembaruan Tuturium 1.3.6"
 Cohesion: 0.40
 Nodes (4): Audit Google dan pembaruan Tuturium 1.3.6, Identitas dan Google Cloud, Temuan, Uji langsung
 
 ### Community 40 - "release-notes.md"
-Cohesion: 0.40
-Nodes (4): Tuturium 1.3.17, Tuturium 1.3.18, Tuturium 1.3.19, Tuturium 1.3.20
+Cohesion: 0.29
+Nodes (6): Tuturium 1.3.17, Tuturium 1.3.18, Tuturium 1.3.19, Tuturium 1.3.20, Tuturium 1.3.21, Tuturium 1.3.22
 
 ### Community 45 - "ReaderContent"
-Cohesion: 0.06
-Nodes (32): FolderStore, bookRows(), FolderEditorV2(), LibraryV2(), PinnedBookTitle(), SheetAction(), ModernLibrary(), Reader() (+24 more)
+Cohesion: 0.19
+Nodes (12): Reader(), ReaderContent(), ReaderOptions(), RenameBookSheet(), ReaderMenuAction(), ReaderMenuSheet(), ReaderMenuToggle(), ReaderNotesSheet() (+4 more)
 
-### Community 46 - "NarrationFlow.kt"
-Cohesion: 0.26
-Nodes (9): clausePause(), continuesAcrossPdfPage(), expandedAbbreviation(), NarrationPause, normalizedCharacter(), normalizedForNarration(), pauseAfter(), spokenPcmRange() (+1 more)
-
-### Community 54 - "file"
-Cohesion: 0.10
-Nodes (4): DriveArchiveTest, PlaybackNoCrashTest, PlaybackTest, ReaderVoiceParityTest
+### Community 53 - "Pass"
+Cohesion: 0.44
+Nodes (4): Pass, selectSpokenWord(), WordSelection, ReaderWordSelectionTest
 
 ### Community 55 - "Library"
-Cohesion: 0.06
-Nodes (12): Book, Bookmark, Library, BookActions, countDocumentWords(), matchesLibraryFilter(), sortBooks(), readerCenterDelta() (+4 more)
+Cohesion: 0.05
+Nodes (18): FolderStore, Book, Bookmark, Library, BookActions, countDocumentWords(), matchesLibraryFilter(), sortBooks() (+10 more)
 
 ### Community 57 - "ReadingService"
 Cohesion: 0.06
-Nodes (6): choice(), ReadingService, OfflineSession, Callback, ReadingSettings, AutomaticSpeed
+Nodes (12): narrationBoostMb(), availableVoices(), choice(), indonesianCandidates(), offlineVoices(), Playback, ReadingService, OfflineSession (+4 more)
 
-### Community 60 - "README.md"
-Cohesion: 0.18
+### Community 60 - "Supertonic adaptif · Tuturium 1.3.17"
+Cohesion: 0.33
 Nodes (6): Alternatif yang dipertimbangkan, Antrean dan cache, Metode, Reproduksi, Supertonic adaptif · Tuturium 1.3.17, Verifikasi Android 15
+
+### Community 62 - "Reader.kt"
+Cohesion: 0.08
+Nodes (5): rate(), ReaderRow, AccountDetailRow(), GoogleAvatar(), TuturiumAccountScreen()
+
+### Community 63 - "isInLibraryFolder"
+Cohesion: 0.38
+Nodes (3): isInLibraryFolder(), pdfWordOutsideViewport(), ReaderFolderRegressionTest
 
 ### Community 67 - "ListeningStats.kt"
 Cohesion: 0.17
 Nodes (6): ListeningDay, ListeningStats, StatsBucket, StatsSummary, MetricBars(), ListeningStatsTest
 
-### Community 74 - ".install"
-Cohesion: 0.44
-Nodes (3): refreshOfflineModels(), OfflineModel, OfflineModelStore
+### Community 71 - "AndroidJUnit4"
+Cohesion: 0.60
+Nodes (3): DriveArchiveTest, OfflineVoiceRuntimeTest, PlaybackNoCrashTest
+
+### Community 78 - "Updates.kt"
+Cohesion: 0.10
+Nodes (4): GoogleUpdateRegressionTest, Release, UpdateCheckException, Updates
 
 ### Community 79 - "SettingsScreen.kt"
-Cohesion: 0.25
-Nodes (7): rate(), SettingCard(), SettingsScreen(), UpdateScreen(), VersionBlock(), VoiceOption(), VoiceSlider()
+Cohesion: 0.40
+Nodes (6): SettingCard(), SettingsScreen(), UpdateScreen(), VersionBlock(), VoiceOption(), VoiceSlider()
 
 ### Community 80 - "ReadingDocument"
-Cohesion: 0.23
-Nodes (3): ReaderFlowTest, ReadingDocument, Section
-
-### Community 82 - "narrationGain"
-Cohesion: 0.29
-Nodes (3): amplifyNarration(), narrationGain(), NarrationAudioTest
-
-### Community 83 - ".write"
-Cohesion: 0.61
-Nodes (3): NarrationAudioCache, AudioCue, SynthesizedAudio
+Cohesion: 0.06
+Nodes (15): LibraryControlsTest, LibraryV2FlowTest, DriveArchive, SpeedControlSheet(), readingTimeline(), formatPlaybackSpeed(), formatPlaybackTime(), playbackTimeCaption() (+7 more)
 
 ### Community 90 - "Alur kode"
-Cohesion: 0.40
+Cohesion: 0.33
 Nodes (5): Alur kode, Graphify, Mengerjakan perubahan, Rilis, Tuturium
 
 ## Knowledge Gaps
-- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **59 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `ReadingService` connect `ReadingService` to `ListeningScreens.kt`, `OfflineVoices.kt`, `OfflineAudio.kt`, `ReaderContent`, `ReadingDocument`, `ListeningOptions`, `file`, `Alur kode`?**
-  _High betweenness centrality (0.106) - this node is a cross-community bridge._
+- **Why does `ReadingService` connect `ReadingService` to `PlaybackTest.kt`, `ListeningScreens.kt`, `Synchronized`, `MainActivity.kt`, `OfflineAudio.kt`, `ReadingDocument`, `ListeningOptions`, `ReaderVoiceParityTest.kt`, `Alur kode`?**
+  _High betweenness centrality (0.135) - this node is a cross-community bridge._
 - **Are the 5 inferred relationships involving `ReadingService` (e.g. with `Alur kode` and `narrationBoostMb()`) actually correct?**
   _`ReadingService` has 5 INFERRED edges - model-reasoned connections that need verification._
-- **Should `DocumentImportTest.kt` be split into smaller, more focused modules?**
-  _Cohesion score 0.09359605911330049 - nodes in this community are weakly interconnected._
-- **Why does `Alur kode` connect `Alur kode` to `DocumentImporter`, `ReadingService`, `Updates`, `Library`?**
-  _High betweenness centrality (0.088) - this node is a cross-community bridge._
-- **Are the 23 inferred relationships involving `ReadingDocument` (e.g. with `.exportsAndRestoresBooksAndBookmarks()` and `.unchangedArchiveIsStableAndHardDeleteWinsOverStaleBackup()`) actually correct?**
-  _`ReadingDocument` has 23 INFERRED edges - model-reasoned connections that need verification._
-- **Should `ListeningScreens.kt` be split into smaller, more focused modules?**
-  _Cohesion score 0.07688492063492064 - nodes in this community are weakly interconnected._
-- **Why does `Tuturium` connect `Alur kode` to `README.md`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Should `DocumentImporter.kt` be split into smaller, more focused modules?**
+  _Cohesion score 0.09475806451612903 - nodes in this community are weakly interconnected._
+- **Why does `Alur kode` connect `Alur kode` to `DocumentImporter.kt`, `ReadingService`, `Updates.kt`, `Library`?**
+  _High betweenness centrality (0.082) - this node is a cross-community bridge._
+- **Are the 24 inferred relationships involving `ReadingDocument` (e.g. with `.exportsAndRestoresBooksAndBookmarks()` and `.unchangedArchiveIsStableAndHardDeleteWinsOverStaleBackup()`) actually correct?**
+  _`ReadingDocument` has 24 INFERRED edges - model-reasoned connections that need verification._
+- **Should `ReaderActions.kt` be split into smaller, more focused modules?**
+  _Cohesion score 0.13768115942028986 - nodes in this community are weakly interconnected._
+- **Are the 20 inferred relationships involving `ReaderContent()` (e.g. with `SkipOptionsSheet()` and `SpeedControlSheet()`) actually correct?**
+  _`ReaderContent()` has 20 INFERRED edges - model-reasoned connections that need verification._
