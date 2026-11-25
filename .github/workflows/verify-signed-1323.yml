@@ -1,7 +1,7 @@
-name: Verify and stage Tuturium 1.3.22
+name: Verify and stage Tuturium 1.3.23
 on:
   push:
-    branches: [verify/signed-1-3-22]
+    branches: [verify/signed-1-3-23]
 
 permissions:
   contents: write
@@ -37,4 +37,4 @@ jobs:
       - name: Stage verified assets on the draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload v1.3.22 Tuturium.apk Tuturium.apk.sha256 --clobber
+        run: gh release upload v1.3.23 Tuturium.apk Tuturium.apk.sha256 --clobber
