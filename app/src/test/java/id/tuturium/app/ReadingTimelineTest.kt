@@ -79,6 +79,8 @@ class ReadingTimelineTest {
         assertEquals(2f, playback.estimatedReadingSpeed(book, 2f), 0f)
         assertEquals(2f, playback.copy(effectiveSpeed = 2f).estimatedReadingSpeed(book, 2f), 0f)
         assertEquals(2.05f, playback.copy(narrationSpeed = 2.05f).estimatedReadingSpeed(book, 2f), 0f)
+        assertEquals(2.05f, playback.copy(narrationSpeed = 2.05f, completed = true)
+            .estimatedReadingSpeed(book, 2f), 0f)
         assertEquals(3f, playback.copy(bookId = "another").estimatedReadingSpeed(book, 3f), 0f)
     }
 

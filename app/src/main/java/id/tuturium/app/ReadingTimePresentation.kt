@@ -34,7 +34,7 @@ internal fun Playback.readingSpeed(book: Book, preferred: Float): Float =
     if (hasPosition(book) && !completed) effectiveSpeed else preferred
 
 internal fun Playback.estimatedReadingSpeed(book: Book, preferred: Float): Float =
-    if (hasPosition(book) && !completed) narrationSpeed ?: preferred else preferred
+    if (hasPosition(book)) narrationSpeed ?: preferred else preferred
 
 @Composable
 internal fun narrationMillisPerWord(model: TuturiumModel, speed: Float,
