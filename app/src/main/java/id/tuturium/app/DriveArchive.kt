@@ -175,15 +175,19 @@ internal class DriveArchive(private val context: Context) {
                     created = value.optLong("created", value.getLong("updated")),
                     wordOffset = value.optInt("wordOffset", 0).coerceAtLeast(0)
                 )
-                require(book.count >= 0) { "Jumlah bagian buku tidak valid." }
+                require(book.count > 0) { "Jumlah bagian buku tidak valid." }
                 val sections = JSONArray(content.readText())
                 require(sections.length() in 1..10_000)
+                var hasText = false
                 for (sectionIndex in 0 until sections.length()) {
                     val section = sections.getJSONObject(sectionIndex)
-                    require(section.opt("title") is String && section.opt("text") is String) {
+                    val text = section.opt("text")
+                    require(section.opt("title") is String && text is String) {
                         "Bagian buku tidak valid."
                     }
+                    if (!hasText && text.isNotBlank()) hasText = true
                 }
+                require(hasText) { "Dokumen tidak memiliki teks yang dapat dibaca." }
                 val marks = value.optJSONArray("marks") ?: JSONArray()
                 val bookmarks = List(marks.length()) { n ->
                     val item = marks.getJSONObject(n)
@@ -201,8 +205,16 @@ internal class DriveArchive(private val context: Context) {
             idsToErase.forEach(library::restoreTombstone)
             pendingPreferences.forEach { (prefs, values) ->
                 val editor = prefs.edit()
-                for ((key, write) in values) {
-                    if (!prefs.contains(key)) write(editor)
+                for ((key, value) in values) {
+                    if (prefs.contains(key)) continue
+                    when (value) {
+                        is Boolean -> editor.putBoolean(key, value)
+                        is Int -> editor.putInt(key, value)
+                        is Long -> editor.putLong(key, value)
+                        is Float -> editor.putFloat(key, value)
+                        is String -> editor.putString(key, value)
+                        is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                    }
                 }
                 check(editor.commit()) { "Preferensi Drive tidak dapat disimpan di perangkat." }
             }
@@ -212,41 +224,26 @@ internal class DriveArchive(private val context: Context) {
         }
     }
 
-    private fun preparePreferences(saved: JSONObject):
-        List<Pair<SharedPreferences, Map<String, (SharedPreferences.Editor) -> Unit>>> =
+    private fun preparePreferences(saved: JSONObject): List<Pair<SharedPreferences, Map<String, Any>>> =
         preferences.mapNotNull { file ->
             val source = saved.optJSONObject(file) ?: return@mapNotNull null
             val prefs = context.getSharedPreferences(file, Context.MODE_PRIVATE)
-            val values = buildMap<String, (SharedPreferences.Editor) -> Unit> {
+            val values = buildMap {
                 for (key in source.keys()) {
                     val item = source.optJSONObject(key) ?: continue
-                    when (item.optString("type")) {
-                        "boolean" -> {
-                            val value = item.getBoolean("value")
-                            put(key) { it.putBoolean(key, value) }
-                        }
-                        "integer" -> {
-                            val value = item.getInt("value")
-                            put(key) { it.putInt(key, value) }
-                        }
-                        "long" -> {
-                            val value = item.getLong("value")
-                            put(key) { it.putLong(key, value) }
-                        }
-                        "float" -> {
-                            val value = item.getDouble("value").toFloat()
-                            put(key) { it.putFloat(key, value) }
-                        }
-                        "string" -> {
-                            val value = item.getString("value")
-                            put(key) { it.putString(key, value) }
-                        }
+                    val value = when (item.optString("type")) {
+                        "boolean" -> item.getBoolean("value")
+                        "integer" -> item.getInt("value")
+                        "long" -> item.getLong("value")
+                        "float" -> item.getDouble("value").toFloat()
+                        "string" -> item.getString("value")
                         "stringSet" -> {
                             val strings = item.getJSONArray("value")
-                            val value = (0 until strings.length()).map(strings::getString).toSet()
-                            put(key) { it.putStringSet(key, value) }
+                            (0 until strings.length()).map(strings::getString).toSet()
                         }
+                        else -> continue
                     }
+                    put(key, value)
                 }
             }
             prefs to values

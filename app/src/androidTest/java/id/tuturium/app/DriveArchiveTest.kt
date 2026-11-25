@@ -118,6 +118,25 @@ class DriveArchiveTest {
         }
     }
 
+    @Test fun syncedMembershipCannotHideABookWhenLocalFolderListWins() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val id = UUID.randomUUID().toString()
+        val folderPreferences = context.getSharedPreferences("library_folders", 0)
+        val previous = folderPreferences.getStringSet("names", null)?.toSet()
+        val localName = "Lokal-$id"
+        val remoteName = "Cloud-$id"
+        val storedMembership = "book:$id"
+        folderPreferences.edit().putStringSet("names", setOf(localName))
+            .putString(storedMembership, remoteName).commit()
+        try {
+            assertTrue(isInLibraryFolder(FolderStore.folderOf(context, id), displayed = null))
+            folderPreferences.edit().putStringSet("names", setOf(localName, remoteName)).commit()
+            assertEquals(remoteName, FolderStore.folderOf(context, id))
+        } finally {
+            folderPreferences.edit().putStringSet("names", previous).remove(storedMembership).commit()
+        }
+    }
+
     private fun record(id: String) = JSONObject().put("id", id).put("title", "Judul dari Drive")
         .put("format", "TXT").put("count", 1).put("position", 0).put("updated", 1L)
 

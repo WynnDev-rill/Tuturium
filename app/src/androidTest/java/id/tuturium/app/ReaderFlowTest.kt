@@ -57,6 +57,32 @@ class ReaderFlowTest {
         compose.onNodeWithText("Lanjutkan").assertIsDisplayed()
     }
 
+    @Test fun readerCanExitAfterItsBookIsRemovedByCloudSync() {
+        val library = Library.get(compose.activity)
+        val book = library.add("Dokumen terhapus dari Drive", "TXT",
+            ReadingDocument(listOf(Section("Bab", "Bacaan sementara sebelum disinkronkan."))))
+        try {
+            compose.onNodeWithText("Perpustakaan").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText(book.title).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(book.title).performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("Kembali ke pustaka").fetchSemanticsNodes().isNotEmpty()
+            }
+            library.restoreTombstone(book.id)
+            compose.onNodeWithContentDescription("Kembali ke pustaka").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("Kembali ke pustaka").fetchSemanticsNodes().isEmpty() &&
+                    compose.onAllNodesWithText(book.title).fetchSemanticsNodes().isEmpty() &&
+                    compose.onAllNodesWithText("Perpustakaan").fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+        }
+    }
+
     @Test fun libraryAndReaderAgreeOnSavedWordsAndRemainingDuration() {
         val library = Library.get(compose.activity)
         val book = library.add("Uji durasi dengan progres", "TXT", ReadingDocument(listOf(

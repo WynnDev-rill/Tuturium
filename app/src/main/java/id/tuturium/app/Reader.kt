@@ -486,7 +486,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             speedPanel = { panel = "speed" }, voicePanel = { panel = "voices" }, seek = ::seek)
     }
 
-    when (panel) {
+    when (panel.takeIf { visible }) {
         "sections" -> ReaderOptions("Daftar isi", { panel = null }) {
             itemsIndexed(sectionStarts) { _, item ->
                 ListItem(headlineContent = { Text(document.sections[item.value.section].title) },

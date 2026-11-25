@@ -56,6 +56,8 @@ internal object TuturiumCloud {
     private val mutex = Mutex()
     private val mutable = MutableStateFlow(TuturiumCloudState())
     val state = mutable.asStateFlow()
+    private val archiveRevision = MutableStateFlow(0)
+    val restoredArchives = archiveRevision.asStateFlow()
 
     @Volatile private var token: String? = null
     @Volatile private var authorizedAt = 0L
@@ -225,6 +227,7 @@ internal object TuturiumCloud {
                 waiting("Menyatukan pustaka dari Google Drive…")
                 api.download(remote, file)
                 DriveArchive(context).restore(file)
+                archiveRevision.update { it + 1 }
             } finally {
                 file.delete()
             }

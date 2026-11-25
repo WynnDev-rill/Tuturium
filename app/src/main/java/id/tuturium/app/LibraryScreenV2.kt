@@ -81,7 +81,11 @@ fun LibraryV2(model: TuturiumModel, playback: Playback, onAdd: (String?) -> Unit
     var choosingForFolder by remember { mutableStateOf(false) }
     var chooseTargetForSelection by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
-    LaunchedEffect(folderRefresh) { folders = FolderStore.names(context); revision++ }
+    LaunchedEffect(folderRefresh, model.cloudRestoreRevision) {
+        folders = FolderStore.names(context)
+        if (folder !in folders) folder = null
+        revision++
+    }
     LaunchedEffect(folder) { onFolderChanged(folder) }
     var groupByDate by rememberSaveable { mutableStateOf(prefs.getBoolean("group_date", false)) }
     val keyboard = LocalSoftwareKeyboardController.current

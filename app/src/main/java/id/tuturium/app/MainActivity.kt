@@ -82,6 +82,13 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handle(intent)
         setContent { Tuturium(model) }
         lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                TuturiumCloud.restoredArchives.collect { revision ->
+                    if (revision != 0) model.reloadCloudSnapshot(revision)
+                }
+            }
+        }
+        lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (true) {
                     restoreDriveConnection()
@@ -161,8 +168,6 @@ class MainActivity : ComponentActivity() {
             return
         }
         TuturiumCloud.connect(applicationContext, email, token)
-        model.reloadCloudPreferences()
-        model.refresh()
     }
 
     private fun runAccountOperation(drive: Boolean, block: suspend () -> Unit) {
@@ -424,8 +429,13 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     var verifiedApk by mutableStateOf<File?>(null)
         private set
 
-    /** Refresh Compose settings after importing a snapshot from another device. */
-    fun reloadCloudPreferences() {
+    internal var cloudRestoreRevision by mutableIntStateOf(0)
+        private set
+
+    /** Refresh visible data after applying a remote snapshot, even if its upload fails. */
+    internal fun reloadCloudSnapshot(revision: Int) {
+        if (revision == cloudRestoreRevision) return
+        cloudRestoreRevision = revision
         readerFont = prefs.getString("reader_font", "sans") ?: "sans"
         readerHighlight = prefs.getString("reader_highlight", "theme") ?: "theme"
         readerPreset = prefs.getString("reader_preset", "standard") ?: "standard"
@@ -437,6 +447,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         theme = prefs.getString("theme", "dark") ?: "dark"
         fontSize = prefs.getFloat("font_size", 22f)
         follow = prefs.getBoolean("follow", listeningOptions.autoScroll)
+        refresh()
     }
 
     private var refreshJob: Job? = null
@@ -501,9 +512,9 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
                 // The service queues its checkpoint before reporting paused.
                 // Read after every pending write; never overwrite a newer service checkpoint.
                 val saved = withContext(ReadingService.positionDispatcher) {
-                    val latest = library.book(book.id) ?: error("Dokumen tidak ditemukan.")
+                    val latest = library.book(book.id)
                     val stopped = ReadingService.state.value
-                    if (stopped.bookId == book.id && stopped.total > 0) {
+                    if (latest != null && stopped.bookId == book.id && stopped.total > 0) {
                         val index = if (stopped.completed) latest.count else stopped.index
                         val offset = if (stopped.completed) 0 else stopped.offset
                         library.position(book.id, index, offset)

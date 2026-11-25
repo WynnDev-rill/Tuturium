@@ -169,12 +169,12 @@ class Library private constructor(context: Context) :
     }
 
     fun position(id: String, index: Int, wordOffset: Int = 0) {
-        writableDatabase.update("books", ContentValues().apply {
+        val changed = writableDatabase.update("books", ContentValues().apply {
             put("position", index.coerceAtLeast(0))
             put("word_offset", wordOffset.coerceAtLeast(0))
             put("updated", System.currentTimeMillis())
-        }, "id = ? AND count >= ?", arrayOf(id, index.toString()))
-        TuturiumCloud.markDirty(appContext)
+        }, "id = ? AND deleted_at = 0 AND count >= ?", arrayOf(id, index.toString()))
+        if (changed != 0) TuturiumCloud.markDirty(appContext)
     }
 
     fun rename(id: String, title: String) {

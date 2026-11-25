@@ -95,8 +95,11 @@ internal object FolderStore {
         TuturiumCloud.markDirty(context)
     }
 
-    fun folderOf(context: Context, bookId: String): String? =
-        prefs(context).getString("book:$bookId", null)
+    fun folderOf(context: Context, bookId: String): String? {
+        val preferences = prefs(context)
+        val names = preferences.getStringSet("names", emptySet()).orEmpty()
+        return preferences.getString("book:$bookId", null)?.takeIf { it in names }
+    }
 
     fun assign(context: Context, bookId: String, folder: String?) {
         if (folder != null && folder !in names(context)) return
