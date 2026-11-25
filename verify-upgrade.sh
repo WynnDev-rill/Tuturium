@@ -49,22 +49,35 @@ PY
 profile() {
   local name=$1
   local options
-  options=$(find_text 'Opsi pembaca' 4) || return 1
+  sleep 2
+  options=$(find_text 'Opsi pembaca' 8) || {
+    echo "$name could not locate reader options"
+    return 1
+  }
   for key in window_animation_scale transition_animation_scale animator_duration_scale; do
     adb shell settings put global "$key" 1 || return 1
   done
   adb shell input tap $options || return 1
-  find_text 'Ubah Nama' 3 >/dev/null || return 1
+  find_text 'Ubah Nama' 8 >/dev/null || {
+    echo "$name could not verify the warmup menu"
+    return 1
+  }
   adb shell input keyevent KEYCODE_BACK || return 1
-  sleep 0.6
+  sleep 1
   adb shell dumpsys gfxinfo "$app" reset >/dev/null || return 1
-  for _ in {1..5}; do
+  for sample in {1..5}; do
     adb shell input tap $options || return 1
-    find_text 'Ubah Nama' 3 >/dev/null || return 1
+    find_text 'Ubah Nama' 6 >/dev/null || {
+      echo "$name menu $sample did not open"
+      return 1
+    }
     adb shell input keyevent KEYCODE_BACK || return 1
-    sleep 0.55
+    sleep 1
   done
-  find_text 'Opsi pembaca' 3 >/dev/null || return 1
+  find_text 'Opsi pembaca' 8 >/dev/null || {
+    echo "$name menu did not close"
+    return 1
+  }
   adb shell dumpsys gfxinfo "$app" > "$name-menu-gfxinfo.txt" || return 1
   sed -n -E '/Total frames rendered:|Janky frames:|50th percentile:|95th percentile:|99th percentile:/p' "$name-menu-gfxinfo.txt" | head -n 7 | sed "s/^/$name menu /"
 }
