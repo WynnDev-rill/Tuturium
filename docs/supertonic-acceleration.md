@@ -83,6 +83,14 @@ APK tetap memakai Sherpa CPU dan Media3. Graf estimator Wilbur dapat diunduh sek
 
 Model tetap menyintesis pada 1×. Graf akselerasi menargetkan 6 langkah saat memulai pada 2–4× dan dapat naik ke 8 saat ruang mencukupi. Jalur konservatif memakai 5 saat hasil pengukuran menemukan antrean tertekan atau Android melaporkan panas parah. Tahap ekstra dan aturan jeda dari rilis sebelumnya tetap berlaku.
 
+## Verifikasi emulator Android 15
+
+Enam tes Supertonic pada emulator x86-64 lulus, termasuk sintesis 10 suara, cache Opus, pemulihan antrean kosong, pemutaran di latar dalam mode pesawat, dan graf baru pada 4×. Benchmark 6 langkah memakai enam kalimat terpisah dan model yang sudah dipanaskan. Graf dasar membutuhkan 17.131 ms untuk 32.084 ms audio (RTF batch **0,534**). Graf Wilbur membutuhkan 15.622 ms untuk 32.320 ms audio (**0,483**). Keuntungan emulator sekitar 10% pada beban ini.
+
+Pada tes 4×, enam klip selesai berurutan hingga penanda terakhir, tanpa buffering lebih dari 200 ms sesudah mulai. Pemutaran dimulai setelah 13.155 ms. Mesin memakai satu klip 6 langkah dan lima klip 5 langkah. RTF pemanasan setelah klip pertama adalah 10.671 / 26.010 = **0,410**. Cadangan awal menutupi beban produksi yang lebih lambat dari 4× pada sampel pendek ini. Hasil tersebut belum memenuhi sasaran RTF 0,20 dan belum menunjukkan pemutaran berkelanjutan pada perangkat fisik. [Log emulator](https://github.com/WynnDev-rill/Tuturium/actions/runs/45528361737)
+
+79 tes JVM dan build rilis lulus. APK ARM64 diverifikasi dengan sertifikat sebelumnya. Uji emulator terpisah memasang 1.3.23 di atas 1.3.22 dan membuka dokumen yang sudah tersimpan. [Build rilis](https://github.com/WynnDev-rill/Tuturium/actions/runs/45527141029) · [Uji pemasangan](https://github.com/WynnDev-rill/Tuturium/actions/runs/45528009512)
+
 ## Pengukuran POCO F6
 
 Pengujian perangkat fisik belum dilakukan. Ukur jalur dasar pada APK yang sama sebelum mengunduh akselerasi, lalu ulangi setelah estimator terpasang. Gunakan dokumen Indonesia yang sama, suara yang sama, dan bersihkan **cache audio Supertonic** di Setelan Penyimpanan sebelum masing-masing sesi. Jalankan 2×, 3×, dan 4× sendiri-sendiri. Untuk setiap laju, ukur 30 menit dengan jaringan mati setelah model terpasang, lalu ulangi dengan layar terkunci. Hentikan playback untuk menutup log sesi.
