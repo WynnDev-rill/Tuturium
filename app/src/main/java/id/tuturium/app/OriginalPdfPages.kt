@@ -156,9 +156,10 @@ internal fun OriginalPdfPages(
     var zoom by remember(source.path) { mutableFloatStateOf(1f) }
     var horizontalOffset by remember(source.path) { mutableFloatStateOf(0f) }
     var touching by remember { mutableStateOf(false) }
+    var touchCount by remember { mutableIntStateOf(0) }
     val interacting = touching || list.isScrollInProgress
     var indicatorExpanded by remember { mutableStateOf(false) }
-    LaunchedEffect(interacting) {
+    LaunchedEffect(interacting, touchCount) {
         if (!interacting) delay(900)
         indicatorExpanded = interacting
     }
@@ -183,7 +184,9 @@ internal fun OriginalPdfPages(
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     touching = true
+                    indicatorExpanded = true
                     var pinching = false
+                    var zoomAnchor: PdfZoomAnchor? = null
                     try {
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -194,22 +197,27 @@ internal fun OriginalPdfPages(
                                 if (before != Offset.Unspecified && after != Offset.Unspecified) {
                                     val info = list.layoutInfo
                                     val localY = before.y + info.viewportStartOffset
-                                    val anchor = info.visibleItemsInfo.firstOrNull {
-                                        localY >= it.offset && localY < it.offset + it.size
-                                    } ?: info.visibleItemsInfo.firstOrNull { it.index == visiblePage }
-                                    if (anchor != null) {
-                                        val baseHeight = anchor.size / zoom
-                                        val fitPage = (viewportHeight / baseHeight).coerceIn(0.20f, 0.75f)
-                                        val newZoom = (zoom * event.calculateZoom()).coerceIn(fitPage, 3f)
-                                        val scaleChange = newZoom / zoom
-                                        val newOffset = pdfPanForZoom(horizontalOffset, viewportWidth,
-                                            before.x, after.x, newZoom, scaleChange)
-                                        val anchorOffset = ((localY - anchor.offset) * scaleChange -
-                                            (after.y + info.viewportStartOffset)).roundToInt()
-                                        if (newZoom != zoom || before.y != after.y)
-                                            list.requestScrollToItem(anchor.index, anchorOffset)
-                                        horizontalOffset = newOffset
-                                        zoom = newZoom
+                                    if (zoomAnchor == null) {
+                                        val item = info.visibleItemsInfo.firstOrNull {
+                                            localY >= it.offset && localY < it.offset + it.size
+                                        } ?: info.visibleItemsInfo.firstOrNull { it.index == visiblePage }
+                                        if (item != null) {
+                                            val fitPage = (viewportHeight / (item.size / zoom))
+                                                .coerceIn(0.20f, 0.75f)
+                                            zoomAnchor = PdfZoomAnchor(item.index,
+                                                (localY - item.offset) / zoom, fitPage)
+                                        }
+                                    }
+                                    zoomAnchor?.let { anchor ->
+                                        val newZoom = (zoom * event.calculateZoom()).coerceIn(anchor.fitPage, 3f)
+                                        horizontalOffset = pdfPanForZoom(horizontalOffset, viewportWidth,
+                                            before.x, after.x, newZoom, newZoom / zoom)
+                                        if (newZoom != zoom || before.y != after.y) {
+                                            zoom = newZoom
+                                            val offset = (anchor.documentY * newZoom -
+                                                (after.y + info.viewportStartOffset)).roundToInt()
+                                            list.requestScrollToItem(anchor.index, offset)
+                                        }
                                     }
                                 }
                                 browsing = true
@@ -219,6 +227,7 @@ internal fun OriginalPdfPages(
                         } while (event.changes.any { it.pressed })
                     } finally {
                         touching = false
+                        touchCount++
                     }
                 }
             }.draggable(horizontalDrag, Orientation.Horizontal, enabled = zoom > 1f)
@@ -283,6 +292,8 @@ internal fun OriginalPdfPages(
         }
     }
 }
+
+private data class PdfZoomAnchor(val index: Int, val documentY: Float, val fitPage: Float)
 
 @Composable
 private fun PdfPageIndicator(page: Int, total: Int, expanded: Boolean, modifier: Modifier = Modifier) {
