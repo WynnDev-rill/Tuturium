@@ -312,14 +312,20 @@ class ReaderFlowTest {
                 pdfList.performTouchInput {
                     val inner = width * from
                     val outer = width * to
-                    pinch(center - Offset(inner, 0f), center + Offset(outer, 0f),
-                        center + Offset(inner, 0f), center - Offset(outer, 0f), durationMillis = 500)
+                    pinch(
+                        start0 = center - Offset(inner, 0f), end0 = center - Offset(outer, 0f),
+                        start1 = center + Offset(inner, 0f), end1 = center + Offset(outer, 0f),
+                        durationMillis = 500
+                    )
                 }
             }
             pinchBy(.10f, .19f)
             compose.waitUntil(5_000) { zoomPercent() > 130 }
             compose.onNodeWithContentDescription("Halaman PDF 1").assertIsDisplayed()
-            pinchBy(.19f, .10f)
+            pinchBy(.20f, .06f)
+            compose.waitUntil(5_000) { zoomPercent() < 85 }
+            val fittedZoom = zoomPercent()
+            pinchBy(.10f, 10f / fittedZoom)
             compose.waitUntil(5_000) { zoomPercent() in 95..105 }
             pdfList.performTouchInput { swipeUp(durationMillis = 480) }
             compose.waitUntil(15_000) {
