@@ -1,7 +1,7 @@
-name: Verify reader time and speed panel
+name: Verify Supertonic accelerated estimator
 on:
   push:
-    branches: [verify/stable-clock-1-3-22]
+    branches: [verify/supertonic-1-3-23]
 permissions:
   contents: read
 jobs:
@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 3809b6b2e4fd99a5fe170a57865e4bd26186df07
+          ref: e755e204c4d892252f41a8da074903840989d89f
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -31,12 +31,12 @@ jobs:
           disable-animations: true
           script: >-
             bash -c 'adb shell settings put secure show_ime_with_hard_keyboard 1;
-            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.ReaderFlowTest#libraryAndReaderAgreeOnSavedWordsAndRemainingDuration;
-            result=$?; if [ "$result" -ne 0 ]; then adb logcat -d -s AndroidRuntime:E TuturiumPlayback:V TuturiumVoice:V;
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=id.tuturium.app.OfflineVoiceRuntimeTest#optimizedGraphKeepsIndonesianCuesAndPlaysInOrderAtFourTimesSpeed -Pandroid.testInstrumentationRunnerArguments.offlineVoiceSmoke=true;
+            result=$?; adb logcat -d -s TuturiumVoiceBenchmark:I TuturiumSupertonic:I; if [ "$result" -ne 0 ]; then adb logcat -d -s AndroidRuntime:E TuturiumPlayback:V TuturiumVoice:V;
             find app/build/outputs/androidTest-results -name "TEST-*.xml" -exec sed -n "/<failure/,/<\/failure>/p" {} +; fi;
             exit "$result"'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reader-remaining-duration-evidence
+          name: supertonic-estimator-evidence
           path: app/build/outputs/androidTest-results/
