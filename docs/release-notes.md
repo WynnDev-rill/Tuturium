@@ -1,3 +1,8 @@
+## Tuturium 1.3.22
+
+- Estimasi waktu di pembaca dan panel kecepatan tetap stabil saat narasi berjalan dan mesin suara mengumpulkan pengukuran baru.
+- Percobaan ulang Google TTS pada 1× tidak mengubah total durasi setiap kali mesin beralih kembali ke kecepatan pilihan.
+
 ## Tuturium 1.3.21
 
 - Pemutar kembali menampilkan estimasi waktu berjalan / total (≈ 03:58 / 16:39:35), dengan kalibrasi durasi dan filter teks tetap aktif.

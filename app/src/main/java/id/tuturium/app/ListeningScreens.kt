@@ -377,8 +377,8 @@ internal fun SpeedControlSheet(model: TuturiumModel, playback: Playback, book: B
     position: ReadingPosition?, dismiss: () -> Unit) {
     val options = model.listeningOptions
     var dragSpeed by remember { mutableStateOf<Float?>(null) }
-    val speed = dragSpeed ?: playback.readingSpeed(book, model.settings.speed)
-    val seconds = position?.remainingSeconds(narrationMillisPerWord(model, speed), speed)
+    val speed = dragSpeed ?: playback.estimatedReadingSpeed(book, model.settings.speed)
+    val seconds = position?.remainingSeconds(narrationMillisPerWord(model, speed, model.readerPace), speed)
     val colors = MaterialTheme.colorScheme
     fun setSpeed(value: Float) {
         val rounded = (value * 20).roundToInt() / 20f

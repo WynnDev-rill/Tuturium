@@ -56,6 +56,32 @@ class ReadingTimelineTest {
             ReadingPosition(0.004f, 59737, 0, 59975, 0), 1000.0, 1f))
     }
 
+    @Test fun playbackClockKeepsTotalAndAdvancesWhenCalibrationChanges() {
+        val profile = PaceProfile("google:test:2x")
+        var measuredPace = 400.0
+        val session = NarrationPaceSnapshot { measuredPace }
+        val start = ReadingPosition(0.1f, 900, totalWords = 1_000)
+        val later = ReadingPosition(0.2f, 800, totalWords = 1_000)
+
+        assertEquals("≈ 00:20 / 03:20", playbackTimeCaption(start, session.millisPerWord(profile), 2f))
+        measuredPace = 700.0
+        assertEquals("≈ 00:20 / 03:20", playbackTimeCaption(start, session.millisPerWord(profile), 2f))
+        assertEquals("≈ 00:40 / 03:20", playbackTimeCaption(later, session.millisPerWord(profile), 2f))
+        assertEquals("≈ 00:20 / 01:40", playbackTimeCaption(later, session.millisPerWord(profile), 4f))
+
+        val reopened = NarrationPaceSnapshot { measuredPace }
+        assertEquals("≈ 01:10 / 05:50", playbackTimeCaption(later, reopened.millisPerWord(profile), 2f))
+    }
+
+    @Test fun timingSpeedDoesNotFollowAOnePassGoogleFallback() {
+        val book = Book("id", "Teks", "TXT", 3, 0, 0L)
+        val playback = Playback(bookId = book.id, total = 3, effectiveSpeed = 1f, narrationSpeed = 2f)
+        assertEquals(2f, playback.estimatedReadingSpeed(book, 2f), 0f)
+        assertEquals(2f, playback.copy(effectiveSpeed = 2f).estimatedReadingSpeed(book, 2f), 0f)
+        assertEquals(2.05f, playback.copy(narrationSpeed = 2.05f).estimatedReadingSpeed(book, 2f), 0f)
+        assertEquals(3f, playback.copy(bookId = "another").estimatedReadingSpeed(book, 3f), 0f)
+    }
+
     @Test fun googlePcmTimingCountsChannelsAndRejectsStaleUtterances() {
         val audio = UtteranceAudioLength()
         audio.reset("current")

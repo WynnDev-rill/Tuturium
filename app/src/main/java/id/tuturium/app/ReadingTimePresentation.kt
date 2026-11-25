@@ -33,10 +33,15 @@ internal fun Playback.hasPosition(book: Book): Boolean = bookId == book.id && to
 internal fun Playback.readingSpeed(book: Book, preferred: Float): Float =
     if (hasPosition(book) && !completed) effectiveSpeed else preferred
 
+internal fun Playback.estimatedReadingSpeed(book: Book, preferred: Float): Float =
+    if (hasPosition(book) && !completed) narrationSpeed ?: preferred else preferred
+
 @Composable
-internal fun narrationMillisPerWord(model: TuturiumModel, speed: Float): Double {
+internal fun narrationMillisPerWord(model: TuturiumModel, speed: Float,
+    snapshot: NarrationPaceSnapshot? = null): Double {
     val context = LocalContext.current
     val profile = PaceProfile.forPlayback(model.settings, model.listeningOptions, speed)
+    if (snapshot != null) return snapshot.millisPerWord(profile)
     val revision by ReadingPace.revision.collectAsState()
     return remember(context, profile, revision) { ReadingPace.millisPerWord(context, profile) }
 }
@@ -47,7 +52,7 @@ internal fun libraryReadingLabel(model: TuturiumModel, book: Book, playback: Pla
     val index = if (active) (if (playback.completed) book.count else playback.index) else book.position
     val offset = if (active) playback.offset else book.wordOffset
     val position = readingPosition(model, book, index, offset) ?: return book.format
-    val speed = playback.readingSpeed(book, model.settings.speed)
+    val speed = playback.estimatedReadingSpeed(book, model.settings.speed)
     val minutes = position.remainingMinutes(narrationMillisPerWord(model, speed), speed)
     return "${position.percent}% · ≈$minutes menit · ${book.format}"
 }

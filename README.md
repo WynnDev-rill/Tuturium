@@ -16,7 +16,7 @@ Tuturium membacakan teks hasil ekstraksi. EPUB tanpa DRM mengikuti urutan spine,
 
 ## Progres dan sisa durasi
 
-Persentase mengikuti jumlah kata sumber sampai posisi baca yang tersimpan. Sisa durasi bertanda **≈** memperhitungkan filter lewati konten, jeda tambahan, dan kecepatan saat ini. Perkiraan awal memakai 150 kata per menit pada 1×. Setelah cukup audio selesai diputar, Tuturium menyesuaikan perkiraan dengan panjang audio Google TTS atau Supertonic yang terukur. Kalibrasi disimpan di perangkat tanpa menyimpan teks atau audio baru untuk tujuan ini. Perpustakaan membulatkan waktu ke atas dalam menit. Pembaca dan panel kecepatan menampilkan jam, menit, dan detik sesuai durasi. Angka dapat berubah selama kalibrasi berlangsung atau ketika kecepatan otomatis naik.
+Persentase mengikuti jumlah kata sumber sampai posisi baca yang tersimpan. Sisa durasi bertanda **≈** memperhitungkan filter lewati konten, jeda tambahan, dan kecepatan saat ini. Perkiraan awal memakai 150 kata per menit pada 1×. Setelah cukup audio selesai diputar, Tuturium menyesuaikan perkiraan dengan panjang audio Google TTS atau Supertonic yang terukur. Kalibrasi disimpan di perangkat tanpa menyimpan teks atau audio baru untuk tujuan ini. Perpustakaan membulatkan waktu ke atas dalam menit. Pembaca dan panel kecepatan menampilkan jam, menit, dan detik sesuai durasi. Pembaca mempertahankan kalibrasi untuk suara dan kecepatan yang sedang digunakan sampai dokumen dibuka ulang. Hasil pengukuran baru tetap disimpan. Total dihitung ulang saat pengaturan suara, kecepatan, jeda, atau filter bacaan berubah, termasuk ketika kecepatan otomatis naik.
 
 ## Supertonic 3
 

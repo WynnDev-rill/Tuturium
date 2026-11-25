@@ -23,7 +23,8 @@ internal fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: Readi
     position: ReadingPosition?, speedPanel: () -> Unit, voicePanel: () -> Unit, seek: (Int) -> Unit) {
     val progress = position?.fraction ?: 0f
     val actual = playback.readingSpeed(book, model.settings.speed)
-    val millisPerWord = narrationMillisPerWord(model, actual)
+    val speed = playback.estimatedReadingSpeed(book, model.settings.speed)
+    val millisPerWord = narrationMillisPerWord(model, speed, model.readerPace)
     Surface(color = MaterialTheme.colorScheme.background,
         shape = RoundedCornerShape(topStart = 23.dp, topEnd = 23.dp)) {
         Column(Modifier.fillMaxWidth()
@@ -33,7 +34,7 @@ internal fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: Readi
                 modifier = Modifier.fillMaxWidth().height(3.dp),
                 color = SpeechifyAccent, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
             Spacer(Modifier.height(9.dp))
-            val caption = playbackTimeCaption(position, millisPerWord, actual)
+            val caption = playbackTimeCaption(position, millisPerWord, speed)
             Text(caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(14.dp))
@@ -66,7 +67,7 @@ internal fun ReaderPlaybackBar(model: TuturiumModel, book: Book, document: Readi
                         contentDescription = "Atur kecepatan"
                     }, shape = CircleShape) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(formatPlaybackSpeed(actual),
+                        Text(formatPlaybackSpeed(speed),
                             color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelLarge)
                     }

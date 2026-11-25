@@ -54,7 +54,8 @@ data class Playback(
     val timerUntil: Long = 0,
     val effectiveSpeed: Float = 1f,
     val error: String? = null,
-    val offset: Int = 0
+    val offset: Int = 0,
+    val narrationSpeed: Float? = null
 )
 
 data class ReadingSettings(val voice: String?, val speed: Float, val pitch: Float, val volume: Float = 1f) {
@@ -310,6 +311,7 @@ class ReadingService : Service() {
                 automaticSpeed.configure(nextSettings.speed, nextOptions.autoRamp)
                 if (intent.action == RESET_SPEED_RAMP) automaticSpeed.reset()
                 val session = offlineSession
+                current = current.copy(narrationSpeed = automaticSpeed.rate)
                 if (!current.playing && !current.loading) {
                     if (current.bookId != null) current = current.copy(effectiveSpeed = automaticSpeed.rate)
                 } else if (session != null && session.settings.voice == nextSettings.voice &&
@@ -366,7 +368,8 @@ class ReadingService : Service() {
                     .coerceIn(0, content.passes.lastIndex)
                 speechOffset = (if (offset >= 0) offset else if (start == book.position) book.wordOffset else 0)
                     .coerceIn(0, content.passes[start].text.lastIndex.coerceAtLeast(0))
-                current = current.copy(title = book.title, index = start, offset = speechOffset, total = content.passes.size)
+                current = current.copy(title = book.title, index = start, offset = speechOffset,
+                    total = content.passes.size, narrationSpeed = ReadingSettings.read(this@ReadingService).speed)
                 persist(start, speechOffset)
                 if (current.loading) startCurrent() else publish()
             } catch (error: CancellationException) {
@@ -510,7 +513,7 @@ class ReadingService : Service() {
         runCatching { lock.acquire(300_000) }
             .onFailure { android.util.Log.w("TuturiumPlayback", "WakeLock unavailable", it) }
         current = current.copy(playing = false, loading = true, completed = false,
-            effectiveSpeed = usableSpeed, range = null, error = null)
+            effectiveSpeed = usableSpeed, narrationSpeed = automaticSpeed.rate, range = null, error = null)
         startupStage = "mengirim teks ke Google TTS"
         val sessionId = narrationSessionId
         runCatching { narrationEnhancer?.setTargetGain(narrationBoostMb(settings.volume)) }
@@ -548,7 +551,7 @@ class ReadingService : Service() {
         val speed = automaticSpeed.rate
         if (current.playing && current.effectiveSpeed != speed) recordListeningTime()
         offlineAudio.setRate(speed, session.settings.pitch)
-        current = current.copy(effectiveSpeed = speed)
+        current = current.copy(effectiveSpeed = speed, narrationSpeed = speed)
     }
 
     private fun startOffline(
@@ -574,7 +577,7 @@ class ReadingService : Service() {
         }
         val speed = automaticSpeed.rate
         current = current.copy(playing = false, loading = true, completed = false,
-            effectiveSpeed = speed, range = null, error = null)
+            effectiveSpeed = speed, narrationSpeed = speed, range = null, error = null)
         runCatching { lock.acquire(300_000) }
         publish()
         offlineAudio.play(scope, voice, passages, speed, settings.pitch, volume = settings.volume,

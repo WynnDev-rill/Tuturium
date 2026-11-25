@@ -271,6 +271,11 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         private set
     var deletedBooks by mutableStateOf<List<Book>>(emptyList())
         private set
+    internal var readerPace by mutableStateOf(newReaderPace())
+        private set
+
+    private fun newReaderPace() = NarrationPaceSnapshot { ReadingPace.millisPerWord(app, it) }
+
     var reader by mutableStateOf<Book?>(null)
         private set
     var content by mutableStateOf<ReadingDocument?>(null)
@@ -454,6 +459,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
                 positionOffset = book.wordOffset
                 bookmarks = marks
                 content = document
+                readerPace = newReaderPace()
                 reader = book
             }
         }

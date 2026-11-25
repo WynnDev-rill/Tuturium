@@ -18,6 +18,14 @@ internal data class PaceProfile(val key: String) {
     }
 }
 
+/** Preserve the estimate for each voice/rate profile until the reader is reopened. */
+internal class NarrationPaceSnapshot(private val calibratedPace: (PaceProfile) -> Double) {
+    private val estimates = mutableMapOf<PaceProfile, Double>()
+
+    fun millisPerWord(profile: PaceProfile): Double =
+        estimates.getOrPut(profile) { calibratedPace(profile) }
+}
+
 internal data class PaceSample(val words: Int, val millisAtNormalSpeed: Double) {
     val millisPerWord: Double get() = millisAtNormalSpeed / words
 
