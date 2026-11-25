@@ -236,7 +236,7 @@ class Library private constructor(context: Context) :
         } finally {
             db.endTransaction()
         }
-        if (removed || !trashOnly) {
+        if (removed) {
             documentFile(id).delete()
             File(folder, "$id.pdf").delete()
             File(appContext.cacheDir, "shared/Tuturium-$id.txt").delete()

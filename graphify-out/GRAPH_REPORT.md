@@ -1,7 +1,7 @@
 # Graph Report - Tuturium  (2026-11-25)
 
 ## Corpus Check
-- 117 files · ~84,332 words
+- 117 files · ~84,333 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 17 file(s) not represented in the graph (top: .xml 6, .ttf 5, (none) 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5e3a2c03`
+- Built from commit: `7ed98f4b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -324,8 +324,8 @@ Nodes (4): Cara mengukur dan kriteria penerimaan, Pola dari produk dan panduan p
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Alur kode` connect `NarrationPipeline` to `PdfNarration.kt`, `Updates.kt`, `Tuturium`, `DocumentImporter`, `Library`, `ReadingService`?**
-  _High betweenness centrality (0.112) - this node is a cross-community bridge._
+- **Why does `ReadingDocument` connect `ReadingDocument` to `PdfNarration.kt`, `ReaderPlaybackBar`, `LibraryV2`, `Test`, `SupertonicBuffer`, `ReaderSheetsV2.kt`, `NarrationPipeline`, `ReaderLayout`, `Test`, `ListeningOptions`, `Library`, `DocumentImporter`, `PlaybackTest.kt`, `.write`, `Pass`, `UtteranceProgressListener`, `ReadingModel.kt`, `ReadingService`?**
+  _High betweenness centrality (0.118) - this node is a cross-community bridge._
 - **Are the 35 inferred relationships involving `ReadingDocument` (e.g. with `.exportsAndRestoresBooksAndBookmarks()` and `.invalidLaterBookDoesNotRestoreEarlierBookOrApplyDeletion()`) actually correct?**
   _`ReadingDocument` has 35 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `DECORATION`, `FOOTER`, `FOOTNOTE` to the rest of the system?**
@@ -333,7 +333,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `.play` be split into smaller, more focused modules?**
   _Cohesion score 0.1051693404634581 - nodes in this community are weakly interconnected._
 - **Why does `ReadingService` connect `ReadingService` to `.play`, `ReaderPlaybackBar`, `ReadingDocument`, `LibraryV2`, `Test`, `NarrationPipeline`, `PlaybackTest.kt`, `PreparedSpeech`, `ReadingModel.kt`?**
-  _High betweenness centrality (0.110) - this node is a cross-community bridge._
+  _High betweenness centrality (0.108) - this node is a cross-community bridge._
 - **Are the 5 inferred relationships involving `ReadingService` (e.g. with `Alur kode` and `narrationBoostMb()`) actually correct?**
   _`ReadingService` has 5 INFERRED edges - model-reasoned connections that need verification._
 - **Should `Reader.kt` be split into smaller, more focused modules?**

@@ -239,7 +239,9 @@ fun ReaderNotesSheet(book: Book, index: Int, dismiss: () -> Unit) {
                 saving = true
                 failed = false
                 scope.launch {
-                    val saved = withContext(Dispatchers.IO) { library.saveNote(book.id, index, text) }
+                    val saved = withContext(Dispatchers.IO) {
+                        runCatching { library.saveNote(book.id, index, text) }.getOrDefault(false)
+                    }
                     if (saved) dismiss() else failed = true
                     saving = false
                 }
