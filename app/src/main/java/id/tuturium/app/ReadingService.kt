@@ -155,6 +155,7 @@ class ReadingService : Service() {
     private var normalSpeedRetryPass = -1
     private var document: ReadingDocument? = null
     private var request = 0
+    private var layoutReloadPending = false
     private var utterance = 0
     private val utteranceAudio = UtteranceAudioLength()
     private var googlePaceProfile: PaceProfile? = null
@@ -169,9 +170,9 @@ class ReadingService : Service() {
     private var foreground = false
     private var activePrepared = PreparedSpeech("", IntArray(0))
     private var preparedStart = 0
-    private var preparedParagraph: PreparedSpeech? = null
-    private var preparedLocation: Pair<Int, Int>? = null
-    private var preparedOptions: ListeningOptions? = null
+    private var preparedEnd = 0
+    private var pipeline: NarrationPipeline? = null
+    private var pipelineOptions: ListeningOptions? = null
     private var continuation: Job? = null
     private val automaticSpeed = AutomaticSpeed()
     private var listeningStart = 0L
@@ -327,6 +328,7 @@ class ReadingService : Service() {
                     startCurrent()
                 }
             }
+            RELOAD_LAYOUT -> if (intent.getStringExtra("book") == current.bookId) reloadLayout()
             TIMER -> setTimer(intent.getIntExtra("minutes", 0))
         }
         return START_NOT_STICKY
@@ -347,11 +349,11 @@ class ReadingService : Service() {
         appliedVoiceName = null
         speechOffset = offset.coerceAtLeast(0)
         automaticSpeed.reset()
+        layoutReloadPending = false
         document = null
         captionIndex = -1
         readingCaption = null
-        preparedParagraph = null
-        preparedLocation = null
+        pipeline = null
         val ticket = ++request
         current = Playback(bookId = id, title = "Tuturium", loading = true, timerUntil = current.timerUntil)
         if (!promote()) return
@@ -360,7 +362,7 @@ class ReadingService : Service() {
                 val (book, content) = withContext(Dispatchers.IO) {
                     val library = Library.get(this@ReadingService)
                     val book = library.book(id) ?: error("Dokumen sudah dihapus.")
-                    book to library.document(id)
+                    book to library.narrationDocument(id, ListeningOptions.read(this@ReadingService).skipEnabled)
                 }
                 if (ticket != request) return@launch
                 document = content
@@ -393,10 +395,10 @@ class ReadingService : Service() {
     }
 
     private fun startCurrentInternal() {
-        if (offlineSession != null) return
+        if (offlineSession != null || layoutReloadPending) return
         startupStage = "menyiapkan dokumen"
         val document = document ?: return
-        val pass = document.passes.getOrNull(current.index) ?: return
+        if (current.index !in document.passes.indices) return
         startupStage = "layanan audio"
         if (!promote()) return
         val settings = ReadingSettings.read(this)
@@ -414,10 +416,8 @@ class ReadingService : Service() {
         val options = ListeningOptions.read(this)
         automaticSpeed.configure(settings.speed, options.autoRamp)
         startupStage = "menyiapkan teks"
-        val sourceSpeech = preparePass(document, pass, options)
-        val prepared = if (offline == null && options.matchLanguage) sourceSpeech.normalizedForNarration()
-            else sourceSpeech
-        val from = if (speechOffset <= 0) 0 else prepared.offsets.indexOfFirst { it >= speechOffset }
+        val prepared = preparePass(document, current.index, options)
+        val from = prepared.startAt(speechOffset)
         if (prepared.text.isBlank() || from < 0) {
             speechOffset = 0
             if (current.index < current.total - 1) {
@@ -428,7 +428,7 @@ class ReadingService : Service() {
             } else completeBook()
             return
         }
-        setCaptionSpeech(current.index, sourceSpeech)
+        setCaptionSpeech(current.index, prepared)
         activePrepared = prepared
         preparedStart = from.coerceAtLeast(0)
         startupStage = "memilih suara Indonesia"
@@ -505,22 +505,27 @@ class ReadingService : Service() {
             .getOrDefault(1f)
         runCatching { engine.setPitch(settings.pitch) }
             .onFailure { android.util.Log.w("TuturiumPlayback", "Set TTS pitch failed", it) }
+        googlePaceProfile = PaceProfile.forPlayback(settings, options, usableSpeed)
+        current = current.copy(playing = false, loading = true, completed = false,
+            effectiveSpeed = usableSpeed, narrationSpeed = automaticSpeed.rate, range = null, error = null)
+        enqueueGoogleSegment(engine, settings.volume)
+    }
+
+    private fun enqueueGoogleSegment(engine: TextToSpeech, volume: Float) {
         startupStage = "mengaktifkan pemutar"
         val token = (++utterance).toString()
         activeUtterance = token
         utteranceAudio.reset(token)
-        googlePaceProfile = PaceProfile.forPlayback(settings, options, usableSpeed)
+        preparedEnd = activePrepared.endWithin(preparedStart, TextToSpeech.getMaxSpeechInputLength())
         runCatching { lock.acquire(300_000) }
             .onFailure { android.util.Log.w("TuturiumPlayback", "WakeLock unavailable", it) }
-        current = current.copy(playing = false, loading = true, completed = false,
-            effectiveSpeed = usableSpeed, narrationSpeed = automaticSpeed.rate, range = null, error = null)
         startupStage = "mengirim teks ke Google TTS"
         val sessionId = narrationSessionId
-        runCatching { narrationEnhancer?.setTargetGain(narrationBoostMb(settings.volume)) }
+        runCatching { narrationEnhancer?.setTargetGain(narrationBoostMb(volume)) }
         val result = runCatching {
-            engine.speak(prepared.text.substring(preparedStart),
+            engine.speak(activePrepared.text.substring(preparedStart, preparedEnd),
                 TextToSpeech.QUEUE_FLUSH, android.os.Bundle().apply {
-                    putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, settings.volume)
+                    putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
                     if (sessionId != null) putInt(TextToSpeech.Engine.KEY_PARAM_SESSION_ID, sessionId)
                 }, token)
         }.onFailure { android.util.Log.e("TuturiumPlayback", "Google TTS speak exception", it) }
@@ -535,16 +540,44 @@ class ReadingService : Service() {
         }
     }
 
-    private fun preparePass(document: ReadingDocument, pass: Pass, options: ListeningOptions): PreparedSpeech {
-        val location = pass.section to pass.paragraph
-        return if (options.skipEnabled) {
-            if (location != preparedLocation || options != preparedOptions || preparedParagraph == null) {
-                preparedParagraph = safePreparedSpeech(document.paragraphs[pass.section][pass.paragraph], options)
-                preparedLocation = location
-                preparedOptions = options
+    private fun preparePass(document: ReadingDocument, index: Int, options: ListeningOptions): PreparedSpeech {
+        if (pipelineOptions != options || pipeline == null) {
+            pipeline = NarrationPipeline(document, options)
+            pipelineOptions = options
+        }
+        return checkNotNull(pipeline).prepare(index)
+    }
+
+    private fun reloadLayout() {
+        val id = current.bookId ?: return
+        if (document == null) return
+        speechOffset = current.range?.first ?: speechOffset
+        val resume = current.playing || current.loading
+        stopUtterance()
+        val ticket = ++request
+        layoutReloadPending = true
+        current = current.copy(playing = false, loading = resume)
+        scope.launch {
+            try {
+                val updated = withContext(Dispatchers.IO) {
+                    Library.get(this@ReadingService).narrationDocument(id,
+                        ListeningOptions.read(this@ReadingService).skipEnabled)
+                }
+                if (ticket != request) return@launch
+                document = updated
+                layoutReloadPending = false
+                pipeline = null
+                if (current.loading) startCurrent()
+                else if (!current.completed) seek(current.index, keepPlaying = false, offset = speechOffset)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (ticket == request) {
+                    layoutReloadPending = false
+                    fail("Area bacaan PDF belum dapat dimuat.")
+                }
             }
-            checkNotNull(preparedParagraph).forPass(pass)
-        } else prepareSpeech(pass.text, options)
+        }
     }
 
     private fun applyOfflineRate(session: OfflineSession) {
@@ -562,13 +595,13 @@ class ReadingService : Service() {
         offlineSession = session
         val startIndex = current.index
         val paceProfile = PaceProfile.forPlayback(settings, options, 1f)
-        val first = PreparedSpeech(initial.text.substring(offset),
-            initial.offsets.copyOfRange(offset, initial.offsets.size))
+        val first = initial.from(offset)
+        val passagesPipeline = NarrationPipeline(document, options)
         val passages = sequence {
             val initialPause = document.pauseAfter(startIndex, options)
             yield(OfflinePass(startIndex, first, initialPause.totalMs, initialPause.extraMs))
             for (index in startIndex + 1 until document.passes.size) {
-                val speech = preparePass(document, document.passes[index], options)
+                val speech = passagesPipeline.prepare(index)
                 if (speech.text.isNotBlank()) {
                     val pause = document.pauseAfter(index, options)
                     yield(OfflinePass(index, speech, pause.totalMs, pause.extraMs))
@@ -628,8 +661,8 @@ class ReadingService : Service() {
         persist(next, speechOffset)
         if (active) startCurrent() else {
             document?.let { doc ->
-                doc.passes.getOrNull(next)?.let { pass ->
-                    setCaptionSpeech(next, preparePass(doc, pass, ListeningOptions.read(this)))
+                doc.passes.getOrNull(next)?.let {
+                    setCaptionSpeech(next, preparePass(doc, next, ListeningOptions.read(this)))
                 }
             }
             publish()
@@ -656,7 +689,7 @@ class ReadingService : Service() {
             handler.post {
                 if (utteranceId != null && utteranceId == activeUtterance && start >= 0 && end > start) {
                     val mappedStart = activePrepared.offsets.getOrNull(preparedStart + start)
-                    val mappedEnd = activePrepared.offsets.getOrNull(preparedStart + end - 1)
+                    val mappedEnd = activePrepared.ends.getOrNull(preparedStart + end - 1)
                     if (mappedStart != null && mappedEnd != null) {
                         current = current.copy(range = mappedStart..mappedEnd, offset = mappedStart)
                         refreshMediaCaption()
@@ -673,7 +706,7 @@ class ReadingService : Service() {
         override fun onDone(utteranceId: String?) {
             handler.post {
                 if (utteranceId == null || utteranceId != activeUtterance) return@post
-                val words = countDocumentWords(activePrepared.text.substring(preparedStart))
+                val words = countDocumentWords(activePrepared.text.substring(preparedStart, preparedEnd))
                 val speed = current.effectiveSpeed
                 val context = applicationContext
                 val audioMs = utteranceAudio.finish(utteranceId)
@@ -685,6 +718,14 @@ class ReadingService : Service() {
                 automaticSpeed.spoken(words)
                 runCatching { if (lock.isHeld) lock.release() }
                     .onFailure { android.util.Log.w("TuturiumPlayback", "Release wakelock failed", it) }
+                if (preparedEnd < activePrepared.text.length) {
+                    preparedStart = preparedEnd
+                    speechOffset = activePrepared.offsets[preparedStart]
+                    current = current.copy(range = null, offset = speechOffset)
+                    persist(current.index, speechOffset)
+                    tts?.let { enqueueGoogleSegment(it, ReadingSettings.read(this@ReadingService).volume) }
+                    return@post
+                }
                 if (current.index + 1 < current.total) {
                     normalSpeedRetryPass = -1
                     speechOffset = 0
@@ -976,6 +1017,7 @@ class ReadingService : Service() {
         const val SEEK = "SEEK"
         const val TIMER = "TIMER"
         const val SETTINGS = "SETTINGS"
+        internal const val RELOAD_LAYOUT = "RELOAD_LAYOUT"
         internal const val RESET_SPEED_RAMP = "RESET_SPEED_RAMP"
         const val VOLUME = "VOLUME"
         private const val CHANNEL = "reading"

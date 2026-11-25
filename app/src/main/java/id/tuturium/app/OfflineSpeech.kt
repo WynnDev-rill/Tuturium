@@ -113,14 +113,11 @@ internal object OfflineSynth {
             android.os.PowerManager.THERMAL_STATUS_MODERATE) return@withContext
         withWarmModel(context) { accelerated ->
             val steps = SupertonicBuffer(accelerated).inferenceSteps(playbackRate, 0, filling = true, thermal = 0)
+            val pipeline = NarrationPipeline(document, options)
             for (i in index until minOf(index + 2, document.passes.size)) {
                 ensureActive()
-                val pass = document.passes[i]
-                val prepared = if (options.skipEnabled)
-                    safePreparedSpeech(document.paragraphs[pass.section][pass.paragraph], options).forPass(pass)
-                else prepareSpeech(pass.text, options)
-                val start = if (i == index && offset > 0)
-                    prepared.offsets.indexOfFirst { it >= offset } else 0
+                val prepared = pipeline.prepare(i)
+                val start = prepared.startAt(if (i == index) offset else 0)
                 if (start < 0 || start >= prepared.text.length) continue
                 val text = prepared.text.substring(start)
                 if (text.isBlank()) continue
@@ -144,7 +141,7 @@ internal object OfflineSynth {
                 val model = OfflineCatalog.model(voice.model)
                 fun key(quality: Int, accelerated: Boolean): String {
                     val graph = if (accelerated) OfflineCatalog.acceleratedVector.sha256 else model.files.single().sha256
-                    return "$graph/${voice.id}/id/$quality/gain-v2/flow-v1/$pauseAfterMs"
+                    return "$graph/${voice.id}/id/$quality/gain-v2/flow-v2/$pauseAfterMs"
                 }
                 if (OfflineModelStore.installed(context, model)) {
                     val accelerated = vectorOverride != null
@@ -169,8 +166,7 @@ internal object OfflineSynth {
                     for ((index, range) in ranges.withIndex()) {
                         ensureActive()
                         val raw = text.substring(range)
-                        val normalized = PreparedSpeech(raw, IntArray(raw.length) { it }).normalizedForNarration().text
-                        val pcm = engine.generateWithConfig(normalized, GenerationConfig(
+                        val pcm = engine.generateWithConfig(raw, GenerationConfig(
                             sid = voice.speaker, speed = 1f, numSteps = steps, extra = mapOf("lang" to "id")))
                         ensureActive()
                         check(pcm.samples.isNotEmpty() && pcm.sampleRate > 0)

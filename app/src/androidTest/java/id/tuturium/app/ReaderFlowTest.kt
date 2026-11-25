@@ -90,6 +90,51 @@ class ReaderFlowTest {
         }
     }
 
+    @Test fun pdfMarginEditorPersistsAnAreaAndHidesControlsInTextMode() {
+        val context = compose.activity
+        val library = Library.get(context)
+        val source = java.io.File.createTempFile("reader-area-", ".pdf", context.cacheDir)
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
+        com.tom_roush.pdfbox.pdmodel.PDDocument().use { pdf ->
+            val page = com.tom_roush.pdfbox.pdmodel.PDPage().also(pdf::addPage)
+            com.tom_roush.pdfbox.pdmodel.PDPageContentStream(pdf, page).use {
+                it.beginText()
+                it.setFont(com.tom_roush.pdfbox.pdmodel.font.PDType1Font.HELVETICA, 16f)
+                it.newLineAtOffset(50f, 500f)
+                it.showText("Isi buku dibaca.")
+                it.endText()
+            }
+            pdf.save(source)
+        }
+        val book = library.add("Dokumen uji margin", "PDF",
+            ReadingDocument(listOf(Section("Halaman 1", "Isi buku dibaca."))))
+        try {
+            library.saveOriginalPdf(book.id, source)
+            compose.onNodeWithText("Perpustakaan").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText(book.title).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText(book.title).performClick()
+            compose.onNodeWithContentDescription("Opsi pembaca").performClick()
+            compose.onNodeWithText("Area bacaan PDF").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("Margin atas").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("Semua halaman").performClick()
+            compose.onNodeWithContentDescription("Margin atas")
+                .performSemanticsAction(SemanticsActions.SetProgress) { it(.25f) }
+            compose.onNodeWithText("Simpan").performClick()
+            assertTrue(PdfMarginStore.read(context, book.id).all.top in 0.24f..0.26f)
+            compose.onNodeWithText("Teks").performClick()
+            compose.onNodeWithContentDescription("Opsi pembaca").performClick()
+            compose.onNodeWithText("Area bacaan PDF").assertDoesNotExist()
+        } finally {
+            library.delete(book.id)
+            library.deletePermanently(book.id)
+            source.delete()
+        }
+    }
+
     @Test fun createExampleNavigateBookmarkAndReturnToHome() {
         compose.onNodeWithText("Lanjutkan").assertIsDisplayed()
         compose.onNodeWithText("Tempel").performClick()

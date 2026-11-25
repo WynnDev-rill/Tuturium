@@ -7,25 +7,17 @@ internal const val INITIAL_MILLIS_PER_WORD = 400.0
 /** Document position uses source words. Time uses only the words sent to the engine. */
 internal class ReadingTimeline(document: ReadingDocument, options: ListeningOptions) {
     private val sourceEnds = Array(document.passes.size) { index -> documentWordEnds(document.passes[index].text) }
-    private val spokenEnds = if (options.skipEnabled) Array(sourceEnds.size) { IntArray(0) } else sourceEnds
+    private val spokenEnds = Array(sourceEnds.size) { IntArray(0) }
     private val sourceWords = IntArray(sourceEnds.size + 1)
     private val spokenWords = IntArray(sourceEnds.size + 1)
     private val extraPauses = LongArray(sourceEnds.size + 1)
 
     init {
-        var paragraph: Pair<Int, Int>? = null
-        var prepared = PreparedSpeech("", IntArray(0))
-        document.passes.forEachIndexed { index, pass ->
-            if (options.skipEnabled) {
-                val location = pass.section to pass.paragraph
-                if (location != paragraph) {
-                    paragraph = location
-                    prepared = safePreparedSpeech(document.paragraphs[pass.section][pass.paragraph], options)
-                }
-                val filtered = prepared.forPass(pass)
-                spokenEnds[index] = documentWordEnds(filtered.text).apply {
-                    for (word in indices) this[word] = filtered.offsets[this[word] - 1] + 1
-                }
+        val pipeline = NarrationPipeline(document, options)
+        document.passes.indices.forEach { index ->
+            val speech = pipeline.prepare(index)
+            spokenEnds[index] = documentWordEnds(speech.text).apply {
+                for (word in indices) this[word] = speech.ends[this[word] - 1] + 1
             }
             sourceWords[index + 1] = sourceWords[index] + sourceEnds[index].size
             spokenWords[index + 1] = spokenWords[index] + spokenEnds[index].size
@@ -39,7 +31,7 @@ internal class ReadingTimeline(document: ReadingDocument, options: ListeningOpti
 
     // The arrays encode positions per word, without retaining the document's text in the cache.
     val sizeBytes: Int get() = 1 + sourceWords.last() * 4 +
-        (if (spokenEnds === sourceEnds) 0 else spokenWords.last() * 4) + (sourceWords.size * 48)
+        spokenWords.last() * 4 + (sourceWords.size * 48)
 
     fun position(index: Int, offset: Int): ReadingPosition {
         val pass = index.coerceIn(0, sourceEnds.size)

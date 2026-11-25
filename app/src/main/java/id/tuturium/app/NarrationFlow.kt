@@ -1,6 +1,6 @@
 package id.tuturium.app
 
-private val abbreviations = Regex("""(?<![\p{L}\p{N}.])(?:s\.d\.|dr\.|prof\.|hlm\.|dll\.|dsb\.|dst\.)(?![\p{L}\p{N}])""",
+private val abbreviations = Regex("""(?<![\p{L}\p{N}.])(?:s\.d\.|dr\.|prof\.|hlm\.|dll\.|dsb\.|dst\.|dkk\.|tgl\.|no\.|yth\.|jl\.)(?![\p{L}\p{N}])""",
     RegexOption.IGNORE_CASE)
 
 private fun expandedAbbreviation(value: String): String = when (value.lowercase(java.util.Locale.ROOT)) {
@@ -10,6 +10,11 @@ private fun expandedAbbreviation(value: String): String = when (value.lowercase(
     "dll." -> "dan lain-lain"
     "dsb." -> "dan sebagainya"
     "dst." -> "dan seterusnya"
+    "dkk." -> "dan kawan-kawan"
+    "tgl." -> "tanggal"
+    "no." -> "nomor"
+    "yth." -> "yang terhormat"
+    "jl." -> "jalan"
     else -> "sampai dengan"
 }
 
@@ -21,24 +26,37 @@ private fun normalizedCharacter(char: Char): String = when (char) {
     else -> char.toString()
 }
 
+private val maybeRomanHeading = Regex("""\b[IVXLCDM]{1,15}\b""")
+private val sensitiveTokens = Regex("""(?i:https?://|www\.)[^\s<>]+|[\p{L}\d._%+-]+@[\p{L}\d.-]+\.[\p{L}]{2,}""")
+
 internal fun PreparedSpeech.normalizedForNarration(): PreparedSpeech {
-    val matches = abbreviations.findAll(text).iterator()
-    var match = if (matches.hasNext()) matches.next() else null
+    if (text.none { it.isDigit() || it in ".×÷=≠<>≤≥√⁰¹²³⁴⁵⁶⁷⁸⁹" ||
+            it in "\u00ad\u200b\ufb01\ufb02\r\n\t\u00a0\u202f+−-*±≈∞" } &&
+        !maybeRomanHeading.containsMatchIn(text)) return this
+    val protected = sensitiveTokens.findAll(text).map { it.range }.toList()
+    val replacements = (indonesianNumberReplacements(text) + abbreviations.findAll(text).filter { word ->
+        protected.none { word.range.first in it }
+    }.map { it.range to expandedAbbreviation(it.value) }).sortedBy { it.first.first }.iterator()
+    var replacement = if (replacements.hasNext()) replacements.next() else null
     val normalized = StringBuilder(text.length)
-    val sourceOffsets = ArrayList<Int>(text.length)
+    val sourceStarts = ArrayList<Int>(text.length)
+    val sourceEnds = ArrayList<Int>(text.length)
     var index = 0
     while (index < text.length) {
-        val replacement = match?.takeIf { it.range.first == index }
-        val value = if (replacement == null) normalizedCharacter(text[index])
-            else expandedAbbreviation(replacement.value)
+        while (replacement != null && replacement.first.first < index) {
+            replacement = if (replacements.hasNext()) replacements.next() else null
+        }
+        val match = replacement?.takeIf { it.first.first == index }
+        val end = match?.first?.last ?: index
+        val value = match?.second ?: normalizedCharacter(text[index])
         for (character in value) {
             normalized.append(character)
-            sourceOffsets += offsets[index]
+            sourceStarts += offsets[index]
+            sourceEnds += ends[end]
         }
-        index = if (replacement == null) index + 1 else replacement.range.last + 1
-        if (replacement != null) match = if (matches.hasNext()) matches.next() else null
+        index = end + 1
     }
-    return PreparedSpeech(normalized.toString(), sourceOffsets.toIntArray())
+    return PreparedSpeech(normalized.toString(), sourceStarts.toIntArray(), sourceEnds.toIntArray())
 }
 
 private fun String.withoutClosingPunctuation() = trimEnd().trimEnd('"', '\'', '”', '’', '»', ')', ']', '}')

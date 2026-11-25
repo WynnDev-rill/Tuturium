@@ -29,44 +29,71 @@ internal fun matchPdfWords(words: List<String>, passes: List<IndexedValue<Pass>>
 }
 
 internal data class PdfWordHit(val text: String, val left: Float, val top: Float,
-    val right: Float, val bottom: Float, val selection: WordSelection? = null)
+    val right: Float, val bottom: Float, val selection: WordSelection? = null, val fontScale: Float? = null)
+
+private class PdfWordStripper(
+    first: Int, last: Int, private val pageReady: (Int, List<PdfWordHit>) -> Unit
+) : PDFTextStripper() {
+    private val words = mutableListOf<PdfWordHit>()
+
+    init {
+        sortByPosition = true
+        startPage = first + 1
+        endPage = last + 1
+    }
+
+    override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
+        if (textPositions.isEmpty() || text.isBlank()) return
+        val tokens = pdfWordPattern.findAll(text).toList()
+        val first = textPositions.first()
+        val width = first.pageWidth.coerceAtLeast(1f)
+        val height = first.pageHeight.coerceAtLeast(1f)
+        val glyphs = if (tokens.size == 1) emptyList() else textPositions.flatMap { glyph ->
+            List(glyph.unicode?.length?.coerceAtLeast(1) ?: 1) { glyph }
+        }
+        for (token in tokens) {
+            val positions = if (tokens.size == 1) textPositions else
+                glyphs.drop(token.range.first).take(token.value.length)
+            if (positions.isEmpty()) continue
+            words.add(PdfWordHit(token.value,
+                positions.minOf { it.x / width },
+                positions.minOf { (it.y - it.height) / height },
+                positions.maxOf { (it.x + it.width) / width },
+                positions.maxOf { it.y / height },
+                fontScale = positions.maxOf { it.fontSizeInPt } / height))
+        }
+    }
+
+    override fun endPage(page: com.tom_roush.pdfbox.pdmodel.PDPage) {
+        super.endPage(page)
+        pageReady(currentPageNo - 1, words.toList())
+        words.clear()
+    }
+}
+
+internal fun readPdfWords(context: Context, source: File, first: Int = 0, last: Int = Int.MAX_VALUE - 1,
+    pageReady: (Int, List<PdfWordHit>) -> Unit) {
+    PDFBoxResourceLoader.init(context)
+    PDDocument.load(source, MemoryUsageSetting.setupTempFileOnly()).use { document ->
+        require(document.currentAccessPermission.canExtractContent())
+        if (first !in 0 until document.numberOfPages) return
+        val sink = object : java.io.Writer() {
+            override fun write(cbuf: CharArray, off: Int, len: Int) = Unit
+            override fun flush() = Unit
+            override fun close() = Unit
+        }
+        PdfWordStripper(first, minOf(last, document.numberOfPages - 1), pageReady).writeText(document, sink)
+    }
+}
 
 internal fun readPdfWordHits(context: Context, source: File, pageIndex: Int,
     passes: List<IndexedValue<Pass>>): List<PdfWordHit> {
-    PDFBoxResourceLoader.init(context)
-    val hits = mutableListOf<PdfWordHit>()
-    PDDocument.load(source, MemoryUsageSetting.setupTempFileOnly()).use { document ->
-        require(document.currentAccessPermission.canExtractContent())
-        if (pageIndex !in 0 until document.numberOfPages) return emptyList()
-        val stripper = object : PDFTextStripper() {
-            override fun writeString(text: String, textPositions: MutableList<TextPosition>) {
-                if (textPositions.isEmpty() || text.isBlank()) return
-                // PDFBox emits individual words with their associated glyphs.
-                val tokens = pdfWordPattern.findAll(text).toList()
-                val first = textPositions.first()
-                val width = first.pageWidth.coerceAtLeast(1f)
-                val height = first.pageHeight.coerceAtLeast(1f)
-                val glyphs = textPositions.flatMap { glyph ->
-                    List(glyph.unicode?.length?.coerceAtLeast(1) ?: 1) { glyph }
-                }
-                for (token in tokens) {
-                    val positions = if (tokens.size == 1) textPositions else
-                        glyphs.drop(token.range.first).take(token.value.length)
-                    if (positions.isEmpty()) continue
-                    val left = positions.minOf { it.x / width }
-                    val right = positions.maxOf { (it.x + it.width) / width }
-                    val top = positions.minOf { (it.y - it.height) / height }
-                    val bottom = positions.maxOf { it.y / height }
-                    hits.add(PdfWordHit(token.value, left, top, right, bottom))
-                }
-            }
-        }.apply {
-            sortByPosition = true
-            startPage = pageIndex + 1
-            endPage = pageIndex + 1
-        }
-        stripper.getText(document)
-    }
+    var hits = emptyList<PdfWordHit>()
+    readPdfWords(context, source, pageIndex, pageIndex) { _, words -> hits = words }
+    return alignPdfHits(hits, passes)
+}
+
+internal fun alignPdfHits(hits: List<PdfWordHit>, passes: List<IndexedValue<Pass>>): List<PdfWordHit> {
     val selections = matchPdfWords(hits.map { it.text }, passes)
     return hits.mapIndexed { i, hit -> hit.copy(selection = selections[i]) }
 }
@@ -89,14 +116,16 @@ internal suspend fun ocrPdfWordHits(bitmap: android.graphics.Bitmap,
         com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS)
     try {
         val result = recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0)).await()
-        val hits = result.textBlocks.flatMap { it.lines }.flatMap { it.elements }.mapNotNull { element ->
-            val rect = element.boundingBox ?: return@mapNotNull null
-            PdfWordHit(element.text, rect.left.toFloat() / bitmap.width,
-                rect.top.toFloat() / bitmap.height, rect.right.toFloat() / bitmap.width,
-                rect.bottom.toFloat() / bitmap.height)
+        val hits = result.textBlocks.flatMap { it.lines }.flatMap { it.elements }.flatMap { element ->
+            val rect = element.boundingBox ?: return@flatMap emptyList()
+            pdfWordPattern.findAll(element.text).map { token ->
+                val left = rect.left + rect.width() * (token.range.first.toFloat() / element.text.length)
+                val right = rect.left + rect.width() * ((token.range.last + 1f) / element.text.length)
+                PdfWordHit(token.value, left / bitmap.width, rect.top.toFloat() / bitmap.height,
+                    right / bitmap.width, rect.bottom.toFloat() / bitmap.height)
+            }.toList()
         }
-        val selections = matchPdfWords(hits.map { it.text.trim { ch -> !ch.isLetterOrDigit() } }, passes)
-        return hits.mapIndexed { i, hit -> hit.copy(selection = selections[i]) }
+        return alignPdfHits(hits, passes)
     } finally { recognizer.close() }
 }
 

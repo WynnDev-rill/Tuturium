@@ -16,9 +16,9 @@ class NarrationFlowTest {
     @Test fun commonAbbreviationsAndPdfTypographyKeepSourceOffsets() {
         val source = "dr. Rina ke hlm. 12, ﬂora dan kata\u00addasar."
         val prepared = PreparedSpeech(source, IntArray(source.length) { it }).normalizedForNarration()
-        assertEquals("dokter Rina ke halaman 12, flora dan katadasar.", prepared.text)
+        assertEquals("dokter Rina ke halaman dua belas, flora dan katadasar.", prepared.text)
         assertEquals(source.indexOf("Rina"), prepared.offsets[prepared.text.indexOf("Rina")])
-        assertEquals(source.indexOf("12"), prepared.offsets[prepared.text.indexOf("12")])
+        assertEquals(source.indexOf("12"), prepared.offsets[prepared.text.indexOf("dua belas")])
     }
 
     @Test fun pageContinuationDoesNotMergeStableBookmarksAndParagraphPausesStayDistinct() {

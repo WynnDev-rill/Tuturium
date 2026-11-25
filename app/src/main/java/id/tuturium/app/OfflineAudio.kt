@@ -232,7 +232,7 @@ internal class OfflineAudio(
             active = next
             onPass(next.pass)
             next.audio.cues.firstOrNull()?.range?.let {
-                onRange(next.pass.speech.offsets[it.first]..next.pass.speech.offsets[it.last])
+                next.pass.speech.sourceRange(it)?.let(onRange)
             }
         }
 
@@ -334,7 +334,7 @@ internal class OfflineAudio(
                 if (clip != null && engine.isPlaying && engine.currentMediaItem?.mediaId == clip.id) {
                     val cue = clip.audio.cues.lastOrNull { it.startMs <= engine.currentPosition }
                     val range = cue?.range?.let {
-                        clip.pass.speech.offsets[it.first]..clip.pass.speech.offsets[it.last]
+                        clip.pass.speech.sourceRange(it)
                     }
                     if (range != null && range != lastRange) {
                         lastRange = range

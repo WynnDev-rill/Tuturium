@@ -20,9 +20,9 @@ internal fun readingPosition(model: TuturiumModel, book: Book, index: Int, offse
     val initial = if (atStart && book.words > 0 && !options.skipEnabled &&
         options.sentencePauseMs == 0 && options.paragraphPauseMs == 0
     ) ReadingPosition(0f, book.words) else null
-    if (document == null && initial != null) return initial
-    var timeline by remember(book.id, book.updated, options, document) { mutableStateOf<ReadingTimeline?>(null) }
-    LaunchedEffect(book.id, book.updated, options, document) {
+    val layoutRevision = model.pdfLayoutRevision
+    var timeline by remember(book.id, book.updated, options, document, layoutRevision) { mutableStateOf<ReadingTimeline?>(null) }
+    LaunchedEffect(book.id, book.updated, options, document, layoutRevision) {
         timeline = model.readingTimeline(book, document, options)
     }
     return timeline?.position(index, offset) ?: initial

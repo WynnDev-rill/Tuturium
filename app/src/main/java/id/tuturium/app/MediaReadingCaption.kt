@@ -10,6 +10,8 @@ internal class MediaReadingCaption(speech: PreparedSpeech) {
             var end = start + 1
             while (end < words.size && end - start < 6 &&
                 words[end].range.last - words[start].range.first + 1 <= 90) end++
+            while (end < words.size &&
+                speech.offsets[words[end - 1].range.first] == speech.offsets[words[end].range.first]) end++
             val first = words[start].range.first
             val last = words[end - 1].range.last
             val offset = speech.offsets.getOrNull(first) ?: first

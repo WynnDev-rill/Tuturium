@@ -64,7 +64,7 @@ internal fun OriginalPdfPages(
     source: File, readingPage: Int, follow: Boolean, reading: Boolean, hasReadingPosition: Boolean,
     firstPassByPage: Map<Int, Int>, passesByPage: Map<Int, List<IndexedValue<Pass>>>,
     currentPass: Int, spokenRange: IntRange?, highlightSentence: Boolean, highlightColor: Color,
-    onReadWord: (WordSelection) -> Unit
+    onReadWord: (WordSelection) -> Unit, onVisiblePage: (Int) -> Unit = {}
 ) {
     val session = remember(source.path) { PdfPageSession(source) }
     DisposableEffect(session) {
@@ -87,6 +87,9 @@ internal fun OriginalPdfPages(
 
     val target = readingPage.coerceIn(0, total - 1)
     val list = rememberLazyListState(initialFirstVisibleItemIndex = target)
+    LaunchedEffect(list) {
+        snapshotFlow { list.firstVisibleItemIndex }.collect { onVisiblePage(it) }
+    }
     val scope = rememberCoroutineScope()
     var browsing by rememberSaveable(source.path) { mutableStateOf(false) }
     var requestedPage by remember { mutableStateOf<Int?>(null) }
@@ -312,7 +315,7 @@ private fun PdfPageImage(session: PdfPageSession, source: File, index: Int,
     }
 }
 
-private class PdfPageSession(private val source: File) {
+internal class PdfPageSession(private val source: File) {
     private var renderer: PdfRenderer? = null
     private var closed = false
     private val ratios = java.util.concurrent.ConcurrentHashMap<Int, Float>()

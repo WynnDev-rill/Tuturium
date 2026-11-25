@@ -11,8 +11,8 @@ internal data class PaceProfile(val key: String) {
         fun forPlayback(settings: ReadingSettings, options: ListeningOptions, speed: Float): PaceProfile {
             val offlineVoice = OfflineCatalog.voice(settings.voice)
             // Supertonic generates at 1×. The Google engine controls its own rate.
-            return if (offlineVoice != null) PaceProfile("supertonic:${offlineVoice.id}")
-            else PaceProfile("google:${settings.voice.orEmpty()}:${options.matchLanguage}:" +
+            return if (offlineVoice != null) PaceProfile("text-v2:supertonic:${offlineVoice.id}")
+            else PaceProfile("text-v2:google:${settings.voice.orEmpty()}:${options.matchLanguage}:" +
                 "${(settings.pitch * 20).roundToInt()}:${(speed * 4).roundToInt()}")
         }
     }

@@ -66,6 +66,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
         if (book.format == "PDF") Library.get(context).originalPdf(book.id) else null
     }
     var showPdf by rememberSaveable(book.id) { mutableStateOf(pdfSource != null) }
+    var visiblePdfPage by remember(book.id) { mutableIntStateOf(0) }
     val active = playback.bookId == book.id && playback.total > 0
     val readingIndex = if (active) {
         if (playback.completed) document.passes.size else playback.index
@@ -95,6 +96,7 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
     val marked = model.bookmarks.any { it.index == current }
     val offlineVoice = OfflineCatalog.voice(model.settings.voice)
     LaunchedEffect(book.id, offlineVoice?.id, current, isPlaying, isLoading, model.listeningOptions,
+        model.pdfLayoutRevision,
         model.settings.speed) {
         val voice = offlineVoice ?: return@LaunchedEffect
         delay(250)
@@ -231,7 +233,8 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         book.wordOffset..book.wordOffset else null,
                     highlightSentence = model.readerHighlightSentence,
                     highlightColor = readerCursorColor(model.readerHighlight, MaterialTheme.colorScheme.primary),
-                    onReadWord = { model.playFromWord(book, it) })
+                    onReadWord = { model.playFromWord(book, it) },
+                    onVisiblePage = { visiblePdfPage = it })
             }
         } else {
         val scheme = MaterialTheme.colorScheme
@@ -268,9 +271,22 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                         else if (!active && pass != null && current == book.position && book.wordOffset in pass.text.indices)
                             book.wordOffset..book.wordOffset
                         else null
-                    val highlighted = remember(row, pass, spokenRange, sentenceColor, wordColor, wordInk, resultRange, highlightSentence) {
+                    val excluded = remember(row, model.pdfLayoutRevision, model.listeningOptions, document.narrationLayout) {
+                        row.passes.flatMap { (index, source) ->
+                            document.narrationLayout.excluded(index, model.listeningOptions).map {
+                                it.first + source.offset..it.last + source.offset
+                            }
+                        }
+                    }
+                    val mutedInk = ink.copy(alpha = .56f)
+                    val highlighted = remember(row, pass, spokenRange, sentenceColor, wordColor, wordInk,
+                        resultRange, highlightSentence, excluded, mutedInk) {
                         buildAnnotatedString {
                             append(row.text)
+                            for (range in excluded) {
+                                if (range.first in row.text.indices)
+                                    addStyle(SpanStyle(color = mutedInk), range.first, (range.last + 1).coerceAtMost(length))
+                            }
                             if (pass != null) {
                                 val end = (pass.offset + pass.text.length).coerceAtMost(length)
                                 if (highlightSentence) addStyle(SpanStyle(background = sentenceColor), pass.offset, end)
@@ -471,11 +487,17 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
                     } })
             }
         }
-        "menu" -> ReaderMenuSheet(model, book, current, marked,
+        "menu" -> ReaderMenuSheet(model, book, current, marked, allowPdfMargins = showPdf && pdfSource != null,
             dismiss = { panel = null }, navigate = {
                 if (it == "search") showPdf = false
                 panel = it
             })
+        "pdfMargins" -> if (showPdf && pdfSource != null) {
+            PdfMarginSheet(pdfSource, visiblePdfPage, model.pdfMargins(book), dismiss = { panel = null }) {
+                model.savePdfMargins(book, it)
+                panel = null
+            }
+        }
         "voices" -> ReaderVoiceSheet(model) { panel = null }
         "timer" -> ReaderTimerSheet(playback) { panel = null }
         "speed" -> SpeedControlSheet(model, playback, book, timePosition) { panel = null }

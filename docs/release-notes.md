@@ -1,3 +1,10 @@
+## Tuturium 1.3.24
+
+- Normalisasi angka Indonesia dan singkatan otomatis pada Google TTS dan Supertonic, dengan posisi sorotan mengikuti teks asli.
+- Filter PDF membaca koordinat halaman untuk mengenali header/footer berulang, nomor halaman, catatan kaki, dan tabel yang memiliki pola tata letak yang jelas.
+- Area bacaan PDF dapat diatur per halaman atau untuk seluruh buku, tanpa mengubah PDF asli, markah, atau posisi yang tersimpan.
+- [Riset dan cakupan pemrosesan teks](https://github.com/WynnDev-rill/Tuturium/blob/main/docs/narration-text-processing.md).
+
 ## Tuturium 1.3.23
 
 - Akselerasi Supertonic 3 tersedia di Pustaka Suara. Unduhan satu kali berukuran 66 MB, lalu pemrosesan berlangsung di perangkat.

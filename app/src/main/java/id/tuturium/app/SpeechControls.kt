@@ -135,9 +135,30 @@ fun seekBySeconds(passes: List<Pass>, current: Int, seconds: Int, speed: Float):
 }
 
 /** A mapping for word highlighting after skip filters remove text. */
-data class PreparedSpeech(val text: String, val offsets: IntArray)
+data class PreparedSpeech(val text: String, val offsets: IntArray, val ends: IntArray = offsets) {
+    internal fun startAt(source: Int): Int = ends.indexOfFirst { it >= source }
+    internal fun sourceRange(range: IntRange): IntRange? {
+        val start = offsets.getOrNull(range.first) ?: return null
+        val end = ends.getOrNull(range.last) ?: return null
+        return start..end
+    }
+    internal fun endWithin(start: Int, maxCharacters: Int): Int {
+        var end = minOf(start + maxCharacters, text.length)
+        if (end == text.length) return end
+        // Keep an expanded source token together and prefer a word boundary.
+        val boundary = (end downTo start + 1).firstOrNull {
+            text[it - 1].isWhitespace() && offsets[it - 1] != offsets[it]
+        }
+        if (boundary != null) return boundary
+        while (end > start + 1 && offsets[end - 1] == offsets[end]) end--
+        if (text[end].isLowSurrogate() && text[end - 1].isHighSurrogate() && end > start + 1) end--
+        return end
+    }
 
-private val headerPattern = Regex("""(?im)^[ \t]*(?:(?:bab|chapter)[ \t]+(?:\d+|[ivxlcdm]+|satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh)\b[^\n]*|daftar isi|pendahuluan)[ \t]*$""")
+    internal fun from(start: Int) = PreparedSpeech(text.substring(start),
+        offsets.copyOfRange(start, offsets.size), ends.copyOfRange(start, ends.size))
+}
+
 private val footerPattern = Regex("""(?im)^[ \t]*(?:halaman|page)[ \t]+\d+(?:[ \t]*(?:/|dari|of)[ \t]*\d+)?[ \t]*$""")
 private val footnotePattern = Regex("""(?m)^[ \t]*(?:\[\d{1,3}\]|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[ \t]+[^\n]+$""")
 private val tablePattern = Regex("""(?m)^[ \t]*(?:\|[^|\n]+\|[^|\n]+\|[^\n]*|[^\t\n]+\t[^\t\n]+\t[^\n]+)$""")
@@ -156,7 +177,7 @@ fun prepareSpeech(source: String, settings: ListeningOptions): PreparedSpeech {
             java.util.Arrays.fill(blocked, match.range.first, match.range.last + 1, true)
         }
     }
-    block(settings.skipHeaders, headerPattern)
+    // Chapter headings belong to the book. Repeated headers are identified from PDF layout.
     block(settings.skipFooters, footerPattern)
     block(settings.skipFootnotes, footnotePattern)
     block(settings.skipTables, tablePattern)
@@ -204,7 +225,7 @@ fun safePreparedSpeech(
     fun original() = PreparedSpeech(source, IntArray(source.length) { it })
     return try {
         val prepared = prepare(source, settings)
-        if (prepared.offsets.size != prepared.text.length ||
+        if (prepared.offsets.size != prepared.text.length || prepared.ends.size != prepared.text.length ||
             prepared.offsets.any { it !in source.indices }) original()
         else prepared
     } catch (_: Exception) {

@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderMenuSheet(model: TuturiumModel, book: Book, index: Int, marked: Boolean,
-    dismiss: () -> Unit, navigate: (String) -> Unit) {
+    allowPdfMargins: Boolean = false, dismiss: () -> Unit, navigate: (String) -> Unit) {
     val p = model.listeningOptions
     TuturiumSheet(onDismissRequest = dismiss, containerColor = SpeechifyPanel) {
         Column(Modifier.fillMaxWidth().heightIn(max = 740.dp).verticalScroll(rememberScrollState())
@@ -67,7 +67,9 @@ fun ReaderMenuSheet(model: TuturiumModel, book: Book, index: Int, marked: Boolea
             ReaderMenuAction(Icons.Rounded.QueueMusic, "Antrean") { dismiss(); navigate("queue") }
             HorizontalDivider(color = Color.DarkGray)
             ReaderMenuAction(Icons.Rounded.AutoMode, "Lewati Konten Secara Otomatis",
-                "Header, footer, kutipan, dll.") { dismiss(); navigate("skip") }
+                "Header dan footer berulang, catatan kaki, kutipan") { dismiss(); navigate("skip") }
+            if (allowPdfMargins) ReaderMenuAction(Icons.Rounded.CropFree, "Area bacaan PDF",
+                "Atur margin untuk dibacakan") { dismiss(); navigate("pdfMargins") }
             ReaderMenuToggle(Icons.Rounded.AutoAwesomeMotion, "Gulir otomatis", p.autoScroll) {
                 model.changeListeningOptions(p.copy(autoScroll = it))
             }

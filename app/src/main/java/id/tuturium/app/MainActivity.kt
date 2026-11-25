@@ -33,6 +33,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.gms.auth.api.identity.Identity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
@@ -248,7 +249,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         withContext(timelineDispatcher) {
             try {
                 val key = Triple(book.id, library.documentModifiedAt(book.id), options)
-                timelines.get(key) ?: ReadingTimeline(document ?: library.document(book.id), options)
+                timelines.get(key) ?: ReadingTimeline(document ?: library.narrationDocument(book.id, options.skipEnabled), options)
                     .also { timelines.put(key, it) }
             } catch (error: CancellationException) {
                 throw error
@@ -278,8 +279,11 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     var reader by mutableStateOf<Book?>(null)
         private set
-    var content by mutableStateOf<ReadingDocument?>(null)
+    var content by mutableStateOf<ReadingDocument?>(null, androidx.compose.runtime.referentialEqualityPolicy())
         private set
+    internal var pdfLayoutRevision by mutableIntStateOf(0)
+        private set
+    private var narrationLayoutJob: Job? = null
     var bookmarks by mutableStateOf<List<Bookmark>>(emptyList())
         private set
     var savingBookId by mutableStateOf<String?>(null)
@@ -363,7 +367,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         previewingVoice = voice.id
         previewLoading = true
         val text = "Halo, ini pratinjau suara bahasa Indonesia. Anda dapat mendengarkan buku secara offline di Tuturium."
-        val speech = PreparedSpeech(text, IntArray(text.length) { it })
+        val speech = PreparedSpeech(text, IntArray(text.length) { it }).normalizedForNarration()
         offlinePreview.play(viewModelScope, voice, sequenceOf(OfflinePass(0, speech)), 1f, 1f,
             onPass = {}, onSpoken = { _, _ -> }, onRange = {},
             onRendering = { previewLoading = !it },
@@ -460,7 +464,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         openJob = viewModelScope.launch {
             safe("Dokumen tidak dapat dibuka") {
                 val (book, document, marks) = withContext(Dispatchers.IO) {
-                    Triple(library.book(id) ?: error("Dokumen sudah dihapus."), library.document(id), library.bookmarks(id))
+                    Triple(library.book(id) ?: error("Dokumen sudah dihapus."),
+                        library.narrationDocument(id, listeningOptions.skipEnabled), library.bookmarks(id))
                 }
                 position = book.position
                 positionOffset = book.wordOffset
@@ -887,13 +892,39 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    internal fun pdfMargins(book: Book): PdfMarginSettings = PdfMarginStore.read(app, book.id)
+
+    internal fun savePdfMargins(book: Book, margins: PdfMarginSettings) {
+        PdfMarginStore.write(app, book.id, margins)
+        refreshPdfNarration(book)
+    }
+
+    private fun refreshPdfNarration(book: Book) {
+        narrationLayoutJob?.cancel()
+        val detect = listeningOptions.skipEnabled
+        narrationLayoutJob = viewModelScope.launch {
+            safe("Area bacaan PDF gagal diperbarui") {
+                val refreshed = withContext(Dispatchers.IO) { library.narrationDocument(book.id, detect) }
+                if (reader?.id == book.id) {
+                    content = refreshed
+                    timelines.evictAll()
+                    pdfLayoutRevision++
+                }
+                if (ReadingService.state.value.bookId == book.id)
+                    ReadingService.command(app, ReadingService.RELOAD_LAYOUT, book.id)
+            }
+        }
+    }
+
     fun changeListeningOptions(value: ListeningOptions) {
         val previous = listeningOptions
         listeningOptions = value
         value.save(app)
         follow = value.autoScroll
         prefs.edit().putBoolean("follow", follow).apply()
-        if (ReadingService.state.value.bookId != null &&
+        val pdf = reader?.takeIf { it.format == "PDF" && previous.skipEnabled != value.skipEnabled }
+        if (pdf != null) refreshPdfNarration(pdf)
+        else if (ReadingService.state.value.bookId != null &&
             previous.copy(autoplay = value.autoplay, hideAutoplay = value.hideAutoplay,
                 autoScroll = value.autoScroll) != value
         ) ReadingService.command(app, ReadingService.SETTINGS)

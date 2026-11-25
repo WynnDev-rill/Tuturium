@@ -155,6 +155,18 @@ class Library private constructor(context: Context) :
         })
     }
 
+    internal suspend fun narrationDocument(id: String, detectLayout: Boolean): ReadingDocument {
+        val document = document(id)
+        val source = originalPdf(id) ?: return document
+        document.hasPdfTextGeometry = true
+        val margins = PdfMarginStore.read(appContext, id)
+        if (detectLayout || !margins.empty) {
+            document.narrationLayout = PdfNarrationStore.load(appContext, source, documentModifiedAt(id),
+                document, margins, detectLayout)
+        }
+        return document
+    }
+
     fun position(id: String, index: Int, wordOffset: Int = 0) {
         writableDatabase.update("books", ContentValues().apply {
             put("position", index.coerceAtLeast(0))
@@ -226,6 +238,7 @@ class Library private constructor(context: Context) :
         if (removed) {
             documentFile(id).delete()
             File(folder, "$id.pdf").delete()
+            PdfMarginStore.write(appContext, id, PdfMarginSettings())
         }
         return removed
     }

@@ -99,6 +99,49 @@ class DocumentImportTest {
         }
     }
 
+    @Test fun layoutFiltersNativePdfWithoutChangingSourcePositions() = runBlocking {
+        checkImport("TataLetak.pdf", { file ->
+            PDFBoxResourceLoader.init(context)
+            PDDocument().use { pdf ->
+                for (number in 1..4) {
+                    val page = PDPage().also(pdf::addPage)
+                    PDPageContentStream(pdf, page).use { stream ->
+                        fun line(text: String, x: Float, y: Float, size: Float) {
+                            stream.beginText()
+                            stream.setFont(PDType1Font.HELVETICA, size)
+                            stream.newLineAtOffset(x, y)
+                            stream.showText(text)
+                            stream.endText()
+                        }
+                        line("Bab IV", 70f, 765f, 11f)
+                        line("Penduduk berjumlah 1.874.161 orang.", 70f, 540f, 15f)
+                        line("Catatan pinggir", 70f, 130f, 10f)
+                        line(number.toString(), 300f, 26f, 10f)
+                    }
+                }
+                pdf.save(file)
+            }
+        }) { book, raw ->
+            val index = raw.passes.indexOfFirst { "1.874.161" in it.text }
+            library.position(book.id, index, 3)
+            library.toggleBookmark(book.id, index, "Penduduk")
+            val pdf = checkNotNull(library.originalPdf(book.id))
+            val originalBytes = pdf.readBytes()
+            PdfMarginStore.write(context, book.id, PdfMarginSettings(all = PdfMargins(bottom = .75f)))
+            val processed = library.narrationDocument(book.id, detectLayout = true)
+            val pipeline = NarrationPipeline(processed, ListeningOptions(skipEnabled = true))
+            val all = processed.passes.indices.joinToString(" ") { pipeline.prepare(it).text }
+            assertEquals(1, Regex("Bab empat").findAll(all).count())
+            assertEquals(4, Regex("satu juta").findAll(all).count())
+            assertFalse(all.contains("Catatan pinggir"))
+            assertEquals(raw.passes, processed.passes)
+            assertEquals(index, library.book(book.id)?.position)
+            assertEquals(3, library.book(book.id)?.wordOffset)
+            assertEquals(index, library.bookmarks(book.id).single().index)
+            assertArrayEquals(originalBytes, pdf.readBytes())
+        }
+    }
+
     @Test fun pdfImportsAesEncryptedTextWhenTheFileAllowsOpeningWithoutAPassword() = runBlocking {
         checkImport("Enkripsi.pdf", { file ->
             PDFBoxResourceLoader.init(context)
@@ -144,12 +187,16 @@ class DocumentImportTest {
                     bitmap.recycle()
                 }
             }
-        }) { _, document ->
+        }) { book, document ->
             assertTrue(document.sections.single().text.contains("SELAMAT PAGI", ignoreCase = true))
+            PdfMarginStore.write(context, book.id, PdfMarginSettings(all = PdfMargins(top = .4f)))
+            val processed = library.narrationDocument(book.id, detectLayout = false)
+            assertEquals(document.passes, processed.passes)
+            assertTrue(NarrationPipeline(processed, ListeningOptions()).prepare(0).text.isBlank())
         }
     }
 
-    private suspend fun checkImport(name: String, fill: (File) -> Unit, verify: (Book, ReadingDocument) -> Unit) {
+    private suspend fun checkImport(name: String, fill: (File) -> Unit, verify: suspend (Book, ReadingDocument) -> Unit) {
         val file = File(folder, name)
         try {
             fill(file)
