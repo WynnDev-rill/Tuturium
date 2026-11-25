@@ -20,6 +20,8 @@ Persentase mengikuti jumlah kata sumber sampai posisi baca yang tersimpan. Sisa 
 
 ## Supertonic 3
 
+Jika paket Supertonic sudah terpasang, buka **Pustaka Suara → Supertonic 3 → Akselerasi Supertonic** untuk mengunduh estimator INT8 sebesar 66 MB satu kali. Pemutaran berikutnya memakai graf tersebut saat tersedia. Paket dasar tetap tersedia untuk pemutaran offline. Lihat [hasil pengujian akselerasi](docs/supertonic-acceleration.md).
+
 Tuturium menyintesis teks pada 1×, lalu Media3 mengubah kecepatan pemutaran. Cadangan audio mengikuti laju baca, kecepatan sintesis, dan suhu perangkat. Audio yang sudah dibaca dapat dipakai ulang dari cache lokal, yang bisa dibersihkan dari menu Penyimpanan. Audio baru memakai penguatan otomatis dengan pembatas puncak. Lihat [hasil benchmark dan prosedur pengujian POCO F6](docs/supertonic-benchmark.md).
 
 Rilis 1.3.17 memakai 5–8 langkah adaptif dan cache Opus bersyarat. Perbandingan RTF, kejernihan, dan simulasi antrean tersedia di [benchmark Supertonic adaptif](docs/supertonic-adaptive.md).

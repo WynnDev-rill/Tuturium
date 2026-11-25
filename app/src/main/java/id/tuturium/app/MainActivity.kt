@@ -302,6 +302,8 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     private val offlinePreview by lazy { OfflineAudio(app) }
     var installedModels by mutableStateOf<Set<String>>(emptySet())
         private set
+    var acceleratedSupertonic by mutableStateOf(false)
+        private set
     var downloadingModel by mutableStateOf<String?>(null)
         private set
     var modelDownloadProgress by mutableStateOf<Float?>(null)
@@ -316,14 +318,16 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
 
     fun refreshOfflineModels() {
         viewModelScope.launch {
-            val onDisk = withContext(Dispatchers.IO) {
-                OfflineCatalog.models.filter { OfflineModelStore.installed(app, it) }.map { it.id }.toSet()
+            val (onDisk, accelerated) = withContext(Dispatchers.IO) {
+                val installed = OfflineCatalog.models.filter { OfflineModelStore.installed(app, it) }
+                installed.map { it.id }.toSet() to installed.any { OfflineModelStore.acceleratedVector(app, it) != null }
             }
             installedModels = installedModels + onDisk
+            acceleratedSupertonic = acceleratedSupertonic || accelerated
         }
     }
 
-    fun downloadVoiceModel(id: String) {
+    fun downloadVoiceModel(id: String, acceleration: Boolean = false) {
         if (downloadingModel != null) return
         val model = OfflineCatalog.model(id)
         downloadingModel = id
@@ -332,10 +336,13 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         failedModelId = null
         modelDownloadJob = viewModelScope.launch {
             try {
-                OfflineModelStore.install(app, model) { progress ->
-                    modelDownloadProgress = progress
+                if (acceleration) {
+                    OfflineModelStore.installAcceleration(app, model) { modelDownloadProgress = it }
+                    acceleratedSupertonic = true
+                } else {
+                    OfflineModelStore.install(app, model) { modelDownloadProgress = it }
+                    installedModels = installedModels + id
                 }
-                installedModels = installedModels + id
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) {
                 failedModelId = id

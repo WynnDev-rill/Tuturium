@@ -55,6 +55,83 @@ class OfflineVoiceRuntimeTest {
             }
         }
     }
+    @Test(timeout = 360_000L)
+    fun optimizedGraphKeepsIndonesianCuesAndPlaysInOrderAtFourTimesSpeed() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assumeTrue(InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") == "true")
+        val context = instrumentation.targetContext
+        val pack = OfflineCatalog.models.single()
+        OfflineModelStore.install(context, pack) {}
+        val passages = listOf(
+            "Setelah kereta meninggalkan stasiun, Dini memeriksa tiket dan membaca nama penumpang.",
+            "Pagi itu matahari terbit perlahan di balik perbukitan dan petani bersiap menuju sawah.",
+            "Mereka menyisihkan buku yang rusak lalu membawa sisanya ke perpustakaan desa.",
+            "Di pelabuhan, petugas menyapa pelan sambil memastikan semua penumpang sudah kembali.",
+            "Angin membawa aroma hujan dari hutan ketika penjaga membuka jendela di lantai atas.",
+            "Setelah ujian berakhir, anak-anak berkumpul di halaman sekolah menunggu bel pulang."
+        )
+        val runs = listOf(false, true)
+        val voice = pack.voices.first()
+        val hadAcceleration = OfflineModelStore.acceleratedVector(context, pack) != null
+        val wav = File.createTempFile("graph-test-", ".wav", context.cacheDir)
+        try {
+            for (accelerated in runs) {
+                if (!accelerated && hadAcceleration) continue
+                if (accelerated) {
+                    OfflineModelStore.installAcceleration(context, pack) {}
+                    assertNotNull(OfflineModelStore.acceleratedVector(context, pack))
+                }
+                OfflineSynth.withWarmModel(context) { selected ->
+                    assertEquals(accelerated, selected)
+                    OfflineSynth.write(context, voice, "Pemanasan model silakan tunggu.", wav, 6)
+                    var synthesisMs = 0L
+                    var sourceMs = 0L
+                    for ((index, phrase) in passages.withIndex()) {
+                        val start = android.os.SystemClock.elapsedRealtime()
+                        val generated = OfflineSynth.write(context, voice, phrase, wav, 6,
+                            pauseAfterMs = if (accelerated) 112 else 111)
+                        synthesisMs += android.os.SystemClock.elapsedRealtime() - start
+                        sourceMs += generated.durationMs
+                        assertFalse("Fresh synthesis pass $index", generated.cacheHit)
+                        assertEquals(synthesisRanges(phrase), generated.cues.map { it.range })
+                        assertTrue(wav.length() > 44L)
+                    }
+                    android.util.Log.i("TuturiumVoiceBenchmark",
+                        "mobile_graph=$accelerated steps=6 synth_ms=$synthesisMs source_ms=$sourceMs")
+                }
+            }
+            withContext(Dispatchers.Main) {
+                val player = OfflineAudio(context)
+                val completed = mutableListOf<Int>()
+                val ranges = mutableMapOf<Int, IntRange>()
+                var active = 0
+                var stalls = 0
+                val done = CompletableDeferred<Unit>()
+                val passes = passages.mapIndexed { index, text ->
+                    OfflinePass(index, PreparedSpeech(text, IntArray(text.length) { it }))
+                }
+                try {
+                    player.play(this, voice, passes.asSequence(), 4f, 1f,
+                        onPass = { active = it.index },
+                        onSpoken = { pass, _ -> completed += pass.index },
+                        onRange = { ranges[active] = it },
+                        onRendering = { if (!it) stalls++ },
+                        onDone = { done.complete(Unit) },
+                        onError = { done.completeExceptionally(it) })
+                    withTimeout(95_000L) { done.await() }
+                    assertEquals(passes.indices.toList(), completed)
+                    assertEquals(passes.associate { it.index to synthesisRanges(it.speech.text).last() }, ranges)
+                    android.util.Log.i("TuturiumVoiceBenchmark", "mobile_graph=true speed=4 emulator_stalls=$stalls")
+                } finally {
+                    player.stop()
+                }
+            }
+        } finally {
+            wav.delete()
+            if (!hadAcceleration) OfflineModelStore.acceleratedVector(context, pack)?.delete()
+        }
+    }
+
     @Test(timeout = 240_000L)
     fun highRatesPlayEveryQueuedPassThroughToItsLastCue() = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("offlineVoiceSmoke") == "true")

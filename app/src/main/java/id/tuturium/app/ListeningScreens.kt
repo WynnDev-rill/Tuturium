@@ -237,9 +237,12 @@ fun VoiceLibraryContent(model: TuturiumModel, modifier: Modifier = Modifier) {
             Text("Suara bahasa Indonesia di perangkat",
                 color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
         }
+        if (!installed || !model.acceleratedSupertonic) {
+            item { OfflineModelCard(model, pack, acceleration = installed) }
+        }
         if (installed) items(supertonic, key = { it.name }) { voice ->
             VoiceLibraryRow(voice, google, selected?.name == voice.name) { openedName = voice.name }
-        } else item { OfflineModelCard(model, pack) }
+        }
         if (model.voiceStatus.isNotBlank() && voices.isNotEmpty()) item {
             Text(model.voiceStatus, style = MaterialTheme.typography.bodySmall, color = SpeechifyMuted)
         }
@@ -532,18 +535,22 @@ fun SkipOptionsSheet(model: TuturiumModel, dismiss: () -> Unit) {
 }
 
 @Composable
-private fun OfflineModelCard(model: TuturiumModel, pack: OfflineModel) {
+private fun OfflineModelCard(model: TuturiumModel, pack: OfflineModel, acceleration: Boolean) {
     val downloading = model.downloadingModel == pack.id
     Surface(color = Color(0xFF252525), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Unduh paket suara", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                    Text("${pack.bytes / 1_000_000L} MB · ${pack.voices.size} suara",
+                    Text(if (acceleration) "Akselerasi Supertonic" else "Unduh paket suara",
+                        style = MaterialTheme.typography.titleMedium, color = Color.White)
+                    Text(if (acceleration) "66 MB · Pemutaran offline lebih cepat"
+                        else "${pack.bytes / 1_000_000L} MB · ${pack.voices.size} suara",
                         color = SpeechifyMuted, style = MaterialTheme.typography.bodySmall)
                 }
-                if (!downloading) IconButton(onClick = { model.downloadVoiceModel(pack.id) },
-                    enabled = model.downloadingModel == null) { Icon(Icons.Rounded.Download, "Unduh Supertonic 3") }
+                if (!downloading) IconButton(onClick = { model.downloadVoiceModel(pack.id, acceleration) },
+                    enabled = model.downloadingModel == null) {
+                    Icon(Icons.Rounded.Download, if (acceleration) "Unduh akselerasi Supertonic" else "Unduh Supertonic 3")
+                }
                 if (downloading) IconButton(onClick = model::cancelVoiceDownload) {
                     Icon(Icons.Rounded.Close, "Batalkan unduhan")
                 }

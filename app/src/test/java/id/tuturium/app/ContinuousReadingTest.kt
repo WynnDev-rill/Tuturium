@@ -53,6 +53,17 @@ class ContinuousReadingTest {
         assertEquals(3, synthesisThreadCount(8))
     }
 
+    @Test fun acceleratedSynthesisPrefersSixStepsButRespondsToSlowOrHotDevices() {
+        val buffer = SupertonicBuffer(accelerated = true)
+        assertEquals(6, buffer.inferenceSteps(4f, 0, filling = true, thermal = 0))
+        buffer.generated(5_000, 900, 1, steps = 6)
+        assertEquals(6, buffer.inferenceSteps(4f, 15_000, filling = false, thermal = 0))
+        assertEquals(8, buffer.inferenceSteps(2f, 90_000, filling = false, thermal = 0))
+        repeat(4) { buffer.generated(5_000, 1_600, 2, steps = 6) }
+        assertEquals(5, buffer.inferenceSteps(4f, 12_000, filling = false, thermal = 0))
+        assertEquals(5, buffer.inferenceSteps(2f, 90_000, filling = false, thermal = 3))
+    }
+
     @Test fun originalPageNumbersSurviveBlankPagesAndOldImports() {
         val original = ReadingDocument(listOf(
             Section("Halaman 1", "Pembukaan."),

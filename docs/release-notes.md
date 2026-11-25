@@ -1,3 +1,10 @@
+## Tuturium 1.3.23
+
+- Akselerasi Supertonic 3 tersedia di Pustaka Suara. Unduhan satu kali berukuran 66 MB, lalu pemrosesan berlangsung di perangkat.
+- Graf INT8 mempercepat estimator. Aplikasi mempertahankan 6–8 langkah jika cadangan cukup dan menyesuaikannya saat perangkat panas atau produksi audio tertinggal.
+- Sepuluh pilihan suara, posisi baca, dan pemutaran latar tetap memakai jalur Tuturium yang sama.
+- [Perbandingan runtime dan benchmark](https://github.com/WynnDev-rill/Tuturium/blob/main/docs/supertonic-acceleration.md).
+
 ## Tuturium 1.3.22
 
 - Estimasi waktu di pembaca dan panel kecepatan tetap stabil saat narasi berjalan dan mesin suara mengumpulkan pengukuran baru.

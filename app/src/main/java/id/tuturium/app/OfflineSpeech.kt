@@ -11,7 +11,19 @@ import java.nio.ByteOrder
 internal object OfflineSynth {
     private val dispatcher = Dispatchers.IO.limitedParallelism(1)
     private var sherpa: OfflineTts? = null
+    private var vectorOverride: File? = null
+    private var failedOverride: File? = null
     private var retryOpusAfter = 0L
+
+    private fun selectGraph(context: Context) {
+        if (sessions != 0) return
+        val vector = OfflineModelStore.acceleratedVector(context, OfflineCatalog.models.single())
+            ?.takeUnless { it == failedOverride }
+        if (vector == vectorOverride) return
+        sherpa?.release()
+        sherpa = null
+        vectorOverride = vector
+    }
 
     private fun load(context: Context): OfflineTts {
         sherpa?.let { return it }
@@ -19,29 +31,43 @@ internal object OfflineSynth {
         check(OfflineModelStore.installed(context, model)) { "Unduh model Supertonic terlebih dahulu." }
         val dir = OfflineModelStore.directory(context, model)
         fun path(file: String) = File(dir, file).absolutePath
-        return OfflineTts(config = OfflineTtsConfig(model = OfflineTtsModelConfig(
+        fun initialize(vector: String) = OfflineTts(config = OfflineTtsConfig(model = OfflineTtsModelConfig(
             supertonic = OfflineTtsSupertonicModelConfig(
                 durationPredictor = path("duration_predictor.int8.onnx"),
                 textEncoder = path("text_encoder.int8.onnx"),
-                vectorEstimator = path("vector_estimator.int8.onnx"),
+                vectorEstimator = vector,
                 vocoder = path("vocoder.int8.onnx"), ttsJson = path("tts.json"),
                 unicodeIndexer = path("unicode_indexer.bin"), voiceStyle = path("voice.bin")),
-            numThreads = synthesisThreadCount(Runtime.getRuntime().availableProcessors())))).also { sherpa = it }
+            numThreads = synthesisThreadCount(Runtime.getRuntime().availableProcessors()))))
+        val fallback = path("vector_estimator.int8.onnx")
+        val accelerated = vectorOverride
+        val engine = if (accelerated == null) initialize(fallback) else try {
+            initialize(accelerated.absolutePath)
+        } catch (error: Exception) {
+            failedOverride = accelerated
+            vectorOverride = null
+            android.util.Log.w("TuturiumVoice", "Akselerasi Supertonic kembali ke graf bawaan", error)
+            initialize(fallback)
+        }
+        sherpa = engine
+        return engine
     }
 
     private val lifetime = CoroutineScope(SupervisorJob() + dispatcher)
     private var releaseJob: Job? = null
     private var sessions = 0
 
-    suspend fun withWarmModel(block: suspend () -> Unit) {
+    suspend fun withWarmModel(context: Context, block: suspend (Boolean) -> Unit) {
         var retained = false
         try {
-            withContext(dispatcher) {
+            val accelerated = withContext(dispatcher) {
+                selectGraph(context)
                 sessions++
                 retained = true
                 releaseJob?.cancel()
+                vectorOverride != null
             }
-            block()
+            block(accelerated)
         } finally {
             if (retained) withContext(NonCancellable) {
                 withContext(dispatcher) {
@@ -69,6 +95,7 @@ internal object OfflineSynth {
         ) return@withContext
         if (OfflineModelStore.installed(context, OfflineCatalog.models.single())) {
             try {
+                selectGraph(context)
                 runCatching { load(context) }
             } finally {
                 releaseWhenIdle()
@@ -84,8 +111,8 @@ internal object OfflineSynth {
         if (android.os.Build.VERSION.SDK_INT >= 29 &&
             context.getSystemService(android.os.PowerManager::class.java).currentThermalStatus >=
             android.os.PowerManager.THERMAL_STATUS_MODERATE) return@withContext
-        val steps = SupertonicBuffer().inferenceSteps(playbackRate, 0, filling = true, thermal = 0)
-        withWarmModel {
+        withWarmModel(context) { accelerated ->
+            val steps = SupertonicBuffer(accelerated).inferenceSteps(playbackRate, 0, filling = true, thermal = 0)
             for (i in index until minOf(index + 2, document.passes.size)) {
                 ensureActive()
                 val pass = document.passes[i]
@@ -112,13 +139,21 @@ internal object OfflineSynth {
         withContext(dispatcher) {
             releaseJob?.cancel()
             try {
+                selectGraph(context)
                 val cache = NarrationAudioCache(File(context.cacheDir, "supertonic-audio"))
                 val model = OfflineCatalog.model(voice.model)
-                fun key(quality: Int) = "${model.files.single().sha256}/${voice.id}/id/$quality/gain-v2/flow-v1/$pauseAfterMs"
+                fun key(quality: Int, accelerated: Boolean): String {
+                    val graph = if (accelerated) OfflineCatalog.acceleratedVector.sha256 else model.files.single().sha256
+                    return "$graph/${voice.id}/id/$quality/gain-v2/flow-v1/$pauseAfterMs"
+                }
                 if (OfflineModelStore.installed(context, model)) {
+                    val accelerated = vectorOverride != null
                     for (candidate in listOf(8, 6, 5)) {
                         if (candidate < steps) break
-                        cache.restore(text, key(candidate), target)?.let { return@withContext it }
+                        if (accelerated) {
+                            cache.restore(text, key(candidate, true), target)?.let { return@withContext it }
+                        }
+                        cache.restore(text, key(candidate, false), target)?.let { return@withContext it }
                     }
                 }
                 var rate = 0
@@ -178,8 +213,8 @@ internal object OfflineSynth {
                 SynthesizedAudio(cues, bytes * 500L / rate).also {
                     ensureActive()
                     if (!compressCache || it.durationMs !in 2_000L..30_000L ||
-                        !saveOpus(context, cache, key(steps), text, target, rate, it) { ensureActive() }) {
-                        cache.save(text, key(steps), target, it)
+                        !saveOpus(context, cache, key(steps, vectorOverride != null), text, target, rate, it) { ensureActive() }) {
+                        cache.save(text, key(steps, vectorOverride != null), target, it)
                     }
                 }
             } finally {

@@ -23,7 +23,7 @@ internal data class OfflinePass(
     val index: Int, val speech: PreparedSpeech, val pauseAfterMs: Int = 0, val extraPauseMs: Int = 0
 )
 
-internal class SupertonicBuffer {
+internal class SupertonicBuffer(private val accelerated: Boolean = false) {
     private var inferenceRatio = 0.0
     private var measuredSteps = 8
     private var firstReadyAt = -1L
@@ -50,7 +50,9 @@ internal class SupertonicBuffer {
         val fastPlayback = playbackRate >= 2f
         previousSteps = when {
             thermal >= android.os.PowerManager.THERMAL_STATUS_SEVERE -> 5
-            fastPlayback && (filling || runway < if (previousSteps == 5) 16_000 else 8_000) -> 5
+            fastPlayback && accelerated && inferenceRatio == 0.0 && filling -> 6
+            fastPlayback && (!accelerated || sixStepDemand >= 0.9) &&
+                (filling || runway < if (previousSteps == 5) 16_000 else 8_000) -> 5
             fastPlayback && sixStepDemand >= if (previousSteps == 5) 0.86 else 1.0 -> 5
             thermal >= android.os.PowerManager.THERMAL_STATUS_MODERATE -> 6
             fastPlayback && (runway < if (previousSteps < 8) 36_000 else 20_000) -> 6
@@ -112,6 +114,7 @@ internal class OfflineAudio(
     private var progress: Job? = null
     private var rebuffering: Job? = null
     private var bufferChanged: (() -> Unit)? = null
+    private var reportPerformance: (() -> Unit)? = null
     private val clips = linkedMapOf<String, Clip>()
     private var active: Clip? = null
 
@@ -154,6 +157,8 @@ internal class OfflineAudio(
     fun stop() {
         val old = player
         player = null
+        reportPerformance?.invoke()
+        reportPerformance = null
         producer?.cancel()
         progress?.cancel()
         rebuffering?.cancel()
@@ -183,7 +188,7 @@ internal class OfflineAudio(
         // Hold CPU while Media3 renders or buffers, including when the display sleeps.
         engine.setWakeMode(C.WAKE_MODE_LOCAL)
         val room = Channel<Unit>(Channel.CONFLATED)
-        val buffer = SupertonicBuffer()
+        var buffer = SupertonicBuffer()
         bufferChanged = { room.trySend(Unit) }
         var sourceDone = false
         var started = false
@@ -194,6 +199,8 @@ internal class OfflineAudio(
         var thermal = 0
         val power = context.getSystemService(android.os.PowerManager::class.java)
         var rendering = false
+        val metrics = PlaybackMetrics(SystemClock.elapsedRealtime())
+        reportPerformance = { metrics.report(engine.playbackParameters.speed, SystemClock.elapsedRealtime()) }
         engine.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), false)
         setRate(speed, pitch)
@@ -258,14 +265,17 @@ internal class OfflineAudio(
                     rebuffering?.cancel()
                     rebuffering = null
                     if (!rendering) {
+                        metrics.playing(SystemClock.elapsedRealtime())
                         rendering = true
                         onRendering(true)
                     }
                 } else if (rendering && rebuffering == null) {
+                    val interruptedAt = SystemClock.elapsedRealtime()
                     rebuffering = scope.launch {
                         delay(200)
                         rebuffering = null
                         if (this@OfflineAudio.player === engine && !engine.isPlaying) {
+                            metrics.buffering(interruptedAt)
                             rendering = false
                             onRendering(false)
                         }
@@ -338,6 +348,7 @@ internal class OfflineAudio(
             val now = SystemClock.elapsedRealtime()
             if (android.os.Build.VERSION.SDK_INT >= 29 && now - lastThermalSample >= 2_000L) {
                 thermal = power.currentThermalStatus
+                metrics.peakThermal = maxOf(metrics.peakThermal, thermal)
                 lastThermalSample = now
             }
             return buffer.atCapacity(engine.playbackParameters.speed, queuedMs - engine.currentPosition,
@@ -346,7 +357,9 @@ internal class OfflineAudio(
 
         producer = scope.launch {
             try {
-                OfflineSynth.withWarmModel {
+                OfflineSynth.withWarmModel(context) { accelerated ->
+                    buffer = SupertonicBuffer(accelerated)
+                    metrics.accelerated = accelerated
                     for (pass in passages) {
                         while (bufferAtCapacity()) {
                             withTimeoutOrNull(2_000L) { room.receive() }
@@ -363,6 +376,7 @@ internal class OfflineAudio(
                             ensureActive()
                             val finishedMs = SystemClock.elapsedRealtime()
                             buffer.generated(audio.durationMs, finishedMs - startMs, finishedMs, audio.cacheHit, steps)
+                            metrics.generated(audio, finishedMs - startMs, steps)
                             clips[id] = Clip(id, pass, file, audio)
                             queuedMs += audio.durationMs
                             if (engine.playbackState == Player.STATE_ENDED && !recovering) {
@@ -392,5 +406,58 @@ internal class OfflineAudio(
                 fail(error)
             }
         }
+    }
+}
+
+/** End-of-session diagnostics omit text, document IDs and file paths. All timings are monotonic. */
+private class PlaybackMetrics(private val startedAt: Long) {
+    var accelerated = false
+    var peakThermal = 0
+    private var firstAudioAt = -1L
+    private var bufferingAt = -1L
+    private var bufferedMs = 0L
+    private var interruptions = 0
+    private var cached = 0
+    private var coldMs = -1L
+    private var synthMs = 0L
+    private var audioMs = 0L
+    private val stepCount = IntArray(9)
+
+    fun generated(audio: SynthesizedAudio, elapsedMs: Long, steps: Int) {
+        if (audio.cacheHit) {
+            cached++
+        } else {
+            stepCount[steps]++
+            if (coldMs < 0L) {
+                coldMs = elapsedMs
+            } else {
+                synthMs += elapsedMs
+                audioMs += audio.durationMs
+            }
+        }
+    }
+
+    fun playing(now: Long) {
+        if (firstAudioAt < 0L) firstAudioAt = now
+        if (bufferingAt >= 0L) {
+            bufferedMs += now - bufferingAt
+            bufferingAt = -1L
+        }
+    }
+
+    fun buffering(now: Long) {
+        interruptions++
+        bufferingAt = now
+    }
+
+    fun report(speed: Float, now: Long) {
+        if (firstAudioAt < 0L && coldMs < 0L) return
+        val stallMs = bufferedMs + if (bufferingAt < 0L) 0 else now - bufferingAt
+        val startupMs = if (firstAudioAt < 0L) -1 else firstAudioAt - startedAt
+        android.util.Log.i("TuturiumSupertonic",
+            "mobile_graph_selected=$accelerated speed=$speed startup_ms=$startupMs cold_clip_ms=$coldMs " +
+                "warm_synth_ms=$synthMs warm_source_ms=$audioMs cached_clips=$cached " +
+                "steps_5=${stepCount[5]} steps_6=${stepCount[6]} steps_8=${stepCount[8]} " +
+                "stalls_over_200ms=$interruptions stall_ms=$stallMs thermal_peak=$peakThermal")
     }
 }
