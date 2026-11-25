@@ -9,7 +9,7 @@ echo "Emulator ABIs: $device_abis"
 adb shell settings put global hide_error_dialogs 1
 adb shell settings put secure anr_show_background 0
 adb shell am force-stop com.google.android.apps.nexuslauncher
-curl -fLsS https://github.com/WynnDev-rill/Tuturium/releases/download/v1.3.17/Tuturium.apk -o before.apk
+curl -fLsS https://github.com/WynnDev-rill/Tuturium/releases/download/v1.3.19/Tuturium.apk -o before.apk
 adb install before.apk
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard
@@ -63,7 +63,7 @@ profile() {
   adb shell dumpsys gfxinfo "$app" > "$name-menu-gfxinfo.txt"
   sed -n -E '/Total frames rendered:|Janky frames:|50th percentile:|95th percentile:|99th percentile:/p' "$name-menu-gfxinfo.txt" | head -n 7 | sed "s/^/$name menu /"
 }
-echo "Creating a text document on the public 1.3.17 APK."
+echo "Creating a text document on the public 1.3.19 APK."
 paste=$(find_text 'Tempel' 12)
 adb shell input tap $paste
 editor=$(find_text 'Teks bacaan')
@@ -74,7 +74,7 @@ adb shell input tap $save
 find_text 'MigrasiTuturiumMusimDingin' >/dev/null
 echo "Old version opened the seeded text."
 adb shell dumpsys package "$app" > package-before.txt
-grep -F 'versionName=1.3.17' package-before.txt
+grep -F 'versionName=1.3.19' package-before.txt
 before=$(sed -n 's/^[[:space:]]*firstInstallTime=//p' package-before.txt | head -n1)
 test -n "$before"
 adb shell am force-stop "$app"
@@ -82,7 +82,7 @@ adb install -r Tuturium.apk
 adb shell am start -W -n "$app/.MainActivity" | tee launch.txt
 grep -F 'Status: ok' launch.txt
 adb shell dumpsys package "$app" > package-after.txt
-grep -F 'versionName=1.3.19' package-after.txt
+grep -F 'versionName=1.3.22' package-after.txt
 after=$(sed -n 's/^[[:space:]]*firstInstallTime=//p' package-after.txt | head -n1)
 test "$before" = "$after"
 lib=$(find_text 'Perpustakaan')
@@ -90,4 +90,4 @@ adb shell input tap $lib
 book=$(find_text 'Teks pribadi' 12)
 adb shell input tap $book
 find_text 'MigrasiTuturiumMusimDingin' >/dev/null
-echo "Upgrade 1.3.17 -> 1.3.19 kept the original install time and opened the old document."
+echo "Upgrade 1.3.19 -> 1.3.22 kept the original install time and opened the old document."
