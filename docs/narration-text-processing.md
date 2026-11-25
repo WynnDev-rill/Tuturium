@@ -41,3 +41,11 @@ Margin memakai proporsi relatif terhadap halaman PDF yang ditampilkan. Perubahan
 87 uji unit, lint debug, dan build instrumentasi lulus. Korpus unit mencakup contoh 1.874.161, desimal dengan nol sesudah koma, mata uang, tanggal, waktu, pecahan, pangkat, persentase, satuan, Romawi dalam konteks, telepon, kode, dan indeks sorotan. Tes layout mencakup header berulang, judul bab berbeda, nomor halaman, dan margin dengan pengecualian satu halaman.
 
 Mikrobenchmark JVM host mengukur fungsi normalisasi saja menggunakan dua jenis kalimat Indonesia, tujuh batch masing-masing 2.000 pemanggilan setelah pemanasan. Median jalur akhir sekitar 10 µs per kalimat prosa dan 53 µs per kalimat padat angka. Ini tidak mencakup sintesis suara atau OCR dan bukan benchmark buffering pada ponsel.
+
+## Verifikasi Android dan pembaruan
+
+Rangkaian utama Android 15 lulus 49/49 uji tanpa gagal atau dilewati. Uji PDF teks membandingkan berkas asli byte per byte sesudah pemfilteran, memeriksa 1.874.161 pada empat halaman, dan memeriksa posisi serta bookmark. Uji PDF pindai menjalankan ML Kit dan menerapkan margin pada teks yang cocok. Uji antarmuka menyimpan area untuk semua halaman dan memeriksa bahwa kontrol area tidak tampil dalam mode Teks. Uji sintesis yang sudah ada tetap mencakup pembacaan 2×/4×, pemulihan antrean, cache, dan layanan latar. [Regresi Android](https://github.com/WynnDev-rill/Tuturium/actions/runs/45539442607)
+
+Pada proses pengujian terfokus terpisah, pembukaan keyboard pencarian dan penantian menu sesudah perpindahan layar sempat gagal secara intermiten. Keduanya tercatat lulus pada rangkaian utama dengan kode produksi yang sama. Hasil emulator belum mengukur buffering, pengucapan langsung, atau OCR dokumen kompleks di POCO F6. [Uji terfokus](https://github.com/WynnDev-rill/Tuturium/actions/runs/45539456786)
+
+APK ditandatangani dengan sertifikat rilis yang sudah ada. Pemasangan 1.3.24 di atas 1.3.23 mempertahankan waktu pemasangan awal dan dapat membuka dokumen lama. [Uji pemasangan](https://github.com/WynnDev-rill/Tuturium/actions/runs/45540027431)
