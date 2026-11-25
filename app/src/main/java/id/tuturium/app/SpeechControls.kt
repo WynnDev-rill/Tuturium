@@ -143,14 +143,14 @@ data class PreparedSpeech(val text: String, val offsets: IntArray, val ends: Int
         return start..end
     }
     internal fun endWithin(start: Int, maxCharacters: Int): Int {
-        var end = minOf(start + maxCharacters, text.length)
-        if (end == text.length) return end
-        // Keep an expanded source token together and prefer a word boundary.
-        val boundary = (end downTo start + 1).firstOrNull {
+        val limit = minOf(start + maxCharacters, text.length)
+        if (limit == text.length) return limit
+        // Keep normal expansions together. An identifier can expand beyond the entire engine limit.
+        val candidates = limit downTo start + 1
+        val tokenBoundary = candidates.firstOrNull {
             text[it - 1].isWhitespace() && offsets[it - 1] != offsets[it]
         }
-        if (boundary != null) return boundary
-        while (end > start + 1 && offsets[end - 1] == offsets[end]) end--
+        var end = tokenBoundary ?: candidates.firstOrNull { text[it - 1].isWhitespace() } ?: limit
         if (text[end].isLowSurrogate() && text[end - 1].isHighSurrogate() && end > start + 1) end--
         return end
     }

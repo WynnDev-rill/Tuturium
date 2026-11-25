@@ -37,6 +37,13 @@ class IndonesianNormalizationTest {
         assertEquals("ha dua o", prepare("H2O").text)
     }
 
+    @Test fun ttsLimitDoesNotReduceAnOversizedExpansionToSingleLetters() {
+        val expanded = prepare("1".repeat(150))
+        val end = expanded.endWithin(0, 100)
+        assertEquals(100, end)
+        assertEquals("satu ".repeat(20), expanded.text.substring(0, end))
+    }
+
     @Test fun expandedNumberRetainsWholeSourceSpanAndOriginalPass() {
         val source = "Ada 1.874.161 warga."
         val doc = ReadingDocument(listOf(Section("Bab", source)))
