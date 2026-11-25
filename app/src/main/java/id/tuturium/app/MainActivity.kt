@@ -205,6 +205,7 @@ class MainActivity : ComponentActivity() {
         model.refresh()
         model.reloadVoicesIfOpened()
         model.returnFromInstallerSettings(this)
+        model.checkUpdate(automatic = true)
     }
 
     private fun restoreDriveConnection() {
@@ -261,7 +262,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("settings", 0)
     private var openJob: Job? = null
     private var importJob: Job? = null
-    private var checked = false
+    private var nextAutomaticUpdateCheck = 0L
     private var waitingForInstallerPermission = false
     private var voiceProbe: TextToSpeech? = null
     private var voiceLoadToken = 0
@@ -464,8 +465,10 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         openJob = viewModelScope.launch {
             safe("Dokumen tidak dapat dibuka") {
                 val (book, document, marks) = withContext(Dispatchers.IO) {
-                    Triple(library.book(id) ?: error("Dokumen sudah dihapus."),
-                        library.narrationDocument(id, listeningOptions.skipEnabled), library.bookmarks(id))
+                    val book = library.book(id) ?: error("Dokumen sudah dihapus.")
+                    val document = library.narrationDocument(id, listeningOptions.skipEnabled)
+                    withContext(Dispatchers.Default) { document.readerLayout }
+                    Triple(book, document, library.bookmarks(id))
                 }
                 position = book.position
                 positionOffset = book.wordOffset
@@ -905,6 +908,7 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
         narrationLayoutJob = viewModelScope.launch {
             safe("Area bacaan PDF gagal diperbarui") {
                 val refreshed = withContext(Dispatchers.IO) { library.narrationDocument(book.id, detect) }
+                withContext(Dispatchers.Default) { refreshed.readerLayout }
                 if (reader?.id == book.id) {
                     content = refreshed
                     timelines.evictAll()
@@ -978,20 +982,23 @@ class TuturiumModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun checkUpdate(automatic: Boolean = false) {
-        if (checking || updateProgress != null || (automatic && checked)) return
-        checked = true
+        if (checking || updateProgress != null ||
+            (automatic && android.os.SystemClock.elapsedRealtime() < nextAutomaticUpdateCheck)) return
         checking = true
         if (!automatic) updateStatus = "Memeriksa GitHub…"
         viewModelScope.launch {
             try {
                 val latest = Updates.latest()
-                if (latest != release) verifiedApk = null
+                val changed = latest != release
+                if (changed) verifiedApk = null
                 release = latest
+                nextAutomaticUpdateCheck = android.os.SystemClock.elapsedRealtime() + 60 * 60_000L
                 updateStatus = if (latest == null) "Versi terbaru sudah terpasang." else "Pembaruan tersedia."
-                if (latest != null) showUpdate = true
+                if (latest != null && (!automatic || changed)) showUpdate = true
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
+                nextAutomaticUpdateCheck = android.os.SystemClock.elapsedRealtime() + 60_000L
                 if (!automatic) updateStatus = (error as? UpdateCheckException)?.message
                     ?: "Pemeriksaan gagal. Periksa koneksi dan coba lagi."
             } finally {

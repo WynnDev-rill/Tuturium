@@ -47,81 +47,19 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
-private data class ReaderRow(val heading: String?, val text: String,
+internal data class ReaderRow(val heading: String?, val text: String,
     val passes: List<IndexedValue<Pass>>, val paragraphEnd: Boolean = false)
 
-@Composable
-fun Reader(model: TuturiumModel, book: Book, document: ReadingDocument, showSettings: () -> Unit) {
-    val playback by ReadingService.state.collectAsStateWithLifecycle()
-    key(book.id) {
-        ReaderContent(model, book, document, playback, showSettings)
-    }
-}
+internal data class ReaderLayout(
+    val rows: List<ReaderRow>,
+    val locations: IntArray,
+    val sectionStarts: List<IndexedValue<Pass>>,
+    val firstPassByPdfPage: Map<Int, Int>,
+    val pdfWords: Map<Int, List<IndexedValue<Pass>>>
+)
 
-@Composable
-private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDocument, playback: Playback,
-    showSettings: () -> Unit) {
-    val context = LocalContext.current
-    val pdfSource = remember(book.id) {
-        if (book.format == "PDF") Library.get(context).originalPdf(book.id) else null
-    }
-    var showPdf by rememberSaveable(book.id) { mutableStateOf(pdfSource != null) }
-    var visiblePdfPage by remember(book.id) { mutableIntStateOf(0) }
-    val active = playback.bookId == book.id && playback.total > 0
-    val readingIndex = if (active) {
-        if (playback.completed) document.passes.size else playback.index
-    } else model.position
-    val current = (readingIndex.takeIf { it < document.passes.size } ?: 0)
-        .coerceIn(0, document.passes.lastIndex)
-    val timePosition = readingPosition(model, book, readingIndex,
-        if (active) playback.offset else model.positionOffset, document)
-    val pdfPasses = remember(document) {
-        if (pdfSource != null) document.firstPassByPdfPage() else emptyMap()
-    }
-    val pdfWords = remember(document, pdfSource) {
-        if (pdfSource != null) document.passes.withIndex().groupBy { document.pdfPageForPass(it.index) }
-        else emptyMap()
-    }
-    val isPlaying = active && playback.playing
-    val isLoading = playback.bookId == book.id && playback.loading
-    var panel by remember { mutableStateOf<String?>(null) }
-    var jump by remember { mutableIntStateOf(-1) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var matchIndex by remember { mutableIntStateOf(0) }
-    var matches by remember { mutableStateOf(emptyList<ReaderMatch>()) }
-    val searchOpen = panel == "search"
-    BackHandler(searchOpen) { panel = null }
-    var preview by remember { mutableStateOf<Float?>(null) }
-    var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    val marked = model.bookmarks.any { it.index == current }
-    val offlineVoice = OfflineCatalog.voice(model.settings.voice)
-    LaunchedEffect(book.id, offlineVoice?.id, current, isPlaying, isLoading, model.listeningOptions,
-        model.pdfLayoutRevision,
-        model.settings.speed) {
-        val voice = offlineVoice ?: return@LaunchedEffect
-        delay(250)
-        if (isPlaying || isLoading || ReadingService.state.value.playing || ReadingService.state.value.loading)
-            return@LaunchedEffect
-        val options = model.listeningOptions
-        val offset = if (active) playback.range?.first ?: book.wordOffset.takeIf { current == book.position } ?: 0
-            else book.wordOffset.takeIf { current == book.position } ?: 0
-        try {
-            OfflineSynth.prepareOpeningAudio(context.applicationContext, voice, document, current, offset,
-                options, model.settings.speed)
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            android.util.Log.w("TuturiumReader", "Offline preparation deferred", error)
-        }
-    }
-    LaunchedEffect(playback.timerUntil) {
-        while (playback.timerUntil > 0) {
-            clock = SystemClock.elapsedRealtime()
-            delay(1000)
-        }
-    }
-
-    val rows = remember(document) {
+internal fun buildReaderLayout(document: ReadingDocument): ReaderLayout {
+    val rows = run {
         val indexed = document.passes.withIndex().groupBy { it.value.section }
         buildList {
             document.sections.forEachIndexed { sectionIndex, section ->
@@ -149,19 +87,96 @@ private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDoc
             }
         }
     }
+    val locations = run {
+        IntArray(document.passes.size).also { indices ->
+            rows.forEachIndexed { row, item -> item.passes.forEach { indices[it.index] = row } }
+        }
+    }
+    val sectionStarts = run {
+        document.passes.withIndex().distinctBy { it.value.section }
+    }
+    return ReaderLayout(rows, locations, sectionStarts,
+        if (document.hasPdfTextGeometry) document.firstPassByPdfPage() else emptyMap(),
+        if (document.hasPdfTextGeometry)
+            document.passes.withIndex().groupBy { document.pdfPageForPass(it.index) }
+        else emptyMap())
+}
+
+@Composable
+fun Reader(model: TuturiumModel, book: Book, document: ReadingDocument, visible: Boolean, showSettings: () -> Unit) {
+    val playback by ReadingService.state.collectAsStateWithLifecycle()
+    key(book.id) {
+        ReaderContent(model, book, document, playback, visible, showSettings)
+    }
+}
+
+@Composable
+private fun ReaderContent(model: TuturiumModel, book: Book, document: ReadingDocument, playback: Playback,
+    visible: Boolean, showSettings: () -> Unit) {
+    val context = LocalContext.current
+    val pdfSource = remember(book.id) {
+        if (book.format == "PDF") Library.get(context).originalPdf(book.id) else null
+    }
+    var showPdf by rememberSaveable(book.id) { mutableStateOf(pdfSource != null) }
+    var visiblePdfPage by remember(book.id) { mutableIntStateOf(0) }
+    val active = playback.bookId == book.id && playback.total > 0
+    val readingIndex = if (active) {
+        if (playback.completed) document.passes.size else playback.index
+    } else model.position
+    val current = (readingIndex.takeIf { it < document.passes.size } ?: 0)
+        .coerceIn(0, document.passes.lastIndex)
+    val timePosition = readingPosition(model, book, readingIndex,
+        if (active) playback.offset else model.positionOffset, document)
+    val layout = document.readerLayout
+    val pdfPasses = layout.firstPassByPdfPage
+    val pdfWords = layout.pdfWords
+    val isPlaying = active && playback.playing
+    val isLoading = playback.bookId == book.id && playback.loading
+    var panel by remember { mutableStateOf<String?>(null) }
+    var jump by remember { mutableIntStateOf(-1) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var matchIndex by remember { mutableIntStateOf(0) }
+    var matches by remember { mutableStateOf(emptyList<ReaderMatch>()) }
+    val searchOpen = panel == "search"
+    BackHandler(visible && searchOpen) { panel = null }
+    var preview by remember { mutableStateOf<Float?>(null) }
+    var clock by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    val marked = model.bookmarks.any { it.index == current }
+    val offlineVoice = OfflineCatalog.voice(model.settings.voice)
+    LaunchedEffect(visible, book.id, offlineVoice?.id, current, isPlaying, isLoading, model.listeningOptions,
+        model.pdfLayoutRevision,
+        model.settings.speed) {
+        val voice = offlineVoice?.takeIf { visible } ?: return@LaunchedEffect
+        delay(250)
+        if (isPlaying || isLoading || ReadingService.state.value.playing || ReadingService.state.value.loading)
+            return@LaunchedEffect
+        val options = model.listeningOptions
+        val offset = if (active) playback.range?.first ?: book.wordOffset.takeIf { current == book.position } ?: 0
+            else book.wordOffset.takeIf { current == book.position } ?: 0
+        try {
+            OfflineSynth.prepareOpeningAudio(context.applicationContext, voice, document, current, offset,
+                options, model.settings.speed)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("TuturiumReader", "Offline preparation deferred", error)
+        }
+    }
+    LaunchedEffect(playback.timerUntil) {
+        while (playback.timerUntil > 0) {
+            clock = SystemClock.elapsedRealtime()
+            delay(1000)
+        }
+    }
+
+    val rows = layout.rows
     LaunchedEffect(query, rows) {
         matches = withContext(Dispatchers.Default) { findReaderMatches(rows.map { it.text }, query) }
         matchIndex = 0
     }
     val searchMatch = matches.getOrNull(matchIndex).takeIf { searchOpen }
-    val locations = remember(rows, document) {
-        IntArray(document.passes.size).also { indices ->
-            rows.forEachIndexed { row, item -> item.passes.forEach { indices[it.index] = row } }
-        }
-    }
-    val sectionStarts = remember(document) {
-        document.passes.withIndex().distinctBy { it.value.section }
-    }
+    val locations = layout.locations
+    val sectionStarts = layout.sectionStarts
     val list = rememberLazyListState(initialFirstVisibleItemIndex = locations[current])
     var manualBrowsing by remember(book.id) { mutableStateOf(false) }
     val dragging by list.interactionSource.collectIsDraggedAsState()

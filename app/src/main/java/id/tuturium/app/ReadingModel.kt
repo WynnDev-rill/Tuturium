@@ -10,6 +10,7 @@ data class ReadingDocument(val sections: List<Section>) {
     // Attached only to a document snapshot prepared for narration.
     internal var narrationLayout: PdfNarrationPlan = PdfNarrationPlan.EMPTY
     internal var hasPdfTextGeometry = false
+    internal val readerLayout by lazy { buildReaderLayout(this) }
     internal val paragraphs = sections.map { it.text.split(Regex("\\n+")).filter(String::isNotBlank) }
     val passes: List<Pass> = paragraphs.flatMapIndexed { section, paragraphs ->
         paragraphs.flatMapIndexed { paragraph, text -> splitSpeech(text, section, paragraph) }

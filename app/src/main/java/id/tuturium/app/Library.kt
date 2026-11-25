@@ -78,6 +78,7 @@ class Library private constructor(context: Context) :
     /** The original PDF is optional: imports predating 1.3.1 have text-only archives. */
     fun originalPdf(id: String): File? = File(folder, "$id.pdf").takeIf { it.isFile }
 
+    @Synchronized
     fun saveOriginalPdf(id: String, source: File) {
         require(book(id)?.format == "PDF") { "Dokumen ini bukan PDF." }
         require(source.isFile && source.length() in 1L..(100L * 1024 * 1024))
@@ -271,50 +272,33 @@ class Library private constructor(context: Context) :
     }
 
 
-    /** Restore a Drive snapshot without replacing a newer local edit. Book ids
-     * remain stable, so bookmarks and positions survive device migration. */
+    /** Source files are immutable for a book ID. Restore missing files even
+     * when the device already has newer progress, title or bookmarks. */
     @Synchronized
-    fun restoreCloudBook(
-        incoming: Book, deleted: Boolean, sectionsJson: String,
+    internal fun restoreCloudBook(
+        incoming: Book, deleted: Boolean, sections: File,
         marks: List<Bookmark>, originalPdf: File?
     ): Boolean {
         require(UUID.fromString(incoming.id).toString() == incoming.id)
-        val sections = JSONArray(sectionsJson)
-        require(sections.length() in 1..10_000)
-        for (i in 0 until sections.length()) {
-            val item = sections.getJSONObject(i)
-            require(item.has("title") && item.has("text"))
-        }
         val db = writableDatabase
         if (db.query("book_tombstones", arrayOf("id"), "id = ?",
                 arrayOf(incoming.id), null, null, null).use { it.moveToFirst() }) return false
-        val old = db.query("books", arrayOf("updated"), "id = ?",
-            arrayOf(incoming.id), null, null, null).use {
-            if (it.moveToFirst()) it.getLong(0) else null
+        val document = documentFile(incoming.id)
+        val pdf = File(folder, "${incoming.id}.pdf")
+        if (originalPdf != null && incoming.format == "PDF" && !pdf.isFile) {
+            copyCloudFile(originalPdf, AtomicFile(pdf))
         }
-        if (old != null && old >= incoming.updated) return false
-        val output = documentFile(incoming.id)
-        val stream = output.startWrite()
-        try {
-            stream.write(sectionsJson.toByteArray(Charsets.UTF_8))
-            output.finishWrite(stream)
-        } catch (e: Exception) {
-            output.failWrite(stream)
-            throw e
-        }
-        originalPdf?.takeIf { it.isFile && incoming.format == "PDF" }?.let { source ->
-            val pdf = AtomicFile(File(folder, "${incoming.id}.pdf"))
-            val target = pdf.startWrite()
-            try {
-                source.inputStream().use { it.copyTo(target, 65536) }
-                pdf.finishWrite(target)
-            } catch (e: Exception) {
-                pdf.failWrite(target)
-                throw e
-            }
-        }
+        if (!document.baseFile.isFile) copyCloudFile(sections, document)
+
+        // Compare and write metadata in one transaction. Progress and mark
+        // changes can be committed while immutable contents are being copied.
         db.beginTransaction()
         try {
+            val old = db.query("books", arrayOf("updated"), "id = ?",
+                arrayOf(incoming.id), null, null, null).use {
+                if (it.moveToFirst()) it.getLong(0) else null
+            }
+            if (old != null && old >= incoming.updated) return false
             val values = ContentValues().apply {
                 put("id", incoming.id)
                 put("title", incoming.title.take(200))
@@ -341,6 +325,17 @@ class Library private constructor(context: Context) :
             db.endTransaction()
         }
         return true
+    }
+
+    private fun copyCloudFile(source: File, target: AtomicFile) {
+        val stream = target.startWrite()
+        try {
+            source.inputStream().use { it.copyTo(stream, 65536) }
+            target.finishWrite(stream)
+        } catch (error: Exception) {
+            target.failWrite(stream)
+            throw error
+        }
     }
 
     private fun documentFile(id: String) = AtomicFile(File(folder, "$id.json"))

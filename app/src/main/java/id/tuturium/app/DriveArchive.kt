@@ -1,6 +1,7 @@
 package id.tuturium.app
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -17,6 +18,14 @@ internal class DriveArchive(private val context: Context) {
         "settings", "listening_options", "listening_stats", "library_actions", "library_folders"
     )
     private val validName = Regex("""books/[0-9a-fA-F-]{36}\.(json|pdf)""")
+
+    private data class RestoreBook(
+        val book: Book,
+        val deleted: Boolean,
+        val content: File,
+        val bookmarks: List<Bookmark>,
+        val pdf: File?
+    )
 
     fun export(destination: File) = synchronized(library) {
         val active = library.books()
@@ -66,6 +75,20 @@ internal class DriveArchive(private val context: Context) {
             }
             prefObject.put(file, values)
         }
+        val manifest = index.toString().toByteArray(Charsets.UTF_8)
+        var entryCount = 1
+        var uncompressed = manifest.size.toLong()
+        books.forEach { book ->
+            entryCount++
+            uncompressed += library.documentBytes(book.id)
+            library.originalPdf(book.id)?.let {
+                entryCount++
+                uncompressed += it.length()
+            }
+        }
+        if (entryCount > MAX_ENTRIES || uncompressed > MAX_ARCHIVE_BYTES) {
+            throw CloudAccessException("Pustaka melebihi kapasitas arsip Google Drive.")
+        }
         destination.parentFile?.mkdirs()
         ZipOutputStream(destination.outputStream().buffered()).use { out ->
             fun addEntry(path: String, write: () -> Unit) {
@@ -73,7 +96,7 @@ internal class DriveArchive(private val context: Context) {
                 write()
                 out.closeEntry()
             }
-            addEntry("manifest.json") { out.write(index.toString().toByteArray(Charsets.UTF_8)) }
+            addEntry("manifest.json") { out.write(manifest) }
             books.forEach { book ->
                 addEntry("books/${book.id}.json") {
                     library.openDocumentJson(book.id).use { it.copyTo(out, 65536) }
@@ -85,10 +108,13 @@ internal class DriveArchive(private val context: Context) {
                 }
             }
         }
+        if (destination.length() > MAX_ARCHIVE_BYTES) {
+            throw CloudAccessException("Pustaka melebihi kapasitas arsip Google Drive.")
+        }
     }
 
-    /** Restores only newer cloud records; existing books never disappear on failure.
-     * All untrusted entries are staged within cacheDir and validated before import. */
+    /** Validate the complete archive before applying records individually.
+     * An interrupted local write can be retried from the same snapshot. */
     fun restore(archive: File): Int {
         require(archive.isFile && archive.length() <= MAX_ARCHIVE_BYTES) {
             "Arsip Drive tidak ditemukan atau terlalu besar."
@@ -105,7 +131,7 @@ internal class DriveArchive(private val context: Context) {
                         "Nama berkas arsip tidak dikenali."
                     }
                     require(!entry.isDirectory) { "Direktori tidak diizinkan." }
-                    require(++entries <= 10_002) { "Terlalu banyak berkas." }
+                    require(++entries <= MAX_ENTRIES) { "Terlalu banyak berkas." }
                     val dst = File(temporary, entry.name.substringAfterLast('/'))
                     require(!dst.exists()) { "Berkas arsip duplikat." }
                     dst.outputStream().buffered().use { output ->
@@ -131,10 +157,12 @@ internal class DriveArchive(private val context: Context) {
             val idsToErase = List(deletions.length()) { i ->
                 UUID.fromString(deletions.getString(i)).toString()
             }
-            var restored = 0
-            for (i in 0 until records.length()) {
+            require(records.length() < MAX_ENTRIES) { "Terlalu banyak buku." }
+            val seen = HashSet<String>()
+            val books = List(records.length()) { i ->
                 val value = records.getJSONObject(i)
                 val id = UUID.fromString(value.getString("id")).toString()
+                require(seen.add(id)) { "Buku duplikat di manifest." }
                 val content = File(temporary, "$id.json")
                 require(content.isFile) { "Teks buku tidak lengkap di Google Drive." }
                 val book = Book(
@@ -147,53 +175,85 @@ internal class DriveArchive(private val context: Context) {
                     created = value.optLong("created", value.getLong("updated")),
                     wordOffset = value.optInt("wordOffset", 0).coerceAtLeast(0)
                 )
+                require(book.count >= 0) { "Jumlah bagian buku tidak valid." }
+                val sections = JSONArray(content.readText())
+                require(sections.length() in 1..10_000)
+                for (sectionIndex in 0 until sections.length()) {
+                    val section = sections.getJSONObject(sectionIndex)
+                    require(section.opt("title") is String && section.opt("text") is String) {
+                        "Bagian buku tidak valid."
+                    }
+                }
                 val marks = value.optJSONArray("marks") ?: JSONArray()
                 val bookmarks = List(marks.length()) { n ->
                     val item = marks.getJSONObject(n)
                     Bookmark(item.getInt("position"), item.getString("excerpt"))
                 }
                 val pdf = File(temporary, "$id.pdf").takeIf { it.isFile }
-                if (library.restoreCloudBook(
-                        book, value.optBoolean("deleted"), content.readText(), bookmarks, pdf
-                    )) restored++
+                RestoreBook(book, value.optBoolean("deleted"), content, bookmarks, pdf)
+            }
+            val pendingPreferences = root.optJSONObject("preferences")?.let(::preparePreferences).orEmpty()
+            val erased = idsToErase.toHashSet()
+            val restored = books.count {
+                it.book.id !in erased &&
+                    library.restoreCloudBook(it.book, it.deleted, it.content, it.bookmarks, it.pdf)
             }
             idsToErase.forEach(library::restoreTombstone)
-            root.optJSONObject("preferences")?.let(::restorePreferences)
+            pendingPreferences.forEach { (prefs, values) ->
+                val editor = prefs.edit()
+                for ((key, write) in values) {
+                    if (!prefs.contains(key)) write(editor)
+                }
+                check(editor.commit()) { "Preferensi Drive tidak dapat disimpan di perangkat." }
+            }
             return restored
         } finally {
             temporary.deleteRecursively()
         }
     }
 
-    private fun restorePreferences(saved: JSONObject) {
-        preferences.forEach { file ->
-            val source = saved.optJSONObject(file) ?: return@forEach
+    private fun preparePreferences(saved: JSONObject):
+        List<Pair<SharedPreferences, Map<String, (SharedPreferences.Editor) -> Unit>>> =
+        preferences.mapNotNull { file ->
+            val source = saved.optJSONObject(file) ?: return@mapNotNull null
             val prefs = context.getSharedPreferences(file, Context.MODE_PRIVATE)
-            // A newer local preference must never be overwritten by a stale cloud archive.
-            val editor = prefs.edit()
-            val keys = source.keys()
-            while (keys.hasNext()) {
-                val key = keys.next()
-                if (prefs.contains(key)) continue
-                val item = source.optJSONObject(key) ?: continue
-                when (item.optString("type")) {
-                    "boolean" -> editor.putBoolean(key, item.getBoolean("value"))
-                    "integer" -> editor.putInt(key, item.getInt("value"))
-                    "long" -> editor.putLong(key, item.getLong("value"))
-                    "float" -> editor.putFloat(key, item.getDouble("value").toFloat())
-                    "string" -> editor.putString(key, item.getString("value"))
-                    "stringSet" -> {
-                        val strings = item.getJSONArray("value")
-                        editor.putStringSet(key, (0 until strings.length())
-                            .map(strings::getString).toSet())
+            val values = buildMap<String, (SharedPreferences.Editor) -> Unit> {
+                for (key in source.keys()) {
+                    val item = source.optJSONObject(key) ?: continue
+                    when (item.optString("type")) {
+                        "boolean" -> {
+                            val value = item.getBoolean("value")
+                            put(key) { it.putBoolean(key, value) }
+                        }
+                        "integer" -> {
+                            val value = item.getInt("value")
+                            put(key) { it.putInt(key, value) }
+                        }
+                        "long" -> {
+                            val value = item.getLong("value")
+                            put(key) { it.putLong(key, value) }
+                        }
+                        "float" -> {
+                            val value = item.getDouble("value").toFloat()
+                            put(key) { it.putFloat(key, value) }
+                        }
+                        "string" -> {
+                            val value = item.getString("value")
+                            put(key) { it.putString(key, value) }
+                        }
+                        "stringSet" -> {
+                            val strings = item.getJSONArray("value")
+                            val value = (0 until strings.length()).map(strings::getString).toSet()
+                            put(key) { it.putStringSet(key, value) }
+                        }
                     }
                 }
             }
-            editor.commit()
+            prefs to values
         }
-    }
 
     companion object {
+        private const val MAX_ENTRIES = 10_002
         internal const val MAX_ARCHIVE_BYTES = 1024L * 1024L * 1024L
     }
 }

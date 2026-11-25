@@ -36,12 +36,15 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Tuturium(model: TuturiumModel) {
     val context = LocalContext.current
-    val playback by ReadingService.chromeState.collectAsStateWithLifecycle(Playback())
+    val playbackErrors = remember { ReadingService.state.map { it.error }.distinctUntilChanged() }
+    val playbackError by playbackErrors.collectAsStateWithLifecycle(null)
     var tab by rememberSaveable { mutableStateOf("home") }
     var showAddSheet by remember { mutableStateOf(false) }
     var libraryFolder by remember { mutableStateOf<String?>(null) }
@@ -114,14 +117,14 @@ fun Tuturium(model: TuturiumModel) {
     val paste: () -> Unit = { model.textDraft = ""; model.showPaste = true }
     val link: () -> Unit = { showLinkDialog = true }
 
-    LaunchedEffect(Unit) { model.refresh(); model.checkUpdate(automatic = true) }
+    LaunchedEffect(Unit) { model.refresh() }
     LaunchedEffect(model.status) {
         model.status?.let {
             snackbar.showSnackbar(it)
             model.status = null
         }
     }
-    LaunchedEffect(playback.error) { playback.error?.let { snackbar.showSnackbar(it) } }
+    LaunchedEffect(playbackError) { playbackError?.let { snackbar.showSnackbar(it) } }
     BackHandler(model.showUpdate || model.reader != null || tab !in listOf("home", "library") ||
         showAddSheet || showLinkDialog) {
         when {
@@ -174,16 +177,31 @@ fun Tuturium(model: TuturiumModel) {
                     "reader" -> {
                         val book = model.reader
                         val document = model.content
-                        if (book != null && document != null) Reader(model, book, document) { tab = "settings" }
+                        // This slot is removed when the fade ends. Keep its last
+                        // document while the destination is leaving the screen.
+                        var retained by remember { mutableStateOf<Pair<Book, ReadingDocument>?>(null,
+                            referentialEqualityPolicy()) }
+                        if (book != null && document != null) {
+                            SideEffect {
+                                if (retained?.first != book || retained?.second !== document)
+                                    retained = book to document
+                            }
+                        }
+                        val showingBook = book ?: retained?.first
+                        val showingDocument = document ?: retained?.second
+                        if (showingBook != null && showingDocument != null)
+                            Reader(model, showingBook, showingDocument, screen == target) { tab = "settings" }
                     }
                     "home" -> ModernHome(model,
                         openProfile = { tab = "profile" },
                         openBook = { model.open(it.id) },
                         onFile = openFile, onScan = scan, onLink = link,
                         onPaste = paste, onDictation = dictate, onAdd = { showAdd(null) })
-                    "library" -> LibraryV2(model, playback,
-                        onAdd = { showAdd(it) }, folderRefresh = folderRefresh,
-                        onFolderChanged = { libraryFolder = it })
+                    "library" -> {
+                        val playback by ReadingService.chromeState.collectAsStateWithLifecycle(Playback())
+                        LibraryV2(model, playback, onAdd = { showAdd(it) }, folderRefresh = folderRefresh,
+                            onFolderChanged = { libraryFolder = it })
+                    }
                     "profile" -> ModernProfile(
                         onBack = { tab = "home" },
                         onAccount = { tab = "account" },
